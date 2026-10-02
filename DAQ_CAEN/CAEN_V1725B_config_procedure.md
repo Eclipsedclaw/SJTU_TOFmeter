@@ -9,16 +9,15 @@ Replace `<VME_BASE_ADDR>` throughout with this new board's actual VME base addre
 ## Step 0 — Before powering anything on
 
 - [ ] Confirm the crate is **off**.
-- [ ] Seat the new V1725B in a free slot.
-- [ ] **Physically check the on-board SW2 DIP switch is set to INT**, not EXT. This is the single most common failure mode encountered tonight — an EXT-set switch causes a "PLL not locked / Board Failure" error that no firmware or software step can fix, because it's a hardware clock-routing switch, not a firmware setting.
+- [ ] Seat the new V1725B in a free slot. Do not put over 4 V1725B inside the VME8002 unit at the same time, it will flow overcurrent.
+- [ ] **Physically check the on-board SW2 DIP switch is set to INT**, not EXT. An EXT-set switch causes a "PLL not locked / Board Failure" error that no firmware or software step can fix, because it's a hardware clock-routing switch, not a firmware setting. If you see CLK IN LED lights ON, that means the card is in EXT mode and expect an external clock.
 - [ ] Confirm no cable is connected to the front-panel CLK-IN connector (unless you specifically intend external-clock synchronization for this board).
 
 ## Step 1 — Set the VME base address (rotary switches)
 
-- Read the board's front-panel rotary switches — four hex digits (0–F each).
+- Read the board's rotary switches located on the back on the PCB — four hex digits (0–F each).
 - Append `0000` to get the full 32-bit VME base address. Example: dials reading `5A30` → base address `0x5A300000`.
-- **Confirm this address doesn't collide with any board already in the crate** (426 = `0x04260000`, 488 = `0x32100000`, 421 = `0x32120000`).
-- Record the board's serial number (visible on a label) alongside this address — you'll want this mapping permanently.
+- **Confirm this address doesn't collide with any board already in the crate** (426 = `0x04260000`, 488 = `0x32100000`, 421 = `0x32120000`, these 3 were used for test).
 
 ## Step 2 — Power on and confirm basic connectivity
 
@@ -28,15 +27,16 @@ Power the crate on. Then:
 caen-toolbox dig1 check -c USB -l 0 -b <VME_BASE_ADDR>
 ```
 
-Expected output: `Model: V1725B`, a serial number, current firmware info, and an **Unlock code** — record that unlock code now, against this board's serial number. It's what lets you restore DPP firmware later if this board ever needs to go back to DPP mode.
+Expected output: `Model: V1725B`, a serial number, current firmware info, and an Unlock code.
 
 If this command fails to open the board at all (not a PLL error, a connection failure), stop here — that's an addressing, seating, or USB-link problem, not anything covered by the rest of this runbook.
 
 ## Step 3 — (Only if you need Waveform Recording / WaveDump support)
 
-Skip this step if the board should stay on its current firmware (e.g. DPP-DAW for CoMPASS use).
+Skip this step and beyond if the board should stay on its current firmware (e.g. DPP-DAW for CoMPASS use).
 
 ### 3a. Flash the D-WAVE firmware
+Download the firmware from CAEN website if it is not already on your local: [https://caen.it/products/v1725-v1725s/](https://caen.it/products/v1725-v1725s/). This particular procedure introduces x725 Waveform Recording Firmware x725_rev4.29_0.09.cfa
 
 ```bash
 caen-toolbox dig1 upgrade -c USB -l 0 -b <VME_BASE_ADDR> ~/CAEN/firmware/x725_rev4.29_0.09.cfa
@@ -86,11 +86,65 @@ grep "0x8104" dump_check.csv
 ```
 
 ## Step 6 — First WaveDump test
+Here is an example script `pedestal_slot3.txt` for taking data with slot3 CAEN card which has base address `0x04260000`. Change its variable respectively for your own card's base address.
+
+```bash
+[COMMON]
+OPEN USB 0 0x04260000
+
+RECORD_LENGTH  200
+DECIMATION_FACTOR  1
+POST_TRIGGER  80
+PULSE_POLARITY  POSITIVE
+EXTERNAL_TRIGGER   DISABLED
+FPIO_LEVEL  NIM
+OUTPUT_FILE_FORMAT  ASCII
+OUTPUT_FILE_HEADER  NO
+TEST_PATTERN   NO
+
+ENABLE_INPUT          YES
+BASELINE_LEVEL        50
+TRIGGER_THRESHOLD     100
+CHANNEL_TRIGGER       DISABLED
+
+[0]
+ENABLE_INPUT           YES
+[1]
+ENABLE_INPUT           YES
+[2]
+ENABLE_INPUT           YES
+[3]
+ENABLE_INPUT           YES
+[4]
+ENABLE_INPUT           YES
+[5]
+ENABLE_INPUT           YES
+[6]
+ENABLE_INPUT           YES
+[7]
+ENABLE_INPUT           YES
+[8]
+ENABLE_INPUT           YES
+[9]
+ENABLE_INPUT           YES
+[10]
+ENABLE_INPUT           YES
+[11]
+ENABLE_INPUT           YES
+[12]
+ENABLE_INPUT           YES
+[13]
+ENABLE_INPUT           YES
+[14]
+ENABLE_INPUT           YES
+[15]
+ENABLE_INPUT           YES
+```
+
 
 ```bash
 cd ~/CAEN/wavedump-configs
-sed 's/0x[0-9A-Fa-f]\{8\}/<VME_BASE_ADDR>/' pedestal_slot3.txt > pedestal_newcard.txt
-wavedump pedestal_newcard.txt
+wavedump pedestal_slot3.txt
 ```
 
 If you see `Board error detected: PLL not locked. Board Failure` here despite Step 5 looking clean, don't re-run PLL/firmware steps blindly — re-check the physical LEDs first; this was the actual root cause both times it came up tonight.
@@ -102,23 +156,20 @@ Once it launches cleanly:
 - Fire software triggers to build up pedestal statistics (aim for 100+ events per channel for good statistics — 18 was a bit thin for the demo run).
 - `q` to quit.
 
-**Known quirk**: `OUTPUT_PATH` is not a valid config directive in this WaveDump build — it's silently rejected. Output files land in whatever directory you ran `wavedump` from. Plan your working directory accordingly rather than relying on the config file for this.
 
 ## Step 7 — Pedestal sanity check
 
 Once you have `wave0.txt` through `wave15.txt`:
 
 ```bash
-python3 analyze_pedestal.py
+python3 analyze_pedestal.py <data_folder>
 ```
-
-(Adjust the script's channel count / file paths if this board has a different channel count, or if you're storing this board's output somewhere other than the default location.)
 
 Look for:
 
 - All channels clustered around a consistent pedestal mean (not necessarily identical across channels, but no wild outliers).
 - Small, consistent standard deviation (noise) per channel — the reference boards showed roughly 1.3–1.7 ADC counts.
-- **Any channel reading flat zero across every sample** — this is not noise, it's a disconnected or dead channel (this is exactly what channel 13 showed on the first board tested).
+- **Any channel reading flat zero across every sample** — this is not noise, it's a disconnected or dead channel.
 
 ---
 

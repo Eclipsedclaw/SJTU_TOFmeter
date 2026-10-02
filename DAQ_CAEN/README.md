@@ -189,5 +189,5 @@ Look for:
 | --- | --- | --- | --- | --- | --- |
 | 3 | 0x04260000 | 426 | D-WAVE (was DPP-DAW) | 00048D74A9BF0400 | ch13 dead |
 | 5 | 0x32100000 | 488 | D-WAVE (was DPP-DAW) | 00048D2C08BA0C00 |  |
-| 7 | 0x32120000 | 421 | D-WAVE (was DPP-DAW) | 0004813E96AA0000 | needed PLL reload, CLK-IN was off |
+| 7 | 0x32120000 | 421 | D-WAVE (was DPP-DAW) | 0004813E96AA0000 |  |
 |  |  |  |  |  |  |

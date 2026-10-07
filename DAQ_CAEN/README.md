@@ -11,6 +11,7 @@ Replace `<VME_BASE_ADDR>` throughout with this new board's actual VME base addre
 - [ ] Confirm the crate is **off**.
 - [ ] Seat the new V1725B in a free slot. Do not put over 4 V1725B inside the VME8002 unit at the same time, it will flow overcurrent.
 - [ ] **Physically check the on-board SW2 DIP switch is set to INT**, not EXT. An EXT-set switch causes a "PLL not locked / Board Failure" error that no firmware or software step can fix, because it's a hardware clock-routing switch, not a firmware setting. If you see CLK IN LED lights ON, that means the card is in EXT mode and expect an external clock.
+<img width="312" height="430" alt="CAEN_V1725_switch" src="https://github.com/user-attachments/assets/c3c445d0-5335-41e2-97be-61323775ab51" />
 - [ ] Confirm no cable is connected to the front-panel CLK-IN connector (unless you specifically intend external-clock synchronization for this board).
 
 ## Step 1 — Set the VME base address (rotary switches)
@@ -36,7 +37,7 @@ If this command fails to open the board at all (not a PLL error, a connection fa
 Skip this step and beyond if the board should stay on its current firmware (e.g. DPP-DAW for CoMPASS use).
 
 ### 3a. Flash the D-WAVE firmware
-Download the firmware from CAEN website if it is not already on your local: [https://caen.it/products/v1725-v1725s/](https://caen.it/products/v1725-v1725s/). This particular procedure introduces x725 Waveform Recording Firmware x725_rev4.29_0.09.cfa
+Download the firmware from CAEN website if it is not already on your local: [https://caen.it/products/v1725-v1725s/](https://caen.it/products/v1725-v1725s/). This particular procedure introduces x725 Waveform Recording Firmware x725_rev4.29_0.09.cfa (V1725SB uses a different version of wavedump firmware)
 
 ```bash
 caen-toolbox dig1 upgrade -c USB -l 0 -b <VME_BASE_ADDR> ~/CAEN/firmware/x725_rev4.29_0.09.cfa

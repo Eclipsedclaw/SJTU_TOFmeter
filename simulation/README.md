@@ -144,16 +144,17 @@ of each selection, including muons lost in the lead layer. Run 2: 2x10^7 straigh
 an isotropic (cosine-law) flux up to 80 deg, scattering, radiative processes and secondaries off,
 give the geometric acceptance A*Omega = N_sel / N_gen x A_plane x pi sin^2(80 deg). A TOF is hit
 when one bar has > 0.2 MeV, the Compton detector when a stack YSO or camera layer has > 0.1 MeV
-(arguments of `acceptance.C`). The macro enlarges the world to 13 x 13 x 4 m. Default geometry:
+(arguments of `acceptance.C`). The macro enlarges the world to 13 x 13 x 4 m. Default geometry,
+EXPACS muons (Guan muons give rates within 1-4%):
 
 | Selection | Rate /min | A*Omega (cm2 sr) |
 |---|---|---|
-| top TOF | 1146 +- 11 | 4489 +- 31 |
-| top & middle | 483 +- 7 | 1231 +- 16 |
-| top & middle & bottom | 177 +- 4 | 374 +- 9 |
-| top & middle & Compton | 118 +- 3 | 253 +- 8 |
-| top & middle & Compton & bottom | 101 +- 3 | 216 +- 7 |
-| top & middle & not bottom | 305 +- 5 | 857 +- 14 |
+| top TOF | 1173 +- 11 | 4486 +- 31 |
+| top & middle | 493 +- 7 | 1233 +- 16 |
+| top & middle & bottom | 176 +- 4 | 376 +- 9 |
+| top & middle & Compton | 120 +- 3 | 255 +- 8 |
+| top & middle & Compton & bottom | 103 +- 3 | 219 +- 7 |
+| top & middle & not bottom | 317 +- 6 | 857 +- 14 |
 
 ## Validation: camera alone vs. the paper (`camera_validation.mac`, 15.5 h)
 

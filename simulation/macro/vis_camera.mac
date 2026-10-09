@@ -1,0 +1,36 @@
+### PNG pictures of the camera-alone setup with 40 cosmic muons
+###   ./TOFmeter macro/vis_camera.mac  ->  camera_view_1.png (oblique), camera_view_2.png (side)
+
+/control/execute macro/geom_camera_only.mac
+
+/vis/open TSG_OFFSCREEN
+/vis/tsg/offscreen/set/size 1200 1000
+/vis/tsg/offscreen/set/file auto camera_view_
+/vis/viewer/set/autoRefresh false
+/vis/drawVolume
+/vis/geometry/set/visibility WorldLogic 0 false
+/vis/viewer/set/style surface
+/vis/viewer/set/background white
+/vis/viewer/set/upVector 0 0 1
+/vis/viewer/set/viewpointThetaPhi 60 30 deg
+/vis/viewer/set/targetPoint 0 0 -3 cm
+/vis/viewer/zoomTo 0.9
+
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts false
+/vis/scene/endOfEventAction accumulate
+/vis/viewer/set/autoRefresh true
+
+/OutputFormat 1
+/OutputDirectory output
+/OutputFile vis_camera
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 2 cm
+/tof/cosmic/halfX 4 cm
+/tof/cosmic/halfY 4 cm
+/run/beamOn 40
+/vis/viewer/flush
+
+/vis/viewer/set/viewpointThetaPhi 90 0.1 deg
+/vis/viewer/flush

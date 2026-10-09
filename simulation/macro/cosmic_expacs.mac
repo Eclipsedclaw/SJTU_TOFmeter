@@ -1,0 +1,30 @@
+### All cosmic-ray species of the EXPACS table (neutrons, protons, He, mu+-, e+-,
+### photons, ions) through the current setup, ROOT output (events with energy only).
+###   ./TOFmeter macro/cosmic_expacs.mac
+### Spectra: data/expacs_spectrum.txt (conditions in its header, printed at run start);
+### regenerate it for another site or date with scripts/expacs_to_table.py.
+### EXPACS has no angular data: muons follow the zenith shape of Guan et al., the
+### others cos^2(theta) by default (/tof/cosmic/angular), all downward-going.
+
+/OutputFormat 1
+/EventFilter 1
+/OutputDirectory output
+/OutputFile cosmic_expacs
+/gun/seed 5
+
+# Thermal and epithermal neutrons need more than the physics list's 10 us neutron
+# time cut to reach the setup from the source plane
+/physics_engine/neutron/timeLimit 10 ms
+
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species all
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 80 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV
+
+/run/beamOn 1000000

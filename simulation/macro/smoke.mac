@@ -1,0 +1,27 @@
+### Smoke test: 1 GeV mu- shot straight down over the 36 x 40 cm bar stations
+### Geometry as written in DetectorConstruction.cc (world: air)
+### Run from the build directory:  ./TOFmeter macro/smoke.mac
+
+/control/verbose 1
+/run/verbose 1
+
+/OutputDirectory output
+/OutputFile smoke
+/OutputFormat 2
+/OutputType 0
+/TrackType 0
+/TrackEdep 1
+/gun/seed 12345
+
+/GeneralParticleSource 1
+/gps/particle mu-
+/gps/ene/type Mono
+/gps/ene/mono 1 GeV
+/gps/pos/type Plane
+/gps/pos/shape Rectangle
+/gps/pos/centre 0 0 75 cm
+/gps/pos/halfx 18 cm
+/gps/pos/halfy 18 cm
+/gps/direction 0 0 -1
+
+/run/beamOn 2000

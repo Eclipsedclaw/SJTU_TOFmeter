@@ -1,0 +1,27 @@
+### Geometry: the setup of DetectorConstruction.cc (from the top: lead layer,
+### steel plate, top TOF, middle TOF, Si/YSO stack, bottom TOF) plus an
+### ILLUSTRATIVE target and the paper's Compton camera in place of the stack.
+### Positions are placeholders to show the commands. Free space between the
+### Al2 plate under the middle TOF (z = -32.5 cm) and the top of the stack is
+### z = -38.4 to -32.5 cm; with the stack off it reaches the Al3 plate (-52.2 cm).
+### The lead layer on top (/tof/det/absorber) is the degrader; /tof/degrader/...
+### can add another slab.
+
+# Target (未知材料): 20 x 20 x 2 cm Fe at z = -36.5 to -34.5 cm
+/tof/target/enable true
+/tof/target/material G4_Fe
+/tof/target/size 20 20 2 cm
+/tof/target/position 0 0 -35.5 cm
+
+# The paper's camera instead of the Si/YSO stack, looking up:
+# CH2 at z = -40 cm, CH1 at -42.5 cm, CH0 at -46 cm
+/tof/det/stack false
+/tof/det/camera true
+/tof/camera/position 0 0 -40 cm
+/tof/camera/rotateX 0 deg
+
+# Extra passive boxes: name material x y z dx dy dz unit (centre, full sizes), e.g.
+#/tof/blocks/add PbFloor G4_Pb 0 0 -75 80 80 5 cm
+/tof/blocks/clear
+
+/update

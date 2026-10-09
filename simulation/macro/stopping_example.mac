@@ -1,0 +1,25 @@
+### mu- stopping in the target of geom_tofmeter_example.mac (illustrative layout).
+### Only mu- with kinetic energy below 0.5 GeV are generated - the ones that can
+### stop behind the lead layer - and the live time counts exactly those.
+### Spectrum: EXPACS table by default; add /tof/cosmic/model guan for the Guan formula.
+### Analysis:  root -l -b -q 'analysis/stops_summary.C("output/stopping_example.root")'
+
+/control/execute macro/geom_tofmeter_example.mac
+
+/OutputFormat 1
+/EventFilter 1
+/OutputDirectory output
+/OutputFile stopping_example
+/gun/seed 3
+
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/halfX 60 cm
+/tof/cosmic/halfY 60 cm
+/tof/cosmic/thetaMax 60 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 0.5 GeV
+/tof/cosmic/species mu-
+/tof/cosmic/charge mu-
+
+/run/beamOn 500000

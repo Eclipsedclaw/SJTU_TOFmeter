@@ -1,0 +1,35 @@
+### PNG pictures of geom_tofmeter_example.mac with 30 cosmic muons
+###   ./TOFmeter macro/vis_example.mac  ->  example_view_1.png (oblique), example_view_2.png (side)
+
+/control/execute macro/geom_tofmeter_example.mac
+
+/vis/open TSG_OFFSCREEN
+/vis/tsg/offscreen/set/size 1400 1050
+/vis/tsg/offscreen/set/file auto example_view_
+/vis/viewer/set/autoRefresh false
+/vis/drawVolume
+/vis/geometry/set/visibility WorldLogic 0 false
+/vis/viewer/set/style surface
+/vis/viewer/set/background white
+/vis/viewer/set/upVector 0 0 1
+/vis/viewer/set/viewpointThetaPhi 60 30 deg
+/vis/viewer/zoomTo 1.1
+
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts false
+/vis/scene/endOfEventAction accumulate
+/vis/viewer/set/autoRefresh true
+
+/OutputFormat 1
+/OutputDirectory output
+/OutputFile vis_example
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/halfX 40 cm
+/tof/cosmic/halfY 40 cm
+/run/beamOn 30
+/vis/viewer/flush
+
+/vis/viewer/set/viewpointThetaPhi 90 0.1 deg
+/vis/viewer/flush

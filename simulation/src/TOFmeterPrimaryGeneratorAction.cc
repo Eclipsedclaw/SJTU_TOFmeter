@@ -24,46 +24,70 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalPrimaryGeneratorAction.hh,v 1.7 2006/06/29 17:47:43 gunter Exp $
+// $Id: TOFmeterPrimaryGeneratorAction.cc,v 1.7 2006/06/29 17:48:13 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
 // @date 2015 March 23
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-#ifndef OriginalPrimaryGeneratorAction_h
-#define OriginalPrimaryGeneratorAction_h 1
 
-#include "G4VUserPrimaryGeneratorAction.hh"
+#include "TOFmeterPrimaryGeneratorAction.hh"
+#include "CosmicRaySource.hh"
 
-class OriginalDetectorConstruction;
-class G4GeneralParticleSource;
-class G4SPSPosDistribution;
-class G4SPSAngDistribution;
-class G4SPSEneDistribution;
-class G4ParticleGun;
-class G4Event;
+#include "G4GeneralParticleSource.hh"
+#include "G4SPSAngDistribution.hh"
+#include "G4SPSEneDistribution.hh"
+#include "G4SPSPosDistribution.hh"
+#include "G4SingleParticleSource.hh"
+
+#include "G4Event.hh"
+#include "G4ParticleGun.hh"
+#include "G4ParticleTable.hh"
+#include "G4ParticleDefinition.hh"
+#include "globals.hh"
+#include "G4ThreeVector.hh"
+#include "Randomize.hh"
+#include <math.h>
+#include "global.h"
+#include "G4SystemOfUnits.hh"
+//#include "Randomize.hh"
+
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-class OriginalPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
+
+TOFmeterPrimaryGeneratorAction::TOFmeterPrimaryGeneratorAction()
+:G4VUserPrimaryGeneratorAction()
 {
-  public:
-    OriginalPrimaryGeneratorAction();
-   ~OriginalPrimaryGeneratorAction();
+    GeneralParticleSource = new G4GeneralParticleSource();
+    G4int n_particle = 1;
+    particleGun = new G4ParticleGun(n_particle);
+    G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
+    G4ParticleDefinition* particle = particleTable->FindParticle("anti_proton");
+    particleGun->SetParticleDefinition(particle);
+    particleGun->SetParticleEnergy(10*MeV);
+    CosmicRays = new CosmicRaySource();
 
-  public:
-    void GeneratePrimaries(G4Event*);
-
-  private:
-    G4ParticleGun* particleGun;
-		G4GeneralParticleSource* GeneralParticleSource;
-
-};
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#endif
+TOFmeterPrimaryGeneratorAction::~TOFmeterPrimaryGeneratorAction()
+{
+	delete GeneralParticleSource;
+	delete particleGun;
+	delete CosmicRays;
+}
 
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+void TOFmeterPrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
+{ 
+	extern global_struct global;
+	if(global.GPS == 2) CosmicRays->GeneratePrimaryVertex(anEvent);
+	else if(global.GPS == 1) GeneralParticleSource->GeneratePrimaryVertex(anEvent);
+	else particleGun->GeneratePrimaryVertex(anEvent);
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 

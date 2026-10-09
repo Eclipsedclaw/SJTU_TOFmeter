@@ -1,13 +1,11 @@
-### Picture of the geometry with 30 cosmic muons, written as PNG files
-### (this Geant4 build has no Qt/OpenGL; TSG_OFFSCREEN renders to files).
-###   ./TOFmeter macro/vis.mac   ->  tof_view_1.png (oblique), tof_view_2.png (side)
-### Camera alone: vis_camera.mac; example full setup: vis_example.mac
-### Trajectories: red negative, blue positive, green neutral.
-### VRML2FILE also works (/vis/open VRML2FILE writes a .wrl file).
+### PNG pictures of the camera-alone setup with 40 cosmic muons
+###   ./TOFmeter macro/vis_camera.mac  ->  camera_view_1.png (oblique), camera_view_2.png (side)
+
+/control/execute macro/geom_camera_only.mac
 
 /vis/open TSG_OFFSCREEN
-/vis/tsg/offscreen/set/size 1400 1050
-/vis/tsg/offscreen/set/file auto tof_view_
+/vis/tsg/offscreen/set/size 1200 1000
+/vis/tsg/offscreen/set/file auto camera_view_
 /vis/viewer/set/autoRefresh false
 /vis/drawVolume
 /vis/geometry/set/visibility WorldLogic 0 false
@@ -15,7 +13,8 @@
 /vis/viewer/set/background white
 /vis/viewer/set/upVector 0 0 1
 /vis/viewer/set/viewpointThetaPhi 60 30 deg
-/vis/viewer/zoomTo 1.1
+/vis/viewer/set/targetPoint 0 0 -3 cm
+/vis/viewer/zoomTo 0.9
 
 /vis/scene/add/trajectories smooth
 /vis/modeling/trajectories/create/drawByCharge
@@ -25,13 +24,13 @@
 
 /OutputFormat 1
 /OutputDirectory output
-/OutputFile vis
+/OutputFile vis_camera
 /GeneralParticleSource 2
-/tof/cosmic/halfX 40 cm
-/tof/cosmic/halfY 40 cm
-/run/beamOn 30
+/tof/cosmic/planeCenter 0 0 2 cm
+/tof/cosmic/halfX 4 cm
+/tof/cosmic/halfY 4 cm
+/run/beamOn 40
 /vis/viewer/flush
 
-# side view
 /vis/viewer/set/viewpointThetaPhi 90 0.1 deg
 /vis/viewer/flush

@@ -24,40 +24,48 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalRunAction.hh,v 1.8 2006/06/29 17:47:45 gunter Exp $
+// $Id: TOFmeterPrimaryGeneratorAction.hh,v 1.7 2006/06/29 17:47:43 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
 // @date 2015 March 23
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+ 
+#ifndef TOFmeterPrimaryGeneratorAction_h
+#define TOFmeterPrimaryGeneratorAction_h 1
 
-#ifndef OriginalRunAction_h
-#define OriginalRunAction_h 1
+#include "G4VUserPrimaryGeneratorAction.hh"
 
-#include "G4UserRunAction.hh"
-#include "globals.hh"
+class CosmicRaySource;
+class G4GeneralParticleSource;
+class G4SPSPosDistribution;
+class G4SPSAngDistribution;
+class G4SPSEneDistribution;
+class G4ParticleGun;
+class G4Event;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-class G4Run;
-
-class OriginalRunAction : public G4UserRunAction
+ 
+class TOFmeterPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
 {
   public:
-    OriginalRunAction();
-   ~OriginalRunAction();
+    TOFmeterPrimaryGeneratorAction();
+   ~TOFmeterPrimaryGeneratorAction();
 
   public:
-    void BeginOfRunAction(const G4Run*);
-    void EndOfRunAction(const G4Run*);
+    void GeneratePrimaries(G4Event*);
+    CosmicRaySource* GetCosmicRaySource() { return CosmicRays; }
+
+  private:
+    G4ParticleGun* particleGun;
+		G4GeneralParticleSource* GeneralParticleSource;
+    CosmicRaySource* CosmicRays;
+
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 #endif
-
-
-
 
 

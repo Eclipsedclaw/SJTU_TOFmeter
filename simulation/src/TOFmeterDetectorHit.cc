@@ -24,7 +24,7 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalDetectorSDHit.cc,v 1.10 2006/06/29 17:48:24 gunter Exp $
+// $Id: TOFmeterDetectorSDHit.cc,v 1.10 2006/06/29 17:48:24 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
@@ -32,7 +32,7 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#include "OriginalDetectorHit.hh"
+#include "TOFmeterDetectorHit.hh"
 #include "G4UnitsTable.hh"
 #include "G4VVisManager.hh"
 #include "G4Circle.hh"
@@ -41,19 +41,19 @@
 #include "global.h"
 #include "G4SystemOfUnits.hh"
 
-G4Allocator<OriginalDetectorHit> OriginalDetectorHitAllocator;
+G4Allocator<TOFmeterDetectorHit> TOFmeterDetectorHitAllocator;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorHit::OriginalDetectorHit() {}
+TOFmeterDetectorHit::TOFmeterDetectorHit() {}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorHit::~OriginalDetectorHit() {}
+TOFmeterDetectorHit::~TOFmeterDetectorHit() {}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorHit::OriginalDetectorHit(const OriginalDetectorHit& right)
+TOFmeterDetectorHit::TOFmeterDetectorHit(const TOFmeterDetectorHit& right)
   : G4VHit()
 {
 	trackID_   = right.trackID_;
@@ -76,7 +76,7 @@ OriginalDetectorHit::OriginalDetectorHit(const OriginalDetectorHit& right)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-const OriginalDetectorHit& OriginalDetectorHit::operator=(const OriginalDetectorHit& right)
+const TOFmeterDetectorHit& TOFmeterDetectorHit::operator=(const TOFmeterDetectorHit& right)
 {
   trackID_   = right.trackID_;
 	time_ = right.time_;
@@ -98,14 +98,14 @@ const OriginalDetectorHit& OriginalDetectorHit::operator=(const OriginalDetector
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4int OriginalDetectorHit::operator==(const OriginalDetectorHit& right) const
+G4int TOFmeterDetectorHit::operator==(const TOFmeterDetectorHit& right) const
 {
   return (this==&right) ? 1 : 0;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalDetectorHit::Draw()
+void TOFmeterDetectorHit::Draw()
 {
   G4VVisManager* pVVisManager = G4VVisManager::GetConcreteInstance();
   if(pVVisManager)
@@ -122,7 +122,7 @@ void OriginalDetectorHit::Draw()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalDetectorHit::Print()
+void TOFmeterDetectorHit::Print()
 {
   G4cout << "  trackID_: " << trackID_ << "  time_: " << G4BestUnit(time_,"time_") 
 				 << "  particleID_: " << particleID_
@@ -137,7 +137,7 @@ void OriginalDetectorHit::Print()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalDetectorHit::fPrint()
+void TOFmeterDetectorHit::fPrint()
 {
   extern global_struct global;
   global.output

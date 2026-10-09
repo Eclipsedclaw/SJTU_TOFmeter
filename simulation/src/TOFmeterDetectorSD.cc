@@ -24,7 +24,7 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalDetectorSD.cc,v 1.9 2006/06/29 17:48:27 gunter Exp $
+// $Id: TOFmeterDetectorSD.cc,v 1.9 2006/06/29 17:48:27 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
@@ -32,7 +32,7 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#include "OriginalDetectorSD.hh"
+#include "TOFmeterDetectorSD.hh"
 #include "G4HCofThisEvent.hh"
 #include "G4Step.hh"
 #include "G4ThreeVector.hh"
@@ -43,7 +43,7 @@
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorSD::OriginalDetectorSD(G4String name)
+TOFmeterDetectorSD::TOFmeterDetectorSD(G4String name)
 :G4VSensitiveDetector(name)
 {
   G4String HCname;
@@ -53,13 +53,13 @@ OriginalDetectorSD::OriginalDetectorSD(G4String name)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorSD::~OriginalDetectorSD(){ }
+TOFmeterDetectorSD::~TOFmeterDetectorSD(){ }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalDetectorSD::Initialize(G4HCofThisEvent* HCE)
+void TOFmeterDetectorSD::Initialize(G4HCofThisEvent* HCE)
 {
-  DetectorCollection = new OriginalDetectorHitsCollection
+  DetectorCollection = new TOFmeterDetectorHitsCollection
 													(SensitiveDetectorName,collectionName[0]); 
   static G4int HCID = -1;
   if(HCID<0)
@@ -69,9 +69,10 @@ void OriginalDetectorSD::Initialize(G4HCofThisEvent* HCE)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4bool OriginalDetectorSD::ProcessHits(G4Step* aStep,G4TouchableHistory*)
+G4bool TOFmeterDetectorSD::ProcessHits(G4Step* aStep,G4TouchableHistory*)
 {
 	extern global_struct global;
+    if(global.OutputFormat == 1) return false; // ROOT output only: no step-level ASCII hits
     G4double eDep = aStep->GetTotalEnergyDeposit();
 	G4int trackID = aStep->GetTrack()->GetTrackID();
     G4int parentID = aStep->GetTrack()->GetParentID();
@@ -80,7 +81,7 @@ G4bool OriginalDetectorSD::ProcessHits(G4Step* aStep,G4TouchableHistory*)
     if(eDep==0. && global.TrackEdep != 0) return false;
 	if(global.TrackType == 1 && trackID != 1) return false; // track only primary particles
     if(global.TrackType == 2 && parentID != 1) return false; // track only particles generated from primary
-    OriginalDetectorHit* newHit = new OriginalDetectorHit();
+    TOFmeterDetectorHit* newHit = new TOFmeterDetectorHit();
     newHit->SetTrackID  (aStep->GetTrack()->GetTrackID());
     newHit->SetTime     (aStep->GetTrack()->GetGlobalTime());
     newHit->SetParticleID   (aStep->GetTrack()->GetDynamicParticle()->GetDefinition()->GetPDGEncoding());
@@ -116,13 +117,16 @@ G4bool OriginalDetectorSD::ProcessHits(G4Step* aStep,G4TouchableHistory*)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalDetectorSD::EndOfEvent(G4HCofThisEvent*)
+void TOFmeterDetectorSD::EndOfEvent(G4HCofThisEvent*)
 {
 	extern global_struct global;	
     NbHits = DetectorCollection->entries();
-    for(G4int i=0; i<NbHits; i++ )
+    if(global.OutputFormat != 1) // ASCII output (OutputFormat 0 or 2)
     {
-        (*DetectorCollection)[i]->fPrint();
+        for(G4int i=0; i<NbHits; i++ )
+        {
+            (*DetectorCollection)[i]->fPrint();
+        }
     }
   
   if (verboseLevel>1)

@@ -1,0 +1,12 @@
+### Geometry: the Compton camera alone in air, CH2 on top, looking up
+### (setup of the cosmic-muon test in Sun et al., arXiv:2608.21216, Sec. 4.1)
+
+/tof/det/stations false
+/tof/det/frame false
+/tof/det/stack false
+/tof/det/absorber false
+/tof/det/camera true
+/tof/det/worldSize 100 100 50 cm
+/tof/camera/position 0 0 0 cm
+/tof/camera/rotateX 0 deg
+/update

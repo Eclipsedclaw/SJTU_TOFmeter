@@ -24,49 +24,45 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalEventAction.cc,v 1.11 2006/06/29 17:48:05 gunter Exp $
+// $Id: TOFmeterRunAction.hh,v 1.8 2006/06/29 17:47:45 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
 // @date 2015 March 23
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-#include "OriginalEventAction.hh"
 
-#include "G4Event.hh"
-#include "G4EventManager.hh"
-#include "G4TrajectoryContainer.hh"
-#include "G4Trajectory.hh"
-#include "G4ios.hh"
-#include "global.h"
-#include <unistd.h>
+#ifndef TOFmeterRunAction_h
+#define TOFmeterRunAction_h 1
+
+#include "G4UserRunAction.hh"
+#include "globals.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-OriginalEventAction::OriginalEventAction()
-{}
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-OriginalEventAction::~OriginalEventAction()
-{}
+class G4Run;
+class TOFmeterPrimaryGeneratorAction;
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-void OriginalEventAction::BeginOfEventAction(const G4Event* evt)
-{  
-  extern global_struct global;
-  global.eventID = evt->GetEventID();
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-void OriginalEventAction::EndOfEventAction(const G4Event* evt)
+class TOFmeterRunAction : public G4UserRunAction
 {
-    G4int event_id = evt->GetEventID();
-    if (event_id < 10 || event_id%1000 == 0) G4cout << ">>> Event " << evt->GetEventID() << G4endl;
-    
-}
+  public:
+    TOFmeterRunAction(TOFmeterPrimaryGeneratorAction*);
+   ~TOFmeterRunAction();
+
+  public:
+    void BeginOfRunAction(const G4Run*);
+    void EndOfRunAction(const G4Run*);
+
+  private:
+    TOFmeterPrimaryGeneratorAction* fPrimaryGenerator;
+    G4int fRunNtupleId;
+};
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+#endif
+
+
+
+
+

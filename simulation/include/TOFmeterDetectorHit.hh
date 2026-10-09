@@ -24,7 +24,7 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalDetectorHit.hh,v 1.8 2006/06/29 17:47:53 gunter Exp $
+// $Id: TOFmeterDetectorHit.hh,v 1.8 2006/06/29 17:47:53 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
@@ -32,8 +32,8 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#ifndef OriginalDetectorHit_h
-#define OriginalDetectorHit_h 1
+#ifndef TOFmeterDetectorHit_h
+#define TOFmeterDetectorHit_h 1
 
 #include "G4VHit.hh"
 #include "G4THitsCollection.hh"
@@ -44,15 +44,15 @@
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-class OriginalDetectorHit : public G4VHit
+class TOFmeterDetectorHit : public G4VHit
 {
   public:
 
-      OriginalDetectorHit();
-     ~OriginalDetectorHit();
-      OriginalDetectorHit(const OriginalDetectorHit&);
-      const OriginalDetectorHit& operator=(const OriginalDetectorHit&);
-      G4int operator==(const OriginalDetectorHit&) const;
+      TOFmeterDetectorHit();
+     ~TOFmeterDetectorHit();
+      TOFmeterDetectorHit(const TOFmeterDetectorHit&);
+      const TOFmeterDetectorHit& operator=(const TOFmeterDetectorHit&);
+      G4int operator==(const TOFmeterDetectorHit&) const;
 
       inline void* operator new(size_t);
       inline void  operator delete(void*);
@@ -118,24 +118,24 @@ class OriginalDetectorHit : public G4VHit
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-typedef G4THitsCollection<OriginalDetectorHit> OriginalDetectorHitsCollection;
+typedef G4THitsCollection<TOFmeterDetectorHit> TOFmeterDetectorHitsCollection;
 
-extern G4Allocator<OriginalDetectorHit> OriginalDetectorHitAllocator;
+extern G4Allocator<TOFmeterDetectorHit> TOFmeterDetectorHitAllocator;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-inline void* OriginalDetectorHit::operator new(size_t)
+inline void* TOFmeterDetectorHit::operator new(size_t)
 {
   void *aHit;
-  aHit = (void *) OriginalDetectorHitAllocator.MallocSingle();
+  aHit = (void *) TOFmeterDetectorHitAllocator.MallocSingle();
   return aHit;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-inline void OriginalDetectorHit::operator delete(void *aHit)
+inline void TOFmeterDetectorHit::operator delete(void *aHit)
 {
-  OriginalDetectorHitAllocator.FreeSingle((OriginalDetectorHit*) aHit);
+  TOFmeterDetectorHitAllocator.FreeSingle((TOFmeterDetectorHit*) aHit);
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

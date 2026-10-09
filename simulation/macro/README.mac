@@ -1,25 +1,54 @@
-### Macro file for "Original.cc"
+### Macro file for "TOFmeter.cc"
 ### @author Tsuguo Aramaki
 ### @date 2015 March 23
+### Updated 2026-10 for the TOF-meter geometry (DetectorConstruction.cc)
 
-# /OutputDirectory
-# /OutputFile
+# --- Output ---
+# /OutputDirectory, default ./ (created if missing)
+# /OutputFile, base name: <dir>/<file>.dat and/or <dir>/<file>.root
 # /InputDirectory
 # /InputFile
-# /gun/seed, default 9876
-
-# /SimulationType:
+# /gun/seed, random seed (applied immediately); /random/setSeeds also works
+# /OutputFormat 0 ASCII step file .dat (default), 1 ROOT event ntuple .root, 2 both
 # /OutputType 0 for all, 1 for simple mode (parent process, process name = 0)
-# /OutputFormat 0: 0 for ASCII 1 for ROOT tree
-# /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only
-# /TrackEdep: 0 for all, 1 for eDep > 0.0 keV 
+# /EventFilter 0 every event in the ntuple (default), 1 only events with energy in an
+#              active volume or a primary stopped inside the setup (live time unaffected)
+# /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
+# /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
 
-# /GeneralParticleSource: general particle source, 0 for off, 1 for on (use GPS command)
+# --- Primary generator ---
+# /GeneralParticleSource 0 particle gun (/gun/...), 1 GPS (/gps/...), 2 cosmic rays (/tof/cosmic/...)
+# /tof/cosmic/model expacs|guan        expacs: table of all species (default); guan: muon formula
+# /tof/cosmic/expacsFile path          default data/expacs_spectrum.txt (scripts/expacs_to_table.py)
+# /tof/cosmic/species all | names      expacs: e.g. mu+ mu- neutron proton e- e+ gamma alpha C12
+#                                      (default mu+ mu-)
+# /tof/cosmic/angular pairs            expacs: <species|all> <n|guan>, I ~ cos^n(theta); guan = muon
+#                                      shape of Guan et al. (default all 2 mu+ guan mu- guan)
+# /tof/cosmic/planeCenter x y z unit   centre of the horizontal source plane (default 0 0 75 cm)
+# /tof/cosmic/halfX, halfY value unit  plane half sizes (default 150 cm)
+# /tof/cosmic/energyMin, energyMax     kinetic energy range, per nucleon for ions (default 0 - 1000 GeV)
+# /tof/cosmic/thetaMax value unit      maximum zenith angle (default 75 deg)
+# /tof/cosmic/charge both|mu-|mu+      guan: muons to generate (default both)
+# /tof/cosmic/chargeRatio 1.27         guan: mu+/mu-
+#   The run prints the spectrum conditions, the flux through the plane and the live time.
+# /physics_engine/neutron/timeLimit 10 ms   let slow neutrons live long enough to arrive
 
-# /Visualization default 0, 1: no Si(Li), frame, pipe for visualization 
-# /DetectorType: 0
-# /CheckOverlap: 0 for off, 1 for on
-# /update: need update whenever geometry is changed
+# --- Geometry (apply with /update) ---
+# /tof/det/stations | frame | stack | absorber  true|false   parts of DetectorConstruction.cc
+# /tof/det/camera true|false                                 three-layer Compton camera
+# /tof/det/worldMaterial G4_AIR                              (G4_Galactic for vacuum)
+# /tof/det/worldSize 400 400 300 cm
+# /tof/camera/position x y z unit     centre of CH2 (entrance layer)
+# /tof/camera/rotateX angle unit      0 = looking up, 90 deg = looking towards -y
+# /tof/camera/spacing21, spacing10    CH2-CH1 / CH1-CH0 centre-to-centre (25 / 35 mm)
+# /tof/target/enable, material, size, position      target box (未知材料)
+# /tof/degrader/enable, material, size, position    degrader box (降速铅砖)
+# /tof/blocks/add name material x y z dx dy dz unit  passive box, e.g. lead brick (centre, full sizes)
+# /tof/blocks/clear
+# /CheckOverlap: 0 for off, 1 for on (default on)
+# /update: rebuild the geometry now; needed whenever geometry is changed
+
+# /Visualization default 0 (unused by DetectorConstruction.cc)
 
 # set active sensitive detector
 # /hits/inactivate DetectorSD

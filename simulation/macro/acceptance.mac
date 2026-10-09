@@ -1,0 +1,68 @@
+### Cosmic-muon acceptance of the CURRENT geometry (default: DetectorConstruction.cc)
+###   ./TOFmeter macro/acceptance.mac                        (about 5 minutes)
+### For another setup put its geometry macro first, e.g. a file with
+###   /control/execute macro/geom_tofmeter_example.mac
+###   /control/execute macro/acceptance.mac
+### Run 1: sea-level cosmic muons (spectrum, angles, mu+ and mu-, full physics) -> rates
+### Run 2: straight 10 GeV mu- with an isotropic (cosine-law) flux; scattering and
+###        radiative processes off, production cut 1 m so that no secondaries fake
+###        hits -> geometric acceptance A*Omega in cm2 sr
+### The table comes from analysis/acceptance.C at the end (needs root in PATH); to redo it:
+###   root -l -b -q 'analysis/acceptance.C(600,80)'
+### Both source planes are at z = accPlaneZ: every volume must lie below it. The world
+### is enlarged to 13 x 13 x 4 m for the 12 x 12 m plane of run 2.
+
+/control/verbose 0
+/control/alias accPlaneZ 40
+/control/alias cosmicHalf 300
+/control/alias geoHalf 600
+/control/alias geoThetaMax 80
+
+/tof/det/worldSize 1300 1300 400 cm
+/update
+
+/OutputFormat 1
+/EventFilter 1
+/OutputDirectory output
+/gun/seed 4242
+
+# Run 1: cosmic muons on a 6 x 6 m plane
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 {accPlaneZ} cm
+/tof/cosmic/halfX {cosmicHalf} cm
+/tof/cosmic/halfY {cosmicHalf} cm
+/tof/cosmic/thetaMax 80 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV
+/tof/cosmic/charge both
+/OutputFile acceptance_cosmic
+/run/beamOn 3000000
+
+# Run 2: straight lines with an isotropic flux through a 12 x 12 m plane
+/GeneralParticleSource 1
+/gps/particle mu-
+/gps/ene/type Mono
+/gps/ene/mono 10 GeV
+/gps/pos/type Plane
+/gps/pos/shape Rectangle
+/gps/pos/centre 0 0 {accPlaneZ} cm
+/gps/pos/halfx {geoHalf} cm
+/gps/pos/halfy {geoHalf} cm
+/gps/ang/type cos
+/gps/ang/maxtheta {geoThetaMax} deg
+/process/inactivate msc mu-
+/process/inactivate CoulombScat mu-
+/process/inactivate muBrems mu-
+/process/inactivate muPairProd mu-
+/process/inactivate muonNuclear mu-
+/run/setCut 1 m
+/OutputFile acceptance_geometric
+/run/beamOn 20000000
+/run/setCut 1 mm
+/process/activate msc mu-
+/process/activate CoulombScat mu-
+/process/activate muBrems mu-
+/process/activate muPairProd mu-
+/process/activate muonNuclear mu-
+
+/control/shell root -l -b -q 'analysis/acceptance.C({geoHalf},{geoThetaMax})'

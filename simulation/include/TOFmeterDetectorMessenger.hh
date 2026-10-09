@@ -24,7 +24,7 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalPrimaryGeneratorAction.cc,v 1.7 2006/06/29 17:48:13 gunter Exp $
+// $Id: TOFmeterDetectorMessenger.hh,v 1.8 2006/06/29 17:47:33 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
@@ -32,59 +32,50 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#include "OriginalPrimaryGeneratorAction.hh"
-#include "OriginalDetectorConstruction.hh"
+#ifndef TOFmeterDetectorMessenger_h
+#define TOFmeterDetectorMessenger_h 1
 
-#include "G4GeneralParticleSource.hh"
-#include "G4SPSAngDistribution.hh"
-#include "G4SPSEneDistribution.hh"
-#include "G4SPSPosDistribution.hh"
-#include "G4SingleParticleSource.hh"
-
-#include "G4Event.hh"
-#include "G4ParticleGun.hh"
-#include "G4ParticleTable.hh"
-#include "G4ParticleDefinition.hh"
 #include "globals.hh"
-#include "G4ThreeVector.hh"
-#include "Randomize.hh"
-#include <math.h>
+#include "G4UImessenger.hh"
 #include "global.h"
-#include "G4SystemOfUnits.hh"
-//#include "Randomize.hh"
 
+namespace Pb { class DetectorConstruction; }
+class G4UIdirectory;
+class G4UIcmdWithAString;
+class G4UIcmdWithAnInteger;
+class G4UIcmdWithADouble;
+class G4UIcmdWithADoubleAndUnit;
+class G4UIcmdWithoutParameter;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalPrimaryGeneratorAction::OriginalPrimaryGeneratorAction()
-:G4VUserPrimaryGeneratorAction()
+class TOFmeterDetectorMessenger: public G4UImessenger
 {
-    GeneralParticleSource = new G4GeneralParticleSource();
-    G4int n_particle = 1;
-    particleGun = new G4ParticleGun(n_particle);
-    G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
-    G4ParticleDefinition* particle = particleTable->FindParticle("anti_proton");
-    particleGun->SetParticleDefinition(particle);
-    particleGun->SetParticleEnergy(10*MeV);
-	
-}
+  public:
+    TOFmeterDetectorMessenger(Pb::DetectorConstruction*);
+   ~TOFmeterDetectorMessenger();
+
+    void SetNewValue(G4UIcommand* command, G4String newValue);
+
+  private:
+    Pb::DetectorConstruction* myDetector;
+    G4UIcmdWithAString*	       OutDirCmd;
+    G4UIcmdWithAString*	       OutFileCmd;
+    G4UIcmdWithAString*	       InDirCmd;
+    G4UIcmdWithAString*	       InFileCmd;
+    G4UIcmdWithAnInteger*      GunSeedCmd;
+    G4UIcmdWithAnInteger*      OutputFormatCmd;
+    G4UIcmdWithAnInteger*      OutputTypeCmd;
+    G4UIcmdWithAnInteger*      EventFilterCmd;
+    G4UIcmdWithAnInteger*      TrackTypeCmd;
+    G4UIcmdWithAnInteger*      TrackEdepCmd;
+    G4UIcmdWithAnInteger*      GPSCmd;
+    G4UIcmdWithAnInteger*      DetectorVisualizationCmd;
+    G4UIcmdWithAnInteger*      CheckOverlapCmd;
+    G4UIcmdWithoutParameter*   UpdateCmd;
+};
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalPrimaryGeneratorAction::~OriginalPrimaryGeneratorAction()
-{
-	delete GeneralParticleSource;
-	delete particleGun;
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-void OriginalPrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
-{ 
-	extern global_struct global;
-	if(global.GPS == 1) GeneralParticleSource->GeneratePrimaryVertex(anEvent);
-	else particleGun->GeneratePrimaryVertex(anEvent);
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+#endif
 

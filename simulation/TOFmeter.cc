@@ -32,29 +32,33 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#include "OriginalDetectorConstruction.hh"
-#include "OriginalPhysicsList.hh"
-#include "OriginalPrimaryGeneratorAction.hh"
-#include "OriginalRunAction.hh"
-#include "OriginalEventAction.hh"
+#include "DetectorConstruction.hh"
+#include "TOFmeterDetectorMessenger.hh"
+#include "TOFmeterPhysicsList.hh"
+#include "TOFmeterPrimaryGeneratorAction.hh"
+#include "TOFmeterRunAction.hh"
+#include "TOFmeterEventAction.hh"
+#include "TOFmeterSteppingAction.hh"
+#include "TOFmeterTrackingAction.hh"
 
 #include "G4RunManager.hh"
 #include "G4UImanager.hh"
 #include "G4UIterminal.hh"
 #include "G4UItcsh.hh"
 
-//#include "QGSP.hh"
-#include "QGSP_BERT.hh"
-#include "QGSP_BERT_HP.hh"
-#include "QGSP_BIC.hh"
-#include "QGSP_BIC_HP.hh"
-//#include "LHEP_BERT.hh"
-#include "Shielding.hh"
+#include "G4PhysListFactory.hh"
+#include "G4VModularPhysicsList.hh"
 
 #include "G4VisExecutive.hh"
 #include "G4UIExecutive.hh"
 #include "global.h"
 
+#include <cstdlib>
+#include <cstring>
+
+#ifndef TOF_GEANT4_DATA_DIR
+#define TOF_GEANT4_DATA_DIR ""
+#endif
 
 global_struct global;
 
@@ -62,47 +66,50 @@ global_struct global;
 
 int main(int argc,char** argv)
 {
+  // Geant4 datasets: GEANT4_DATA_DIR from the environment wins; otherwise use the
+  // directory given to CMake as TOF_GEANT4_DATA_DIR (if any)
+  if (!std::getenv("GEANT4_DATA_DIR") && std::strlen(TOF_GEANT4_DATA_DIR) > 0)
+    setenv("GEANT4_DATA_DIR", TOF_GEANT4_DATA_DIR, 0);
+
   // Run manager
   //
   G4RunManager * runManager = new G4RunManager;
 
   // User Initialization classes (mandatory)
   //
-  OriginalDetectorConstruction* detector = new OriginalDetectorConstruction;
+  auto detector = new Pb::DetectorConstruction;
   runManager->SetUserInitialization(detector);
-  // CLHEP::HepRandom::setTheSeed((unsigned)clock()); // for random seeds
+  // /OutputDirectory, /OutputFile, /gun/seed, /update, ... (seed: /gun/seed or /random/setSeeds)
+  auto detectorMessenger = new TOFmeterDetectorMessenger(detector);
   //
 
-//  G4VUserPhysicsList* physics = new PhysicsList;
-//  runManager->SetUserInitialization(physics);
-	
-//	G4VUserPhysicsList* physics = new QGSP;
-//	G4VUserPhysicsList* physics = new QGSP_BERT_HP;
-//	G4VUserPhysicsList* physics = new QGSP_BIC_HP;
-//	G4VUserPhysicsList* physics = new LHEP_BERT;
-//	physics->SetDefaultCutValue(0.01*mm) ;
+  // Reference physics list: QGSP_BERT unless the PHYSLIST environment variable
+  // names another one, e.g. PHYSLIST=FTFP_BERT_EMZ (EM option 4).
+  // Avoid *_HP lists and Shielding until the G4NDL dataset is installed.
+  const char* listName = std::getenv("PHYSLIST");
+  G4PhysListFactory factory;
+  G4VModularPhysicsList* physics = factory.GetReferencePhysList(listName ? listName : "QGSP_BERT");
+  if (!physics) return 1;
 
-//	G4VUserPhysicsList* physics = new OriginalPhysicsList;
-	G4VUserPhysicsList* physics = new QGSP_BERT;
-//  G4VUserPhysicsList* physics = new QGSP_BIC;
-//  G4VUserPhysicsList* physics = new Shielding;
-  
 	physics->SetDefaultCutValue(1.0*mm) ;
 	runManager->SetUserInitialization(physics);
 
   G4VisManager* visManager = new G4VisExecutive;
   visManager->Initialize();
-   
+
   // User Action classes
   //
-  G4VUserPrimaryGeneratorAction* gen_action = new OriginalPrimaryGeneratorAction();
+  auto gen_action = new TOFmeterPrimaryGeneratorAction();
   runManager->SetUserAction(gen_action);
   //
-  G4UserRunAction* run_action = new OriginalRunAction;
+  auto event_action = new TOFmeterEventAction;
+  runManager->SetUserAction(event_action);
+  //
+  G4UserRunAction* run_action = new TOFmeterRunAction(gen_action);
   runManager->SetUserAction(run_action);
   //
-  G4UserEventAction* event_action = new OriginalEventAction;
-  runManager->SetUserAction(event_action);
+  runManager->SetUserAction(new TOFmeterSteppingAction(detector, event_action));
+  runManager->SetUserAction(new TOFmeterTrackingAction(event_action));
   // Initialize G4 kernel
   //
   runManager->Initialize();
@@ -133,6 +140,7 @@ int main(int argc,char** argv)
 
   delete visManager;
 
+  delete detectorMessenger;
   delete runManager;
 
   return 0;

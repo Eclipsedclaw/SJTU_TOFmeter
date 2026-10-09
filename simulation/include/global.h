@@ -1,5 +1,5 @@
   
-//	Original Detector Simulation Program 	GSIM
+//	TOFmeter Detector Simulation Program (from the Original / GSIM framework)
 //	FHG 20 OCT 2003
 //
 // @author Tsuguo Aramaki
@@ -26,6 +26,7 @@ struct global_struct{
 	G4int SimulationType;	
 	G4int OutputType;
 	G4int OutputFormat;
+	G4int EventFilter;
 	G4int TrackType;
     G4int TrackEdep;
 	G4int DetectorVisualization;

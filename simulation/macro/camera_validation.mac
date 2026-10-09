@@ -1,0 +1,25 @@
+### Camera-alone validation against Sun et al., arXiv:2608.21216, Sec. 4.1:
+### camera pointing at the sky, CH1*CH2 coincidence (thresholds 427.6 keV),
+### CH0 threshold 330 keV. Paper: ~10 triggers/min, ~4000 three-layer muons in
+### ~15 h, MIP MPV 4.86 / 1.63 / 1.56 MeV for CH0 / CH1 / CH2 (angle-corrected).
+### 2.7e6 muons on the 60 x 60 cm plane correspond to ~15 h. Analysis:
+###   root -l -b -q 'analysis/camera_validation.C("output/camera_validation.root")'
+
+/control/execute macro/geom_camera_only.mac
+
+/OutputFormat 1
+/EventFilter 1
+/OutputDirectory output
+/OutputFile camera_validation
+/gun/seed 2026
+
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 2 cm
+/tof/cosmic/halfX 30 cm
+/tof/cosmic/halfY 30 cm
+/tof/cosmic/thetaMax 85 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV
+/tof/cosmic/charge both
+
+/run/beamOn 2700000

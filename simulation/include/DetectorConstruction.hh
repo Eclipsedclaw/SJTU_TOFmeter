@@ -26,27 +26,34 @@
 //
 /// \file B2/B2a/include/DetectorConstruction.hh
 /// \brief Definition of the B2a::DetectorConstruction class
+//
+// TOF-meter geometry used by TOFmeter.cc.
 
 #ifndef PbDetectorConstruction_h
 #define PbDetectorConstruction_h 1
 
 #include "globals.hh"
 #include "G4VUserDetectorConstruction.hh"
+#include "G4ThreeVector.hh"
 #include "tls.hh"
 #include "G4Material.hh"
 #include "G4LogicalVolume.hh"
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 class G4VPhysicalVolume;
 class G4LogicalVolume;
 class G4Material;
 class G4UserLimits;
-class G4GlobalMagFieldMessenger;
+class G4GenericMessenger;
+class G4UImessenger;
 
 namespace Pb
 {
 
-class DetectorMessenger;
+// Role of an active volume, used for event-level scoring (TOFmeterSteppingAction)
+enum class DetectorKind { None, Bar, CameraLayer, StackYSO, Absorber };
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
@@ -57,13 +64,34 @@ public:
     G4VPhysicalVolume* Construct() override;
     void ConstructSDandField() override;
 
+    // Rebuild the geometry from the current parameters (/update)
+    void UpdateGeometry();
+
     // Set methods
     void SetMaxStep(G4double);
     void SetCheckOverlaps(G4bool);
 
+    DetectorKind GetKind(const G4LogicalVolume* lv) const;
+
+    // Passive boxes (/tof/blocks/add, /tof/blocks/clear); spec is
+    // "name material x y z dx dy dz unit" with centre and full sizes
+    void AddBlock(const G4String& spec);
+    void ClearBlocks();
+
+    // Every placed volume with its world-frame centre, axis-aligned size and
+    // z range (/tof/det/print)
+    void PrintGeometry();
+
 private:
     void DefineMaterials();
+    void DefineCommands();
     void SetVisualAttributes();  // 声明可视化属性设置方法
+    void ConstructComptonCamera();
+    void ConstructTargetAndDegrader();
+    void ConstructBlocks();
+    G4Material* FindMaterial(const G4String& name) const;
+
+    G4VPhysicalVolume* fWorldPhys;
 
     // 逻辑体积指针
     G4LogicalVolume* logic_world;
@@ -73,6 +101,8 @@ private:
     G4LogicalVolume* logic_YSO;
     G4LogicalVolume* logic_Silicon;
     G4LogicalVolume* logic_CdZnTe;
+    G4LogicalVolume* logic_CameraYSO;
+    G4LogicalVolume* logic_CameraLYSO;
     std::vector<G4LogicalVolume*> chamberComponents;
 
     // 材料指针
@@ -84,12 +114,50 @@ private:
     G4Material* Silicon_mat;
     G4Material* fdetector_mat;
     G4Material* fdetector_mat1;
+    G4Material* fLYSO_mat;
     G4int fNbOfChambers;
     G4Material* fTargetMaterial;
 
     G4UserLimits* fStepLimit;
-    DetectorMessenger* fMessenger;
     G4bool fCheckOverlaps;
+
+    // Parts of the original setup that can be switched off (/tof/det/...)
+    G4bool fBuildStations;
+    G4bool fBuildFrame;
+    G4bool fBuildStack;
+    G4bool fBuildAbsorber;
+    G4String fWorldMaterialName;
+    G4ThreeVector fWorldSize;
+
+    // Compton camera (/tof/camera/...)
+    G4bool fBuildCamera;
+    G4ThreeVector fCameraPosition;  // centre of CH2, the entrance layer
+    G4double fCameraRotationX;
+    G4double fCameraSpacing21;      // CH2-CH1, centre to centre
+    G4double fCameraSpacing10;      // CH1-CH0, centre to centre
+
+    // Target and degrader (/tof/target/..., /tof/degrader/...)
+    G4bool fBuildTarget;
+    G4String fTargetMaterialName;
+    G4ThreeVector fTargetSize;
+    G4ThreeVector fTargetPosition;
+    G4bool fBuildDegrader;
+    G4String fDegraderMaterialName;
+    G4ThreeVector fDegraderSize;
+    G4ThreeVector fDegraderPosition;
+
+    // Free-form boxes, e.g. lead shielding bricks (/tof/blocks/...)
+    struct Block {
+        G4String name;
+        G4String material;
+        G4ThreeVector position;
+        G4ThreeVector size;
+    };
+    std::vector<Block> fBlocks;
+
+    std::unordered_map<const G4LogicalVolume*, DetectorKind> fKinds;
+    std::vector<std::unique_ptr<G4GenericMessenger>> fMessengers;
+    std::unique_ptr<G4UImessenger> fBlockMessenger;
 };
 
 }

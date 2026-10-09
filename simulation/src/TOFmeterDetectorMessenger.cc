@@ -24,7 +24,7 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalDetectorMessenger.cc,v 1.11 2006/06/29 17:48:02 gunter Exp $
+// $Id: TOFmeterDetectorMessenger.cc,v 1.11 2006/06/29 17:48:02 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
@@ -32,9 +32,9 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-#include "OriginalDetectorMessenger.hh"
+#include "TOFmeterDetectorMessenger.hh"
 
-#include "OriginalDetectorConstruction.hh"
+#include "DetectorConstruction.hh"
 #include "G4UIdirectory.hh"
 #include "G4UIcmdWithAString.hh"
 #include "G4UIcmdWithAnInteger.hh"
@@ -44,10 +44,12 @@
 #include "globals.hh"
 #include "global.h"
 #include "G4SystemOfUnits.hh"
+#include "Randomize.hh"
+#include <cstdio>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorMessenger::OriginalDetectorMessenger(OriginalDetectorConstruction* myDet)
+TOFmeterDetectorMessenger::TOFmeterDetectorMessenger(Pb::DetectorConstruction* myDet)
 :myDetector(myDet)
 { 
 // output directry
@@ -80,12 +82,27 @@ OriginalDetectorMessenger::OriginalDetectorMessenger(OriginalDetectorConstructio
   GunSeedCmd->SetParameterName( "num", true );
   GunSeedCmd->SetDefaultValue(9876);
 
-// Output Format, 0 for simple mode (no text), 1 include texts (process name etc.)
+// Output Format, 0 for ASCII step file (.dat), 1 for ROOT event ntuple (.root), 2 for both
   OutputFormatCmd = new G4UIcmdWithAnInteger("/OutputFormat", this );
-  OutputFormatCmd->SetGuidance("OutputFormat");
+  OutputFormatCmd->SetGuidance("OutputFormat: 0 ASCII step file (.dat), 1 ROOT event ntuple (.root), 2 both");
   OutputFormatCmd->SetParameterName("flag",true);
   OutputFormatCmd->SetDefaultValue(0);
-	
+  OutputFormatCmd->SetRange("flag>=0 && flag<=2");
+
+// Output Type, 0 for all text, 1 for simple mode (parent process, process name = 0)
+  OutputTypeCmd = new G4UIcmdWithAnInteger("/OutputType", this );
+  OutputTypeCmd->SetGuidance("OutputType: 0 full ASCII lines, 1 simple mode (process names written as 0)");
+  OutputTypeCmd->SetParameterName("flag",true);
+  OutputTypeCmd->SetDefaultValue(0);
+
+// Event Filter for the ROOT ntuple, 0 for every event, 1 for events with energy in an active volume or a stopped primary
+  EventFilterCmd = new G4UIcmdWithAnInteger("/EventFilter", this );
+  EventFilterCmd->SetGuidance("EventFilter: 0 write every event to the ROOT ntuple (default),");
+  EventFilterCmd->SetGuidance("1 only events with energy in an active volume or a primary stopped inside the setup");
+  EventFilterCmd->SetParameterName("flag",true);
+  EventFilterCmd->SetDefaultValue(0);
+  EventFilterCmd->SetRange("flag>=0 && flag<=1");
+
 // Track Type, 0 for all particles, 1 for only primary particle (trackID = 1)
   TrackTypeCmd = new G4UIcmdWithAnInteger("/TrackType", this );
   TrackTypeCmd->SetGuidance("TrackType");
@@ -98,9 +115,9 @@ OriginalDetectorMessenger::OriginalDetectorMessenger(OriginalDetectorConstructio
   TrackEdepCmd->SetParameterName("flag",true);
   TrackEdepCmd->SetDefaultValue(1);
 	
-// General Particle Source, 0 for off (particle gun), 1 for on (GPS) 
+// General Particle Source, 0 for off (particle gun), 1 for on (GPS), 2 for cosmic muons (/tof/cosmic/)
   GPSCmd = new G4UIcmdWithAnInteger("/GeneralParticleSource", this );
-  GPSCmd->SetGuidance("GeneralParticleSource");
+  GPSCmd->SetGuidance("GeneralParticleSource: 0 particle gun, 1 GPS, 2 cosmic-ray muons (/tof/cosmic/)");
   GPSCmd->SetParameterName("flag",true);
   GPSCmd->SetDefaultValue(0);
 	
@@ -112,7 +129,7 @@ OriginalDetectorMessenger::OriginalDetectorMessenger(OriginalDetectorConstructio
 
 // Detector overlap check
   CheckOverlapCmd = new G4UIcmdWithAnInteger("/CheckOverlap", this );
-  CheckOverlapCmd->SetGuidance("Verbose level of Originals");
+  CheckOverlapCmd->SetGuidance("CheckOverlap: 1 check overlaps when volumes are placed, 0 do not");
   CheckOverlapCmd->SetParameterName("flag",true);
   CheckOverlapCmd->SetDefaultValue(0);
 	
@@ -125,7 +142,7 @@ OriginalDetectorMessenger::OriginalDetectorMessenger(OriginalDetectorConstructio
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalDetectorMessenger::~OriginalDetectorMessenger()
+TOFmeterDetectorMessenger::~TOFmeterDetectorMessenger()
 {
     delete OutDirCmd;
     delete OutFileCmd;
@@ -133,6 +150,8 @@ OriginalDetectorMessenger::~OriginalDetectorMessenger()
     delete InFileCmd;
     delete GunSeedCmd;
 	delete OutputFormatCmd;
+	delete OutputTypeCmd;
+	delete EventFilterCmd;
 	delete TrackTypeCmd;
     delete TrackEdepCmd;
 	delete GPSCmd;
@@ -143,20 +162,30 @@ OriginalDetectorMessenger::~OriginalDetectorMessenger()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalDetectorMessenger::SetNewValue(G4UIcommand* command,G4String newValue)
+void TOFmeterDetectorMessenger::SetNewValue(G4UIcommand* command,G4String newValue)
 { 
  extern global_struct global;
-	if(command == OutDirCmd) strcpy(global.outdir, newValue );
-	if(command == OutFileCmd) strcpy(global.outfile, newValue );
-	if(command == InDirCmd) strcpy(global.indir, newValue );
-	if(command == InFileCmd) strcpy(global.infile, newValue );
-  if(command == GunSeedCmd) global.seed=(GunSeedCmd->GetNewIntValue(newValue));
+	if(command == OutDirCmd) snprintf(global.outdir, sizeof(global.outdir), "%s", newValue.c_str());
+	if(command == OutFileCmd) snprintf(global.outfile, sizeof(global.outfile), "%s", newValue.c_str());
+	if(command == InDirCmd) snprintf(global.indir, sizeof(global.indir), "%s", newValue.c_str());
+	if(command == InFileCmd) snprintf(global.infile, sizeof(global.infile), "%s", newValue.c_str());
+  if(command == GunSeedCmd)
+  {
+      global.seed=(GunSeedCmd->GetNewIntValue(newValue));
+      G4Random::setTheSeed(global.seed); // the seed used to be stored but never applied
+  }
 	if(command == OutputFormatCmd) global.OutputFormat = (OutputFormatCmd->GetNewIntValue(newValue));
+	if(command == OutputTypeCmd) global.OutputType = (OutputTypeCmd->GetNewIntValue(newValue));
+	if(command == EventFilterCmd) global.EventFilter = (EventFilterCmd->GetNewIntValue(newValue));
 	if(command == TrackTypeCmd) global.TrackType = (TrackTypeCmd->GetNewIntValue(newValue));
   if(command == TrackEdepCmd) global.TrackEdep = (TrackEdepCmd->GetNewIntValue(newValue));
 	if(command == GPSCmd) global.GPS = (GPSCmd->GetNewIntValue(newValue));
   if(command == DetectorVisualizationCmd) global.DetectorVisualization = (DetectorVisualizationCmd->GetNewIntValue(newValue));
-	if(command == CheckOverlapCmd) global.CheckOverlap = (CheckOverlapCmd->GetNewIntValue(newValue));
+	if(command == CheckOverlapCmd)
+	{
+		global.CheckOverlap = (CheckOverlapCmd->GetNewIntValue(newValue));
+		myDetector->SetCheckOverlaps(global.CheckOverlap != 0);
+	}
 	if(command == UpdateCmd) myDetector->UpdateGeometry();
 }
 

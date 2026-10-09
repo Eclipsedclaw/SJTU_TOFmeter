@@ -24,36 +24,41 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalEventAction.hh,v 1.8 2006/06/29 17:47:35 gunter Exp $
+// $Id: TOFmeterDetectorSD.hh,v 1.7 2006/06/29 17:47:56 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
 // @date 2015 March 23
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
- 
-#ifndef OriginalEventAction_h
-#define OriginalEventAction_h 1
 
-#include "G4UserEventAction.hh"
+#ifndef TOFmeterDetectorSD_h
+#define TOFmeterDetectorSD_h 1
 
-class G4Event;
+#include "G4VSensitiveDetector.hh"
+#include "TOFmeterDetectorHit.hh"
+
+class G4Step;
+class G4HCofThisEvent;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-class OriginalEventAction : public G4UserEventAction
+class TOFmeterDetectorSD : public G4VSensitiveDetector
 {
-  public:
-    OriginalEventAction();
-   ~OriginalEventAction();
-
-  public:
-    void BeginOfEventAction(const G4Event*);
-    void EndOfEventAction(const G4Event*);
+public:
+    TOFmeterDetectorSD(G4String);
+    ~TOFmeterDetectorSD();
+    
+    void Initialize(G4HCofThisEvent*);
+    G4bool ProcessHits(G4Step*, G4TouchableHistory*);
+    void EndOfEvent(G4HCofThisEvent*);
+    
+private:
+    TOFmeterDetectorHitsCollection* DetectorCollection;
+    G4int NbHits;
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 #endif
 
-    

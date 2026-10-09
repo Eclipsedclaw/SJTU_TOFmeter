@@ -24,68 +24,72 @@
 // ********************************************************************
 //
 //
-// $Id: OriginalRunAction.cc,v 1.9 2006/06/29 17:48:16 gunter Exp $
+// $Id: TOFmeterEventAction.hh,v 1.8 2006/06/29 17:47:35 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
 // @author Tsuguo Aramaki
-// @date 2015 March 23 
+// @date 2015 March 23
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+ 
+#ifndef TOFmeterEventAction_h
+#define TOFmeterEventAction_h 1
 
-#include "OriginalRunAction.hh"
+#include "G4UserEventAction.hh"
+#include "G4ThreeVector.hh"
+#include "globals.hh"
+#include <map>
+#include <vector>
 
-#include "G4Run.hh"
-#include "G4RunManager.hh"
-#include "G4UnitsTable.hh"
-#include "G4SystemOfUnits.hh"
-/*
-#include "G4ios.hh"
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-*/
-#include "global.h"
-#include <fstream>
-
-using namespace std;
-
+class G4Event;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-OriginalRunAction::OriginalRunAction()
-{}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-OriginalRunAction::~OriginalRunAction()
-{}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-void OriginalRunAction::BeginOfRunAction(const G4Run* aRun)
+class TOFmeterEventAction : public G4UserEventAction
 {
-  extern global_struct global;
-  char fname[100];
-	
-  ((G4Run *)(aRun))->SetRunID(global.runnum);
-  G4cout << "### Run " << aRun->GetRunID() << " start." << G4endl;
-  
-  sprintf(fname, "%s/%s.dat", global.outdir, global.outfile );
-  G4cout << "Output file: " << fname << G4endl;
-  global.output.open (fname);
-}
+  public:
+    TOFmeterEventAction();
+   ~TOFmeterEventAction();
+
+  public:
+    void BeginOfEventAction(const G4Event*);
+    void EndOfEventAction(const G4Event*);
+
+    // Event-level scoring, filled by TOFmeterSteppingAction / TOFmeterTrackingAction
+    // and written to the "events" ntuple when /OutputFormat is 1 or 2
+    void AddBarHit(G4int station, G4int bar, G4double edep, G4double time, const G4ThreeVector& pos);
+    void AddCameraHit(G4int layer, G4double edep, G4double time, const G4ThreeVector& pos,
+                      G4int pdg, G4int trackID);
+    void AddStackHit(G4int layer, G4double edep);
+    void AddAbsorberHit(G4double edep) { fAbsorberEdep += edep; }
+    void SetPrimaryEnd(const G4ThreeVector& pos, G4double time, G4double kinE,
+                       const G4String& process, const G4String& volume);
+
+  private:
+    struct BarSum { G4double edep = 0., time = -1., ex = 0., ey = 0., ez = 0.; };
+
+    G4int fNtupleId;
+    std::map<G4int, BarSum> fBars;    // key 100 * station + bar
+    G4double fCamEdep[3];
+    G4double fCamTime[3];
+    G4int fCamPrimary;                // bit k set if the primary deposited energy in CHk
+    G4double fStackEdep[2];
+    G4double fAbsorberEdep;
+    G4ThreeVector fEndPos;
+    G4double fEndTime;
+    G4double fEndKinE;
+    G4String fEndProcess;
+    G4String fEndVolume;
+
+    // vector columns of the "events" ntuple
+    std::vector<G4int> fBarStation, fBarIndex;
+    std::vector<G4double> fBarEdep, fBarTime, fBarX, fBarY, fBarZ;
+    std::vector<G4int> fCamLayer, fCamPdg, fCamTrack;
+    std::vector<G4double> fCamE, fCamT, fCamX, fCamY, fCamZ;
+};
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void OriginalRunAction::EndOfRunAction(const G4Run*)
-{
-	extern global_struct global;
-	global.output.close();
-	G4cout << "Run end  " << G4endl;
-}
+#endif
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-
-
+    

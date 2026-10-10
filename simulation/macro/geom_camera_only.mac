@@ -5,6 +5,7 @@
 /tof/det/frame false
 /tof/det/stack false
 /tof/det/absorber false
+/tof/det/leadWalls false
 /tof/det/camera true
 /tof/det/worldSize 100 100 50 cm
 /tof/camera/position 0 0 0 cm

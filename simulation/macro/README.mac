@@ -12,7 +12,8 @@
 # /OutputFormat 0 ASCII step file .dat (default), 1 ROOT event ntuple .root, 2 both
 # /OutputType 0 for all, 1 for simple mode (parent process, process name = 0)
 # /EventFilter 0 every event in the ntuple (default), 1 only events with energy in an
-#              active volume or a primary stopped inside the setup (live time unaffected)
+#              active volume or a primary stopped inside the setup, 2 only events with
+#              energy in a TOF bar or a Compton-detector layer (live time unaffected)
 # /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
 # /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
 
@@ -27,6 +28,9 @@
 # /tof/cosmic/planeCenter x y z unit   centre of the horizontal source plane (default 0 0 75 cm)
 # /tof/cosmic/halfX, halfY value unit  plane half sizes (default 150 cm)
 # /tof/cosmic/energyMin, energyMax     kinetic energy range, per nucleon for ions (default 0 - 1000 GeV)
+# /tof/cosmic/monoEnergy value unit    > 0: every particle gets this energy, zenith law of that
+#                                      energy; flux and live time still from energyMin - energyMax
+#                                      (the band it stands for); 0 = spectrum (default)
 # /tof/cosmic/thetaMax value unit      maximum zenith angle (default 75 deg)
 # /tof/cosmic/charge both|mu-|mu+      guan: muons to generate (default both)
 # /tof/cosmic/chargeRatio 1.27         guan: mu+/mu-
@@ -34,7 +38,10 @@
 # /physics_engine/neutron/timeLimit 10 ms   let slow neutrons live long enough to arrive
 
 # --- Geometry (apply with /update) ---
-# /tof/det/stations | frame | stack | absorber  true|false   parts of DetectorConstruction.cc
+# /tof/det/stations | frame | stack | absorber | leadWalls  true|false   parts of DetectorConstruction.cc
+# /tof/det/leadThickness 10 cm         lead layer on the steel plate (bottom fixed, 0 = none);
+#                                      the lead walls end level with its top
+# /tof/det/print                       table of every placed volume (centre, size, z range)
 # /tof/det/camera true|false                                 three-layer Compton camera
 # /tof/det/worldMaterial G4_AIR                              (G4_Galactic for vacuum)
 # /tof/det/worldSize 400 400 300 cm
@@ -48,6 +55,8 @@
 # /CheckOverlap: 0 for off, 1 for on (default on)
 # /update: rebuild the geometry now; needed whenever geometry is changed
 
+# /tof/vis/spin 10                    Qt GUI only: turn the viewer at 10 deg/s until the first
+#                                      click, scroll or key press in it; 0 stops
 # /Visualization default 0 (unused by DetectorConstruction.cc)
 
 # set active sensitive detector

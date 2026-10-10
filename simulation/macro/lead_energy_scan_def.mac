@@ -1,0 +1,13 @@
+### Definition of the log scan of lead_energy_scan.mac, also read by scripts/lead_energy_scan.sh:
+### 20 kinetic energies log-spaced from 0.1 to 100 GeV, each normalised to the band
+### E / 1.19935 - E x 1.19935 (lead_energy_scan_e.mac); the check run covers the same range.
+
+/control/alias leadScanDir output/leadscan
+/control/alias leadScanEnergies "0.1 0.143845 0.206914 0.297635 0.428133 0.615848 0.885867 1.27427 1.83298 2.63665 3.79269 5.45559 7.8476 11.2884 16.2378 23.3572 33.5982 48.3293 69.5193 100"
+/control/alias leadScanPoint macro/lead_energy_scan_e.mac
+/control/alias leadScanSeed0 1000
+/control/alias leadSpectrumSeed0 2000
+/control/alias leadSpectrumMin 0.0833782
+/control/alias leadSpectrumMax 119.935
+/control/alias leadScanEvents 200000
+/control/alias leadSpectrumEvents 1000000

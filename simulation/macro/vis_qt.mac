@@ -1,0 +1,58 @@
+### Interactive view in the Qt GUI: geometry plus cosmic-muon tracks.
+###   cd TOFmeter-work && ./TOFmeter      then in the Qt command line:
+###   /control/execute macro/vis_qt.mac
+### For another setup run its geometry macro first, e.g.
+###   /control/execute macro/geom_tofmeter_example.mac
+### More events: /run/beamOn 20 (tracks accumulate; /vis/viewer/rebuild clears them).
+### Trajectories: red negative, blue positive, green neutral.
+### The view turns slowly until the first click, scroll or key press in the viewer;
+### /tof/vis/spin 20 turns it again (deg/s), /tof/vis/spin 0 stops it.
+
+/vis/open TSGQt 1000x800-0+0
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+
+/vis/drawVolume
+/vis/geometry/set/visibility WorldLogic 0 false
+/vis/geometry/set/forceWireframe LeadWallXLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallYLogic 0 true
+/vis/viewer/set/style surface
+/vis/viewer/set/background white
+/vis/viewer/set/upVector 0 0 1
+/vis/viewer/set/viewpointThetaPhi 60 30 deg
+/vis/scene/add/axes 0 0 0 20 cm
+
+# Trajectories of all particles, accumulated over the run
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts false
+/vis/scene/endOfEventAction accumulate 100
+
+/vis/viewer/set/autoRefresh true
+/vis/verbose warnings
+
+# A few cosmic muons (no output files)
+/OutputFormat 1
+/OutputDirectory output
+/OutputFile vis_qt
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/halfX 40 cm
+/tof/cosmic/halfY 40 cm
+/run/beamOn 10
+
+# Slow turn about the vertical axis (10 deg/s) until you interact with the viewer
+/tof/vis/spin 10
+
+# Make rotate
+/vis/viewer/set/viewpointThetaPhi 70 0 deg
+/vis/viewer/save view_00.g4view
+/vis/viewer/set/viewpointThetaPhi 70 90 deg
+/vis/viewer/save view_01.g4view
+/vis/viewer/set/viewpointThetaPhi 70 180 deg
+/vis/viewer/save view_02.g4view
+/vis/viewer/set/viewpointThetaPhi 70 270 deg
+/vis/viewer/save view_03.g4view
+/vis/viewer/set/viewpointThetaPhi 70 359 deg
+/vis/viewer/save view_04.g4view
+/vis/viewer/interpolate *.g4view 100 50 millisecond

@@ -73,6 +73,9 @@ public:
 
     DetectorKind GetKind(const G4LogicalVolume* lv) const;
 
+    // Thickness of the lead layer on top, 0 when it is not built
+    G4double GetLeadThickness() const { return fBuildAbsorber ? fLeadThickness : 0.; }
+
     // Passive boxes (/tof/blocks/add, /tof/blocks/clear); spec is
     // "name material x y z dx dy dz unit" with centre and full sizes
     void AddBlock(const G4String& spec);
@@ -126,6 +129,8 @@ private:
     G4bool fBuildFrame;
     G4bool fBuildStack;
     G4bool fBuildAbsorber;
+    G4bool fBuildLeadWalls;
+    G4double fLeadThickness;        // lead layer on the steel plate (/tof/det/leadThickness)
     G4String fWorldMaterialName;
     G4ThreeVector fWorldSize;
 

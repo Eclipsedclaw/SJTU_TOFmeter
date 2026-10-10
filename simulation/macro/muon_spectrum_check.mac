@@ -1,0 +1,35 @@
+### Generated sea-level muon spectrum, to compare with the atmospheric muon flux
+###   ./TOFmeter macro/muon_spectrum_check.mac       (~2 min)
+###   root -l -b -q analysis/muon_spectrum.C         (the macro runs it at the end)
+### 10^6 EXPACS mu+ and mu- (0-1000 GeV) from the plane of lead_energy_scan.mac (2 x 2 m at
+### z = 42 cm, zenith < 75 deg), every event kept. Only the generated energies and angles
+### matter, so the setup is switched off (air only) to make it fast.
+
+/control/verbose 2
+/tof/det/stations false
+/tof/det/frame false
+/tof/det/stack false
+/tof/det/absorber false
+/tof/det/leadWalls false
+/tof/det/camera false
+/update
+
+/OutputFormat 1
+/EventFilter 0
+/OutputDirectory output
+/OutputFile muon_spectrum
+/gun/seed 3030
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 42 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/monoEnergy 0 GeV
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV
+/run/beamOn 1000000
+
+/control/shell root -l -b -q analysis/muon_spectrum.C

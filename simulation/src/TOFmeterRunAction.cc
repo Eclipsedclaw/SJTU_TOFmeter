@@ -35,6 +35,7 @@
 #include "TOFmeterRunAction.hh"
 #include "TOFmeterPrimaryGeneratorAction.hh"
 #include "CosmicRaySource.hh"
+#include "DetectorConstruction.hh"
 
 #include "G4AnalysisManager.hh"
 #include "G4Run.hh"
@@ -77,6 +78,8 @@ TOFmeterRunAction::TOFmeterRunAction(TOFmeterPrimaryGeneratorAction* primaryGene
   analysisManager->CreateNtupleDColumn("plane_z");     // cosmic: cm
   analysisManager->CreateNtupleSColumn("model");       // cosmic: expacs or guan
   analysisManager->CreateNtupleSColumn("particles");   // cosmic: species (expacs) or charge (guan)
+  analysisManager->CreateNtupleDColumn("e_mono");      // cosmic: energy of every particle, MeV; 0 = spectrum
+  analysisManager->CreateNtupleDColumn("lead_cm");     // lead layer on top, cm (0 = none)
   analysisManager->FinishNtuple();
 }
 
@@ -90,7 +93,7 @@ TOFmeterRunAction::~TOFmeterRunAction()
 void TOFmeterRunAction::BeginOfRunAction(const G4Run* aRun)
 {
   extern global_struct global;
-  char fname[512];
+  char fname[1100];   // directory + file name + extension
 
   ((G4Run *)(aRun))->SetRunID(global.runnum);
   G4cout << "### Run " << aRun->GetRunID() << " start." << G4endl;
@@ -155,6 +158,10 @@ void TOFmeterRunAction::EndOfRunAction(const G4Run* aRun)
 		analysisManager->FillNtupleDColumn(fRunNtupleId, col++, isCosmic ? cosmic->GetPlaneCenter().z()/cm : 0.);
 		analysisManager->FillNtupleSColumn(fRunNtupleId, col++, isCosmic ? cosmic->GetModel() : G4String("-"));
 		analysisManager->FillNtupleSColumn(fRunNtupleId, col++, isCosmic ? cosmic->GetParticles() : G4String("-"));
+		analysisManager->FillNtupleDColumn(fRunNtupleId, col++, isCosmic ? cosmic->GetMonoEnergy()/MeV : 0.);
+		auto detector = dynamic_cast<const Pb::DetectorConstruction*>(
+			G4RunManager::GetRunManager()->GetUserDetectorConstruction());
+		analysisManager->FillNtupleDColumn(fRunNtupleId, col++, detector ? detector->GetLeadThickness()/cm : -1.);
 		analysisManager->AddNtupleRow(fRunNtupleId);
 		analysisManager->Write();
 		analysisManager->CloseFile();

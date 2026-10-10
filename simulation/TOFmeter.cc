@@ -40,6 +40,7 @@
 #include "TOFmeterEventAction.hh"
 #include "TOFmeterSteppingAction.hh"
 #include "TOFmeterTrackingAction.hh"
+#include "TOFmeterViewSpinner.hh"
 
 #include "G4RunManager.hh"
 #include "G4UImanager.hh"
@@ -55,6 +56,11 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+
+#ifdef TOF_USE_QT
+#include <QCoreApplication>
+#endif
 
 #ifndef TOF_GEANT4_DATA_DIR
 #define TOF_GEANT4_DATA_DIR ""
@@ -123,8 +129,16 @@ int main(int argc,char** argv)
     // G4UIterminal is a (dumb) terminal
     //
     session = new G4UIExecutive(argc, argv);
+#ifdef TOF_USE_QT
+    // /tof/vis/spin: slow rotation of the Qt viewer until the first click (macro/vis_qt.mac)
+    std::unique_ptr<TOFmeterViewSpinner> spinner;
+    if (session->IsGUI() && QCoreApplication::instance()) spinner = std::make_unique<TOFmeterViewSpinner>();
+#endif
     UI->ApplyCommand("/control/execute");    
     session->SessionStart();
+#ifdef TOF_USE_QT
+    spinner.reset();  // before the Qt application goes
+#endif
     delete session;
   }
   else   // Batch mode

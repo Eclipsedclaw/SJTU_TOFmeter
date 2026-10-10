@@ -113,6 +113,7 @@ CosmicRaySource::CosmicRaySource()
     fHalfY(150. * cm),
     fEnergyMin(0.),
     fEnergyMax(1000. * GeV),
+    fMonoEnergy(0.),
     fThetaMax(75. * deg),
     fCharge("both"),
     fChargeRatio(1.27),
@@ -142,6 +143,11 @@ CosmicRaySource::CosmicRaySource()
                                       "Minimum kinetic energy (per nucleon for ions)");
   fMessenger->DeclarePropertyWithUnit("energyMax", "GeV", fEnergyMax,
                                       "Maximum kinetic energy (per nucleon for ions)");
+  fMessenger->DeclarePropertyWithUnit("monoEnergy", "GeV", fMonoEnergy,
+                                      "If > 0, kinetic energy (per nucleon for ions) of every particle, "
+                                      "with the zenith distribution of that energy; the flux and live time "
+                                      "still come from the spectrum between energyMin and energyMax, the "
+                                      "band it stands for. 0 = sample the spectrum");
   fMessenger->DeclarePropertyWithUnit("thetaMax", "deg", fThetaMax, "Maximum zenith angle");
   fMessenger->DeclareProperty("charge", fCharge, "guan: muons to generate, both, mu- or mu+")
     .SetCandidates("both mu- mu+");
@@ -197,6 +203,10 @@ void CosmicRaySource::PrepareRun()
     G4Exception("CosmicRaySource::PrepareRun", "Cosmic001", FatalErrorInArgument,
                 "Invalid /tof/cosmic settings (energy range, thetaMax or plane size)");
   }
+  if (fMonoEnergy < 0. || (fMonoEnergy > 0. && (fMonoEnergy < fEnergyMin || fMonoEnergy > fEnergyMax))) {
+    G4Exception("CosmicRaySource::PrepareRun", "Cosmic011", FatalErrorInArgument,
+                "/tof/cosmic/monoEnergy must lie between energyMin and energyMax (0 = off)");
+  }
   fCosMin = std::cos(fThetaMax);
 
   G4cout << "\n=== Cosmic rays (" << fModel << ") ===" << G4endl;
@@ -209,6 +219,10 @@ void CosmicRaySource::PrepareRun()
          << fHalfY / cm << " cm, zenith < " << fThetaMax / deg << " deg" << G4endl
          << "  flux through the plane " << fluxPerCm2s << " /cm2/s = " << fluxPerCm2s * 60.
          << " /cm2/min; " << fluxPerCm2s * GetArea() / cm2 << " particles/s on the plane" << G4endl;
+  if (fMonoEnergy > 0.) {
+    G4cout << "  mono-energetic: every particle has " << fMonoEnergy / GeV
+           << " GeV (per nucleon for ions), normalised to the flux above" << G4endl;
+  }
   fPrepared = true;
 }
 
@@ -447,18 +461,25 @@ G4double CosmicRaySource::SampleGuanCosTheta(G4double totalEnergyGeV) const
 void CosmicRaySource::SampleGuan(G4ParticleDefinition*& particle, G4double& kineticEnergy,
                                  G4double& cosTheta) const
 {
-  // Accept-reject against the envelope (flat in y and in cos(theta))
-  G4double energy = 0.;
-  do {
-    energy = FromY(fY1 - G4UniformRand() * (fY1 - fY2));
-    cosTheta = fCosMin + (1. - fCosMin) * G4UniformRand();
-  } while (G4UniformRand() * kSecondTermMax > EnvelopeRatio(energy, cosTheta));
+  const G4double mass = G4MuonMinus::Definition()->GetPDGMass();
+  G4double energy = 0.;   // total, GeV
+  if (fMonoEnergy > 0.) {
+    energy = (fMonoEnergy + mass) / GeV;
+    cosTheta = SampleGuanCosTheta(energy);
+  }
+  else {
+    // Accept-reject against the envelope (flat in y and in cos(theta))
+    do {
+      energy = FromY(fY1 - G4UniformRand() * (fY1 - fY2));
+      cosTheta = fCosMin + (1. - fCosMin) * G4UniformRand();
+    } while (G4UniformRand() * kSecondTermMax > EnvelopeRatio(energy, cosTheta));
+  }
 
   const G4bool positive =
     (fCharge == "mu+") || (fCharge == "both" && G4UniformRand() < fChargeRatio / (1. + fChargeRatio));
   particle = positive ? static_cast<G4ParticleDefinition*>(G4MuonPlus::Definition())
                       : G4MuonMinus::Definition();
-  kineticEnergy = std::max(0., energy * GeV - particle->GetPDGMass());
+  kineticEnergy = (fMonoEnergy > 0.) ? fMonoEnergy : std::max(0., energy * GeV - mass);
 }
 
 void CosmicRaySource::SampleExpacs(G4ParticleDefinition*& particle, G4double& kineticEnergy,
@@ -470,12 +491,15 @@ void CosmicRaySource::SampleExpacs(G4ParticleDefinition*& particle, G4double& ki
     std::upper_bound(fActiveCumulative.begin(), fActiveCumulative.end(), u) - fActiveCumulative.begin());
   const ActiveSpecies& species = fActive[is];
 
-  const G4double v = G4UniformRand() * species.cumulative.back();
-  const std::size_t k = std::min<std::size_t>(
-    species.segments.size() - 1,
-    std::upper_bound(species.cumulative.begin(), species.cumulative.end(), v) - species.cumulative.begin());
-  const Segment& segment = species.segments[k];
-  const G4double energyPerNucleon = SamplePowerLaw(segment.index, segment.low, segment.high, G4UniformRand());
+  G4double energyPerNucleon = fMonoEnergy;
+  if (fMonoEnergy <= 0.) {
+    const G4double v = G4UniformRand() * species.cumulative.back();
+    const std::size_t k = std::min<std::size_t>(
+      species.segments.size() - 1,
+      std::upper_bound(species.cumulative.begin(), species.cumulative.end(), v) - species.cumulative.begin());
+    const Segment& segment = species.segments[k];
+    energyPerNucleon = SamplePowerLaw(segment.index, segment.low, segment.high, G4UniformRand());
+  }
 
   if (species.guanAngular) {
     cosTheta = SampleGuanCosTheta((energyPerNucleon + species.particle->GetPDGMass()) / GeV);

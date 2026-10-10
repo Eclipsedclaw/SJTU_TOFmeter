@@ -1,0 +1,23 @@
+### Top & middle & Compton coincidences versus muon energy and top-lead thickness
+###   ./TOFmeter macro/lead_energy_scan.mac        all 21 x 20 points in one process (slow)
+###   sh scripts/lead_energy_scan.sh [jobs]        the same, one process per thickness
+### then  root -l -b -q analysis/lead_energy_scan.C   (the script runs it at the end)
+### The fine low-energy version is lead_lowE_scan.mac; both use lead_energy_scan_t.mac.
+###
+### Lead layer on the steel plate: 0, 1, ..., 20 cm. Its bottom stays at z = 21 cm, so it
+### grows upwards, and the lead walls end level with its top (lead_energy_scan_t.mac).
+### Muons: 20 kinetic energies log-spaced from 0.1 to 100 GeV (lead_energy_scan_def.mac).
+### All muons of a run have the same energy, with the atmospheric zenith distribution of
+### that energy (Guan shape) and the EXPACS mu+/mu- mixture. A run is normalised to the
+### EXPACS muon flux of its energy band, E / 1.19935 to E x 1.19935 (half a grid step on
+### each side), so its live time turns counts into rates; the 20 bands tile 0.083-120 GeV.
+### Source plane: 2 x 2 m at z = 42 cm, above the thickest lead; zenith < 75 deg.
+### Each thickness ends with a check run of the spectrum itself over the same 0.083-120 GeV
+### (lead_spectrum_t.mac), whose rates should equal the sums over the 20 points.
+### Output: output/leadscan/leadscan_t<cm>_E<GeV>.root, one file per point, and
+### leadspec_t<cm>.root, keeping only events with energy in a TOF bar or the Compton detector
+### (/EventFilter 2).
+
+/control/verbose 0
+/control/execute macro/lead_energy_scan_def.mac
+/control/loop macro/lead_energy_scan_t.mac leadT 0 20 1

@@ -1,0 +1,16 @@
+### Definition of the fine low-energy scan of lead_lowE_scan.mac, also read by
+### scripts/lead_energy_scan.sh: 21 kinetic energies from 100 to 500 MeV in 20 MeV steps, each
+### normalised to the band E -+ 10 MeV (lead_energy_scan_e_lin.mac); the check run covers the
+### same 90-510 MeV. Its seeds differ from the log scan's, so the 100 MeV points of the two scans
+### are independent samples.
+
+/control/alias leadScanDir output/leadscan_lowE
+/control/alias leadScanEnergies "0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5"
+/control/alias leadScanPoint macro/lead_energy_scan_e_lin.mac
+/control/alias leadScanHalfBand 0.01
+/control/alias leadScanSeed0 3000
+/control/alias leadSpectrumSeed0 4000
+/control/alias leadSpectrumMin 0.09
+/control/alias leadSpectrumMax 0.51
+/control/alias leadScanEvents 200000
+/control/alias leadSpectrumEvents 2000000

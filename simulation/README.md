@@ -121,8 +121,7 @@ the world (checked at run start). Two spectrum models, `/tof/cosmic/model`:
 
 - **`expacs` (default)**: energy spectra of every species in an EXPACS table, PARMA model
   (T. Sato, PLoS ONE 10(12): e0144679, 2015): neutron, proton, alpha, mu+, mu-, e-, e+, gamma
-  and ions Li7 ... Ni58 (per nucleon). `data/expacs_spectrum.txt` comes from
-  `claude_TOF_project/EXPACS303-eng.xlsx` (EXPACS 3.03): sea level (1047 g/cm2), latitude 35 deg,
+  and ions Li7 ... Ni58 (per nucleon). `data/expacs_spectrum.txt` comes from EXPACS 3.03: sea level (1047 g/cm2), latitude 35 deg,
   longitude 142 deg (cut-off rigidity 11.5 GV), 2016-07-20 (W = 46.5), ground with water fraction
   0.2. **This is not Shanghai**: set the conditions in Excel, save, and run
   `python3 scripts/expacs_to_table.py <workbook.xlsx>` (needs openpyxl) to regenerate the table;
@@ -179,81 +178,6 @@ EXPACS muons (Guan muons give rates within 1-4%):
 | top & middle & Compton & bottom | 103 +- 3 | 219 +- 7 |
 | top & middle & not bottom | 317 +- 6 | 857 +- 14 |
 
-## Lead thickness x muon energy (`lead_energy_scan.mac`)
-
-Top & middle & Compton (TMC) for lead layers of 0-20 cm (1 cm steps) and 20 mono-energetic muon
-energies, 0.1-100 GeV on a log grid: 2x10^5 EXPACS mu+/mu- per point with the zenith law of their
-energy, from a 2 x 2 m plane at z = 42 cm (zenith < 75 deg). Each point is normalised to the
-EXPACS flux of its band, E / 1.2 to E x 1.2, so its live time gives the TMC rate due to the muons
-of that band; the 20 bands tile 0.083-120 GeV. `sh scripts/lead_energy_scan.sh` runs it (8 jobs,
-~1.7 h for the points plus ~6 CPU min per spectrum check run) and `analysis/lead_energy_scan.C`
-writes the table (`output/leadscan/lead_energy_scan.csv`, every point: counts, ratio, A_eff,
-rate) and maps (`lead_energy_scan.pdf`). Thresholds as in `acceptance.mac`.
-A scan is defined by a small macro (`lead_energy_scan_def.mac`, `lead_lowE_scan_def.mac`: energy
-list, band rule, output directory, seeds, check-run range); `lead_energy_scan_t.mac` runs one
-thickness of any of them, `scripts/lead_energy_scan.sh [definition] [jobs] [muons] [check muons]`
-runs all thicknesses in parallel, and `lead_energy_scan.C` reads the grid from the files of a
-directory.
-
-Flux calibration (page 3, `lead_energy_scan_expected.png`): each point gets the coefficient
-w = J_band / J_max, its EXPACS band flux relative to the band with the most muons (w = 1 at
-3.79 GeV; 0.06 at 0.1 GeV, 0.014 at 100 GeV). The band flux is the right weight because the grid
-is logarithmic (a point stands for a band 0.36 E wide); dJ/dE per GeV, which peaks at 0.3 GeV,
-would over-weight the low energies. ratio x w is the flux-weighted ratio, and ratio x w x N_ref,
-N_ref = J_max x plane area x exposure (2.16x10^5 muons per hour), the expected number of TMC muons:
-~7500 per hour without lead, 7000 with 20 cm. The 4th argument of `lead_energy_scan.C` sets the
-exposure in hours (default 1); the CSV gives `flux_coeff`, `ratio_TMC_weighted` and
-`N_TMC_per_hour`.
-
-| lead (cm) | 0 | 2 | 4 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20 |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| TMC /min, sum of the 20 points | 124.8 | 129.5 | 126.7 | 125.8 | 125.3 | 124.5 | 121.5 | 120.4 | 120.9 | 120.0 | 116.9 |
-| TMC /min, spectrum check run | 123.2 | 126.5 | 128.4 | 126.6 | 128.9 | 124.2 | 122.7 | 124.0 | 121.0 | 121.2 | 118.1 |
-
-Statistical errors are 1.3 and 2.0 /min. The sum over the points agrees with a run of the
-spectrum itself over 0.083-120 GeV at every thickness (ratio 0.97-1.03, pulls within 1.5 sigma),
-and the band fluxes add up to the spectrum flux exactly. The full spectrum (0-1000 GeV) gives
-121.9 +- 2.0 /min at 10 cm, so the >120 GeV muons add only ~1%.
-- The TMC rate hardly depends on the lead: flat at ~125 /min up to ~11 cm, -6% at 20 cm. 77% of
-  it comes from 0.5-9.4 GeV muons (8 bands), which no thickness up to 20 cm stops.
-- Per muon, the ratio is (4.0-4.5) x 10^-3 of the plane (A_eff ~ 170 cm2) for 0.2-2 GeV and
-  ~3.0 x 10^-3 above 10 GeV without lead (flatter zenith distribution). A layer stops the muons
-  below ~0.10 GeV (3-4 cm), 0.14 (6-7), 0.21 (10-12) and 0.30 GeV (17-19 cm); 0.43 GeV passes 20 cm.
-- With lead, high-energy muons gain TMC from secondaries: at 33.6 GeV a third of the TMC events
-  (half at 100 GeV, 20 cm) have a muon line that misses both YSO layers, against 17% (29%)
-  without lead. These coincidences are real triggers but not clean muon tracks.
-- TMC events whose muon stops in the Compton region (stack, Al3 and the space above it) come
-  from 0.10 GeV at 3 cm, 0.14 GeV at 6 cm, 0.21 GeV at 10-11 cm and 0.30 GeV at 16-18 cm. The
-  mono-energetic grid cannot give their rate (the stopping window, ~10 MeV for one zenith angle,
-  is much narrower than a band); a spectrum run over ~0.05-1 GeV per thickness would.
-
-### Fine low-energy scan (`lead_lowE_scan.mac`)
-
-100-500 MeV in 20 MeV steps (each point normalised to its band E -+ 10 MeV), 0-20 cm of lead,
-2x10^5 muons per point, check runs of 2x10^6 muons over 90-510 MeV (74 min on 8 jobs). Output in
-`output/leadscan_lowE/`; `root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_lowE")'`.
-- Range-out: the TMC ratio halves at 3.3 cm of lead for 100 MeV, then ~1.3 cm more per 20 MeV
-  (9.8 cm at 200 MeV, 16.8 cm at 300 MeV, 19.1 cm at 340 MeV); 360 MeV and above pass 20 cm.
-- TMC rate of the 90-510 MeV muons: 14.4 /min without lead, 10.0 at 10 cm, 4.8 at 20 cm; the sum
-  of the points agrees with the check runs (ratio 0.95-1.03).
-- TMC with the muon stopped in the Compton region (check runs): ~15 +- 1.2 /h for every thickness
-  from 3 to 20 cm. More lead only moves the incident energy of the muons that stop there (the flux
-  per MeV rises, the stopping power at the incident energy falls, and the two cancel). Below 3 cm
-  the stopping muons have less than 90 MeV, outside this scan, so 0-2 cm are not covered. With 20
-  MeV steps the sum of the points now follows the check runs (pulls mostly within 1.5 sigma).
-
-## Validation: camera alone vs. the paper (`camera_validation.mac`, 15.5 h)
-
-| | EXPACS muons | Guan muons | Paper (Sec. 4.1, Table 2) |
-|---|---|---|---|
-| CH1 x CH2 trigger rate (427.6 keV thresholds) | 10.62 /min | 10.56 /min | ~10 /min |
-| three-layer muons (CH0 > 330 keV) per 15 h | 4409 | 4377 | ~4000 |
-| MIP MPV, angle-corrected: CH0 / CH1 / CH2 (MeV) | 5.20 / 1.69 / 1.68 | 5.22 / 1.69 / 1.68 | 4.86 / 1.63 / 1.56 |
-
-Rates agree to 6-9%. The simulated MPVs match the Bethe-Landau expectation for few-GeV muons in
-these crystals; the measured ones are 4-8% lower, which detector effects not simulated here
-(scintillator non-proportionality relative to the 662 keV calibration, SiPM saturation in CH0)
-can account for.
 
 ## Known limitations
 

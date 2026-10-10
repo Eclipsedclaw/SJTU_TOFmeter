@@ -1,0 +1,11 @@
+### Only the spectrum check run of one lead thickness of a lead x energy scan (same settings and
+### seed as in lead_energy_scan_t.mac, so it repeats the same events), e.g. to redo the check runs
+### after adding an output column: sh scripts/lead_energy_scan.sh --check-only <definition>
+
+/control/execute macro/lead_energy_scan_setup.mac
+/control/execute macro/lead_spectrum_t.mac
+
+# back to the full spectrum
+/tof/cosmic/monoEnergy 0 GeV
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV

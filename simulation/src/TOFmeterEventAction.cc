@@ -80,6 +80,7 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleDColumn("e_stack0");   // YSO layers of the Si/YSO stack
   analysisManager->CreateNtupleDColumn("e_stack1");
   analysisManager->CreateNtupleDColumn("e_absorber");
+  analysisManager->CreateNtupleDColumn("cmp_ke");     // primary kinetic energy entering the Compton detector, -1 if never
   // bars with energy: station 0-2, bar 0-8, energy, first time, energy-weighted position
   analysisManager->CreateNtupleIColumn("bar_st", fBarStation);
   analysisManager->CreateNtupleIColumn("bar_id", fBarIndex);
@@ -117,6 +118,7 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   fCamPrimary = 0;
   fStackEdep[0] = fStackEdep[1] = 0.;
   fAbsorberEdep = 0.;
+  fComptonEntryKE = -1.;
   fEndPos = G4ThreeVector();
   fEndTime = 0.;
   fEndKinE = 0.;
@@ -182,7 +184,7 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     if (global.OutputFormat == 0) return; // ASCII output only
 
     const G4bool detectorEnergy = !fBars.empty() || fCamEdep[0] > 0. || fCamEdep[1] > 0. || fCamEdep[2] > 0.
-                                  || fStackEdep[0] > 0. || fStackEdep[1] > 0.;
+                                  || fStackEdep[0] > 0. || fStackEdep[1] > 0. || fComptonEntryKE >= 0.;
     if (global.EventFilter == 1) // skip muons that only crossed air
     {
       const G4bool stoppedInSetup = fEndVolume != "OutOfWorld" && fEndVolume != "WorldPhys";
@@ -240,6 +242,7 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fStackEdep[0] / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fStackEdep[1] / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fAbsorberEdep / MeV);
+    analysisManager->FillNtupleDColumn(fNtupleId, col++, fComptonEntryKE < 0. ? -1. : fComptonEntryKE / MeV);
     analysisManager->AddNtupleRow(fNtupleId);
 }
 

@@ -1,12 +1,26 @@
 ### Interactive view in the Qt GUI: geometry plus cosmic-muon tracks.
-###   cd TOFmeter-work && ./TOFmeter      then in the Qt command line:
+###   ./TOFmeter        (no argument: opens the Qt GUI), then in the Qt command line:
 ###   /control/execute macro/vis_qt.mac
 ### For another setup run its geometry macro first, e.g.
 ###   /control/execute macro/geom_tofmeter_example.mac
 ### More events: /run/beamOn 20 (tracks accumulate; /vis/viewer/rebuild clears them).
 ### Trajectories: red negative, blue positive, green neutral.
-### The view turns slowly until the first click, scroll or key press in the viewer;
-### /tof/vis/spin 20 turns it again (deg/s), /tof/vis/spin 0 stops it.
+### The view turns slowly until the first click, scroll or key press in the viewer.
+### Live control from the Qt command line:
+###   /tof/vis/spin 20                              turn again, at 20 deg/s
+###   /tof/vis/spin 0                               stop turning
+###   /vis/viewer/set/viewpointThetaPhi 50 30 deg   change the tilt
+
+# ---------------- tune here ----------------
+# Camera tilt: theta is measured from the vertical (z) axis.
+#   90 = level side view; smaller = looking down from higher up.
+#   Keep it above ~10: at 0 the camera points along the up vector.
+/control/alias viewTheta 70
+# Starting azimuth (the spin carries it around from here)
+/control/alias viewPhi 30
+# Turn speed in deg/s (0 = no turning)
+/control/alias spinSpeed 10
+# -------------------------------------------
 
 /vis/open TSGQt 1000x800-0+0
 /vis/viewer/set/autoRefresh false
@@ -19,7 +33,7 @@
 /vis/viewer/set/style surface
 /vis/viewer/set/background white
 /vis/viewer/set/upVector 0 0 1
-/vis/viewer/set/viewpointThetaPhi 60 30 deg
+/vis/viewer/set/viewpointThetaPhi {viewTheta} {viewPhi} deg
 /vis/scene/add/axes 0 0 0 20 cm
 
 # Trajectories of all particles, accumulated over the run
@@ -41,18 +55,5 @@
 /tof/cosmic/halfY 40 cm
 /run/beamOn 10
 
-# Slow turn about the vertical axis (10 deg/s) until you interact with the viewer
-/tof/vis/spin 10
-
-# Make rotate
-/vis/viewer/set/viewpointThetaPhi 70 0 deg
-/vis/viewer/save view_00.g4view
-/vis/viewer/set/viewpointThetaPhi 70 90 deg
-/vis/viewer/save view_01.g4view
-/vis/viewer/set/viewpointThetaPhi 70 180 deg
-/vis/viewer/save view_02.g4view
-/vis/viewer/set/viewpointThetaPhi 70 270 deg
-/vis/viewer/save view_03.g4view
-/vis/viewer/set/viewpointThetaPhi 70 359 deg
-/vis/viewer/save view_04.g4view
-/vis/viewer/interpolate *.g4view 100 50 millisecond
+# Slow turn about the vertical axis until you interact with the viewer
+/tof/vis/spin {spinSpeed}

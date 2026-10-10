@@ -15,6 +15,14 @@ TOFmeterSteppingAction::TOFmeterSteppingAction(const Pb::DetectorConstruction* d
 
 void TOFmeterSteppingAction::UserSteppingAction(const G4Step* step)
 {
+  // Kinetic energy of the primary where it first enters a layer of the Compton detector
+  const G4StepPoint* post = step->GetPostStepPoint();
+  if (step->GetTrack()->GetTrackID() == 1 && post->GetStepStatus() == fGeomBoundary) {
+    const G4VPhysicalVolume* next = post->GetPhysicalVolume();
+    if (next && fDetector->IsComptonDetector(next->GetLogicalVolume()))
+      fEventAction->SetComptonEntry(post->GetKineticEnergy());
+  }
+
   const G4double edep = step->GetTotalEnergyDeposit();
   if (edep <= 0.) return;
 

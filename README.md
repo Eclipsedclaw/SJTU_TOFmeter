@@ -4,6 +4,8 @@ Code for the cosmic-muon TOF-meter project at SJTU: a plastic-scintillator time-
 tracker with a lead layer on top and a Compton detector, built to identify materials from the
 muonic X-rays of stopped muons. The repository holds the data-acquisition setup and the Geant4
 simulation.
+<img width="1698" height="529" alt="SJTU_TOF_config" src="https://github.com/user-attachments/assets/4463742c-7fed-4d9b-aaa3-d817afa9f2c1" />
+
 
 ## Folders
 

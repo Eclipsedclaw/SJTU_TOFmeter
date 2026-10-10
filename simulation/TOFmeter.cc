@@ -41,6 +41,7 @@
 #include "TOFmeterSteppingAction.hh"
 #include "TOFmeterTrackingAction.hh"
 #include "TOFmeterViewSpinner.hh"
+#include "TOFmeterAppIcon.hh"
 
 #include "G4RunManager.hh"
 #include "G4UImanager.hh"
@@ -132,7 +133,10 @@ int main(int argc,char** argv)
 #ifdef TOF_USE_QT
     // /tof/vis/spin: slow rotation of the Qt viewer until the first click (macro/vis_qt.mac)
     std::unique_ptr<TOFmeterViewSpinner> spinner;
-    if (session->IsGUI() && QCoreApplication::instance()) spinner = std::make_unique<TOFmeterViewSpinner>();
+    if (session->IsGUI() && QCoreApplication::instance()) {
+      spinner = std::make_unique<TOFmeterViewSpinner>();
+      SetTOFmeterAppIcon();  // TOFmeter logo in the Dock and on the windows
+    }
 #endif
     UI->ApplyCommand("/control/execute");    
     session->SessionStart();

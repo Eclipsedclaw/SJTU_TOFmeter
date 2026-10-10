@@ -682,6 +682,7 @@ for (const auto& station : scintStations) {
     chamberComponents.push_back(logic_Silicon);
     chamberComponents.push_back(logic_YSO);
     fKinds[logic_YSO] = DetectorKind::StackYSO;
+    fKinds[logic_Silicon] = DetectorKind::StackSi;
 
     // 底部 Si 贴合在 Al3 铝框架 (z = -52.35 cm) 的上表面, 其余各层向上排列
     G4double firstSiliconCenterZ = stackAlFrameZ + stackAlFrameHalfZ + siliconLayerHalfZ;
@@ -1042,6 +1043,12 @@ DetectorKind DetectorConstruction::GetKind(const G4LogicalVolume* lv) const
 {
     auto it = fKinds.find(lv);
     return it == fKinds.end() ? DetectorKind::None : it->second;
+}
+
+G4bool DetectorConstruction::IsComptonDetector(const G4LogicalVolume* lv) const
+{
+    const DetectorKind kind = GetKind(lv);
+    return kind == DetectorKind::StackYSO || kind == DetectorKind::StackSi || kind == DetectorKind::CameraLayer;
 }
 
 void DetectorConstruction::UpdateGeometry()

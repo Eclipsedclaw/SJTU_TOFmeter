@@ -1,0 +1,14 @@
+// TOFmeter logo marks for the application icon. CMake writes TOFmeterLogo.hh from this template
+// with the SVG files of the repository's data/ folder (tofmeter-logo-mark.svg for light desktops,
+// tofmeter-logo-mark-reversed.svg for dark ones), so the executable needs no file at run time.
+
+#ifndef TOFmeterLogo_h
+#define TOFmeterLogo_h 1
+
+namespace TOFmeterLogo
+{
+inline constexpr char kMark[] = R"tofsvg(@TOF_LOGO_MARK@)tofsvg";
+inline constexpr char kMarkReversed[] = R"tofsvg(@TOF_LOGO_MARK_REVERSED@)tofsvg";
+}
+
+#endif

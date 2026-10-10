@@ -62,6 +62,8 @@ class TOFmeterEventAction : public G4UserEventAction
                       G4int pdg, G4int trackID);
     void AddStackHit(G4int layer, G4double edep);
     void AddAbsorberHit(G4double edep) { fAbsorberEdep += edep; }
+    // first entry of the primary into the Compton detector (later entries are ignored)
+    void SetComptonEntry(G4double kinE) { if (fComptonEntryKE < 0.) fComptonEntryKE = kinE; }
     void SetPrimaryEnd(const G4ThreeVector& pos, G4double time, G4double kinE,
                        const G4String& process, const G4String& volume);
 
@@ -75,6 +77,7 @@ class TOFmeterEventAction : public G4UserEventAction
     G4int fCamPrimary;                // bit k set if the primary deposited energy in CHk
     G4double fStackEdep[2];
     G4double fAbsorberEdep;
+    G4double fComptonEntryKE;         // -1 if the primary never entered the Compton detector
     G4ThreeVector fEndPos;
     G4double fEndTime;
     G4double fEndKinE;

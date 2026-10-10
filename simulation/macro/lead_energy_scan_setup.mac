@@ -1,0 +1,21 @@
+### Geometry and source of one lead thickness of a lead x energy scan: lead layer leadT cm,
+### seed from the scan definition, ROOT output with /EventFilter 2 into leadScanDir, EXPACS muons
+### from the 2 x 2 m plane at z = 42 cm with zenith < 75 deg. Used by lead_energy_scan_t.mac and
+### lead_energy_scan_check_t.mac.
+
+/tof/det/leadThickness {leadT} cm
+/update
+/control/add leadScanSeed {leadScanSeed0} {leadT}
+/gun/seed {leadScanSeed}
+
+/OutputFormat 1
+/EventFilter 2
+/OutputDirectory {leadScanDir}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 42 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 75 deg

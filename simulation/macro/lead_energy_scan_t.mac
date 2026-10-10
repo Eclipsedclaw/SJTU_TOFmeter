@@ -4,23 +4,7 @@
 ### The seeds depend on the scan and the thickness only, so a thickness gives the same events
 ### whether it runs alone (scripts/lead_energy_scan.sh) or inside the full loop.
 
-/tof/det/leadThickness {leadT} cm
-/update
-/control/add leadScanSeed {leadScanSeed0} {leadT}
-/gun/seed {leadScanSeed}
-
-/OutputFormat 1
-/EventFilter 2
-/OutputDirectory {leadScanDir}
-/GeneralParticleSource 2
-/tof/cosmic/model expacs
-/tof/cosmic/species mu+ mu-
-/tof/cosmic/angular all 2 mu+ guan mu- guan
-/tof/cosmic/planeCenter 0 0 42 cm
-/tof/cosmic/halfX 100 cm
-/tof/cosmic/halfY 100 cm
-/tof/cosmic/thetaMax 75 deg
-
+/control/execute macro/lead_energy_scan_setup.mac
 /control/foreach {leadScanPoint} leadScanE {leadScanEnergies}
 /control/execute macro/lead_spectrum_t.mac
 

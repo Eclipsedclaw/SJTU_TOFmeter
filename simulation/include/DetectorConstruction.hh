@@ -52,8 +52,8 @@ class G4UImessenger;
 namespace Pb
 {
 
-// Role of an active volume, used for event-level scoring (TOFmeterSteppingAction)
-enum class DetectorKind { None, Bar, CameraLayer, StackYSO, Absorber };
+// Role of a volume, used for event-level scoring (TOFmeterSteppingAction); StackSi is passive
+enum class DetectorKind { None, Bar, CameraLayer, StackYSO, StackSi, Absorber };
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
@@ -72,6 +72,8 @@ public:
     void SetCheckOverlaps(G4bool);
 
     DetectorKind GetKind(const G4LogicalVolume* lv) const;
+    // Layers of the Compton detector: the Si/YSO stack and the camera
+    G4bool IsComptonDetector(const G4LogicalVolume* lv) const;
 
     // Thickness of the lead layer on top, 0 when it is not built
     G4double GetLeadThickness() const { return fBuildAbsorber ? fLeadThickness : 0.; }

@@ -22,7 +22,9 @@ The physics list is QGSP_BERT; set `PHYSLIST` to choose another reference list, 
 `PHYSLIST=FTFP_BERT_EMZ ./TOFmeter ...` (EM option 4). Avoid `*_HP` and `Shielding` until the
 G4NDL dataset is installed (its download is incomplete). Without arguments `./TOFmeter` opens the
 Qt GUI (`/control/execute macro/vis_qt.mac` fills the viewer); in batch mode pictures go to files
-(`macro/vis*.mac`).
+(`macro/vis*.mac`). The GUI shows the TOFmeter logo as its Dock and window icon (the marks in the
+repository's `data/` folder, built into the executable; the reversed mark on a dark desktop),
+when CMake finds the Qt SVG module.
 
 | Macro | What it does |
 |---|---|
@@ -102,7 +104,8 @@ copy number: station 0-2 for bars (`copyNb` = bar 0-8), 10 for the camera (`copy
   camera `e_ch0..2`, first-deposit times `t_ch0..2` (-1 if none), `cam_prim` (bit k: primary
   deposited in CHk) and every camera step `cam_layer cam_pdg cam_trk cam_e cam_t cam_x cam_y cam_z`;
   bars with energy `bar_st bar_id bar_e bar_t bar_x bar_y bar_z` (energy-weighted positions);
-  `e_stack0 e_stack1 e_absorber`.
+  `e_stack0 e_stack1 e_absorber`; `cmp_ke`, the kinetic energy of the primary where it first enters a
+  layer of the Compton detector (stack Si or YSO, camera), -1 if it never does.
 - `run`, one row per run: `n_events generator seed`, and for cosmic runs `flux` (/cm2/s through the
   plane), `area` (cm2), `live_time` (s), `e_min e_max theta_max plane_z model particles`, `e_mono`
   (MeV, 0 unless mono-energetic); `lead_cm`, the lead-layer thickness (0 if not built).

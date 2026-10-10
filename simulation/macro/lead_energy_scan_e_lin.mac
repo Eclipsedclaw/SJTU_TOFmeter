@@ -1,0 +1,10 @@
+### One point of a scan with equal bands (lead_lowE_scan_def.mac): leadScanEvents muons of
+### leadScanE GeV, normalised to the band leadScanE -+ leadScanHalfBand (GeV)
+
+/control/subtract leadScanLow {leadScanE} {leadScanHalfBand}
+/control/add leadScanHigh {leadScanE} {leadScanHalfBand}
+/tof/cosmic/energyMin {leadScanLow} GeV
+/tof/cosmic/energyMax {leadScanHigh} GeV
+/tof/cosmic/monoEnergy {leadScanE} GeV
+/OutputFile leadscan_t{leadT}_E{leadScanE}
+/run/beamOn {leadScanEvents}

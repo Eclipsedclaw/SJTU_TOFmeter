@@ -46,6 +46,16 @@ add_executable(TOFmeter TOFmeter.cc ${sources} ${headers})
 target_compile_features(TOFmeter PRIVATE cxx_std_17)
 target_compile_definitions(TOFmeter PRIVATE TOF_GEANT4_DATA_DIR="${TOF_GEANT4_DATA_DIR}")
 target_link_libraries(TOFmeter ${Geant4_LIBRARIES})
+# Qt helpers for the GUI (/tof/vis/spin) when Geant4 was built with Qt
+if(Geant4_qt_FOUND)
+  if(TARGET Qt6::Widgets)
+    target_link_libraries(TOFmeter Qt6::Widgets)
+    target_compile_definitions(TOFmeter PRIVATE TOF_USE_QT)
+  elseif(TARGET Qt5::Widgets)
+    target_link_libraries(TOFmeter Qt5::Widgets)
+    target_compile_definitions(TOFmeter PRIVATE TOF_USE_QT)
+  endif()
+endif()
 
 #----------------------------------------------------------------------------
 # Copy all macros, analysis scripts and data tables to the build directory, i.e. the directory in which we
@@ -55,6 +65,7 @@ target_link_libraries(TOFmeter ${Geant4_LIBRARIES})
 file(GLOB TOFmeter_SCRIPTS RELATIVE ${PROJECT_SOURCE_DIR}
      ${PROJECT_SOURCE_DIR}/macro/*.mac
      ${PROJECT_SOURCE_DIR}/analysis/*.C
+     ${PROJECT_SOURCE_DIR}/scripts/*.sh
      ${PROJECT_SOURCE_DIR}/data/*.txt)
 
 foreach(_script ${TOFmeter_SCRIPTS})

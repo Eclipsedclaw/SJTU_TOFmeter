@@ -6,6 +6,8 @@
 #include "G4SDManager.hh"
 
 #include "G4Box.hh"
+#include "G4ExtrudedSolid.hh"
+#include "G4TwoVector.hh"
 #include "G4Tubs.hh"
 #include "G4LogicalVolume.hh"
 #include "G4PVPlacement.hh"
@@ -126,6 +128,8 @@ DetectorConstruction::DetectorConstruction()
       fBuildFrame(true),
       fBuildStack(true),
       fBuildAbsorber(true),
+      fBuildLeadWalls(true),
+      fLeadThickness(10.0 * cm),
       fWorldMaterialName("G4_AIR"),
       fWorldSize(4.0 * m, 4.0 * m, 3.0 * m),
       fBuildCamera(false),
@@ -340,10 +344,33 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
     // z points up: muons come from +z. From the top: lead layer, steel plate,
     // top TOF on Al1, middle TOF on Al2, Si/YSO stack (Compton detector) on Al3,
-    // bottom TOF on Al4.
-    if (fBuildAbsorber) {
-    // Absorber (铅), the lead layer on top
-    G4double Absorber_sizeX = 60 * cm, Absorber_sizeY = 60 * cm, Absorber_sizeZ = 10 * cm;
+    // bottom TOF on Al4; four lead walls around everything.
+
+    // Framework Fe: stainless-steel plate holding the lead layer
+    G4double framework_Fe_sizeXY = 80 * cm, framework_Fe_sizeZ = 1 * cm;
+    G4double framework_Fe_z = 20.5 * cm;
+    const G4double frameTopZ = framework_Fe_z + 0.5 * framework_Fe_sizeZ;     // top of the steel plate
+
+    // Stainless-steel L beams on the four corners of the steel plate: 10 cm legs, 1 cm thick
+    const G4double beamLeg = 10.0 * cm, beamThick = 1.0 * cm;
+
+    // Lead walls: 10 cm thick, 5 cm outside the edges of the steel plate
+    const G4double leadWallThick = 10.0 * cm, leadWallGap = 5.0 * cm;
+    const G4double leadWallInner = 0.5 * framework_Fe_sizeXY + leadWallGap;
+
+    // Lead layer on top of the steel plate (/tof/det/leadThickness, 10 cm by default):
+    // its bottom stays on the plate, so a thicker layer grows upwards
+    if (fLeadThickness < 0.) {
+        G4Exception("DetectorConstruction::Construct", "Geometry004", FatalErrorInArgument,
+                    "/tof/det/leadThickness must not be negative");
+    }
+    const G4double leadLayerThick = fLeadThickness;
+    const G4double leadLayerZ = frameTopZ + 0.5 * leadLayerThick;
+
+    if (fBuildAbsorber && leadLayerThick > 0.) {
+    // Absorber (铅), the lead layer on top. It reaches the inner faces of the lead
+    // walls, whose tops are level with it, so the lead covers the whole top.
+    G4double Absorber_sizeX = 2 * leadWallInner, Absorber_sizeY = 2 * leadWallInner, Absorber_sizeZ = leadLayerThick;
     auto solid_Absorber = new G4Box("AbsorberSolid",
                                     0.5 * Absorber_sizeX,
                                     0.5 * Absorber_sizeY,
@@ -363,7 +390,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
     new G4PVPlacement(
         0,
-        G4ThreeVector(0,0,26*cm),
+        G4ThreeVector(0,0,leadLayerZ),
         logic_Absorber,
         "AbsorberPhys",
         logic_world,
@@ -373,9 +400,11 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     );
     }
 
-    // Framework Al
-    G4double framework_Al_sizeLong  = 60.0 * cm;
-    G4double framework_Al_sizeShort = 40.0 * cm;
+    // Framework Al: the plates sit between the corner L beams. The long side spans the
+    // distance between the inner faces of the beams (80 cm), the short side fits the
+    // gap between the leg tips of two beams (80 + 2 x 1 - 2 x 10 = 62 cm).
+    G4double framework_Al_sizeLong  = framework_Fe_sizeXY;
+    G4double framework_Al_sizeShort = framework_Fe_sizeXY + 2 * beamThick - 2 * beamLeg;
     G4double framework_Al_sizeZ     = 3.0 * mm;
 
 std::vector<G4double> alPositions = {
@@ -394,9 +423,12 @@ std::vector<G4bool> alLongAlongX = {
     true    // Al4: X, perpendicular to Al2
 };
 
+// Vertical extent of the frame and of the whole setup
+const G4double setupBottomZ = alPositions[3] - 0.5 * framework_Al_sizeZ;   // bottom of Al4
+const G4double leadTopZ = frameTopZ + leadLayerThick;                       // top of the lead layer
+
     if (fBuildFrame) {
     // Framework Fe, the stainless-steel plate under the lead layer
-    G4double framework_Fe_sizeXY = 80 * cm, framework_Fe_sizeZ = 1 * cm;
     auto solid_framework_Fe = new G4Box("FrameworkFeSolid",
                                         0.5 * framework_Fe_sizeXY,
                                         0.5 * framework_Fe_sizeXY,
@@ -407,7 +439,7 @@ std::vector<G4bool> alLongAlongX = {
 
     new G4PVPlacement(
         0,
-        G4ThreeVector(0,0,20.5*cm),
+        G4ThreeVector(0,0,framework_Fe_z),
         logic_framework_Fe,
         "FrameworkFePhys",
         logic_world,
@@ -449,6 +481,56 @@ for (size_t i = 0; i < alPositions.size(); ++i) {
         checkOverlaps
     );
 }
+
+    // Stainless-steel L beams (10 cm legs, 1 cm thick) on the four corners, from the
+    // bottom of Al4 to the top of the steel plate. Each wraps a plate corner from
+    // outside; the L is drawn for the (+x, +y) corner with its outer edge at the origin.
+    const std::vector<G4TwoVector> beamProfile = {
+        {0., 0.}, {0., -beamLeg}, {-beamThick, -beamLeg},
+        {-beamThick, -beamThick}, {-beamLeg, -beamThick}, {-beamLeg, 0.}};
+    auto solid_beam = new G4ExtrudedSolid("SupportBeamSolid", beamProfile,
+                                          0.5 * (frameTopZ - setupBottomZ),
+                                          G4TwoVector(), 1., G4TwoVector(), 1.);
+    auto logic_beam = new G4LogicalVolume(solid_beam, framework_Fe_mat, "SupportBeamLogic");
+    logic_beam->SetVisAttributes(G4VisAttributes(G4Colour(0.75, 0.75, 0.75)));
+    chamberComponents.push_back(logic_beam);
+    const G4double beamCorner = 0.5 * framework_Fe_sizeXY + beamThick;
+    for (G4int k = 0; k < 4; ++k) {
+        G4RotationMatrix rotation;
+        rotation.rotateZ(90. * deg * k);
+        const G4ThreeVector corner =
+            rotation * G4ThreeVector(beamCorner, beamCorner, 0.5 * (frameTopZ + setupBottomZ));
+        new G4PVPlacement(G4Transform3D(rotation, corner), logic_beam, "SupportBeamPhys",
+                          logic_world, false, k, checkOverlaps);
+    }
+    }
+
+    if (fBuildLeadWalls) {
+    // Four 10 cm lead walls 5 cm outside the steel-plate edges, from the bottom of Al4
+    // to the top of the lead layer (to the top of the steel plate when the layer is
+    // 0 cm thick). The walls along x span the full outer width, the walls along y fit
+    // between them.
+    const G4double wallThick = leadWallThick;
+    const G4double wallInner = leadWallInner;
+    const G4double wallCentre = wallInner + 0.5 * wallThick;
+    const G4double wallHalfZ = 0.5 * (leadTopZ - setupBottomZ);
+    const G4double wallZ = 0.5 * (leadTopZ + setupBottomZ);
+    auto solid_wallX = new G4Box("LeadWallXSolid", wallInner + wallThick, 0.5 * wallThick, wallHalfZ);
+    auto solid_wallY = new G4Box("LeadWallYSolid", 0.5 * wallThick, wallInner, wallHalfZ);
+    auto logic_wallX = new G4LogicalVolume(solid_wallX, Absorber_mat, "LeadWallXLogic");
+    auto logic_wallY = new G4LogicalVolume(solid_wallY, Absorber_mat, "LeadWallYLogic");
+    for (auto lv : {logic_wallX, logic_wallY}) {
+        lv->SetVisAttributes(G4VisAttributes(G4Colour(0.4, 0.4, 0.45, 0.3)));
+        chamberComponents.push_back(lv);
+    }
+    new G4PVPlacement(nullptr, G4ThreeVector(0., wallCentre, wallZ), logic_wallX, "LeadWallPosY",
+                      logic_world, false, 0, checkOverlaps);
+    new G4PVPlacement(nullptr, G4ThreeVector(0., -wallCentre, wallZ), logic_wallX, "LeadWallNegY",
+                      logic_world, false, 1, checkOverlaps);
+    new G4PVPlacement(nullptr, G4ThreeVector(wallCentre, 0., wallZ), logic_wallY, "LeadWallPosX",
+                      logic_world, false, 2, checkOverlaps);
+    new G4PVPlacement(nullptr, G4ThreeVector(-wallCentre, 0., wallZ), logic_wallY, "LeadWallNegX",
+                      logic_world, false, 3, checkOverlaps);
     }
 
     if (fBuildStations) {
@@ -691,6 +773,9 @@ void DetectorConstruction::PrintGeometry()
         G4cout << "No geometry has been built yet" << G4endl;
         return;
     }
+    // the table sets a fixed 2-digit format; restore the stream afterwards
+    const std::ios_base::fmtflags oldFlags = G4cout.flags();
+    const std::streamsize oldPrecision = G4cout.precision();
     G4cout << "\n=== Placed volumes (world frame, cm; size is the axis-aligned extent) ===\n"
            << "name:copy                       material                    centre x       y       z"
            << "     size x       y       z      z from      to" << G4endl;
@@ -728,6 +813,8 @@ void DetectorConstruction::PrintGeometry()
         }
     };
     print(fWorldPhys, G4Transform3D(), 0);
+    G4cout.flags(oldFlags);
+    G4cout.precision(oldPrecision);
 }
 
 void DetectorConstruction::ConstructComptonCamera()
@@ -973,9 +1060,13 @@ void DetectorConstruction::DefineCommands()
     det->DeclareProperty("worldMaterial", fWorldMaterialName, "World material (G4_AIR or G4_Galactic, ...)");
     det->DeclarePropertyWithUnit("worldSize", "cm", fWorldSize, "Full world size x y z");
     det->DeclareProperty("stations", fBuildStations, "Build the three 9-bar plastic stations");
-    det->DeclareProperty("frame", fBuildFrame, "Build the Al plates and the stainless-steel plate");
+    det->DeclareProperty("frame", fBuildFrame, "Build the Al plates, the steel plate and the corner beams");
     det->DeclareProperty("stack", fBuildStack, "Build the Si/YSO stack");
-    det->DeclareProperty("absorber", fBuildAbsorber, "Build the 60x60x10 cm Pb absorber");
+    det->DeclareProperty("absorber", fBuildAbsorber, "Build the lead layer on top (90x90 cm, out to the lead walls)");
+    det->DeclarePropertyWithUnit("leadThickness", "cm", fLeadThickness,
+        "Thickness of the lead layer on the steel plate (default 10 cm, 0 = no layer); its bottom "
+        "stays on the plate and the lead walls end level with its top");
+    det->DeclareProperty("leadWalls", fBuildLeadWalls, "Build the four 10 cm lead walls around the setup");
     det->DeclareProperty("camera", fBuildCamera, "Build the three-layer Compton camera");
     det->DeclareMethod("print", &DetectorConstruction::PrintGeometry,
         "Print every placed volume: material, world-frame centre, size and z range (cm)");

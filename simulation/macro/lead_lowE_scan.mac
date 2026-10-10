@@ -1,0 +1,15 @@
+### Fine low-energy version of lead_energy_scan.mac: top & middle & Compton versus muon energy
+### from 100 to 500 MeV in 20 MeV steps and top-lead thickness 0-20 cm in 1 cm steps
+###   ./TOFmeter macro/lead_lowE_scan.mac                          all 21 x 21 points in one process
+###   sh scripts/lead_energy_scan.sh macro/lead_lowE_scan_def.mac  the same, one process per thickness
+### then  root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_lowE")'
+###
+### Same geometry, source plane, zenith law and selection as lead_energy_scan.mac
+### (lead_energy_scan_t.mac). Each point is normalised to the EXPACS muon flux of the band
+### E -+ 10 MeV, so the 21 bands tile 90-510 MeV; the check run of each thickness is the spectrum
+### itself over 90-510 MeV (2 x 10^6 muons), which also measures the rate of muons stopping in the
+### Compton region. Output: output/leadscan_lowE/, same file names as the log scan.
+
+/control/verbose 0
+/control/execute macro/lead_lowE_scan_def.mac
+/control/loop macro/lead_energy_scan_t.mac leadT 0 20 1

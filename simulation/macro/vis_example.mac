@@ -9,6 +9,8 @@
 /vis/viewer/set/autoRefresh false
 /vis/drawVolume
 /vis/geometry/set/visibility WorldLogic 0 false
+/vis/geometry/set/forceWireframe LeadWallXLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallYLogic 0 true
 /vis/viewer/set/style surface
 /vis/viewer/set/background white
 /vis/viewer/set/upVector 0 0 1

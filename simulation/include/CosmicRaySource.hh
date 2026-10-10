@@ -18,6 +18,11 @@
 //          low energies, curvature-corrected zenith angle of Chirkin, hep-ph/0407078),
 //          mu+/mu- = /tof/cosmic/chargeRatio.
 //
+// Mono-energetic mode (/tof/cosmic/monoEnergy E > 0): every particle gets the kinetic
+// energy E, with the zenith distribution of that energy; the species are mixed as in
+// the band. The normalisation (flux, live time) is still the spectrum integrated over
+// energyMin - energyMax, so that range should be the energy band that E stands for.
+//
 
 #ifndef CosmicRaySource_h
 #define CosmicRaySource_h 1
@@ -51,6 +56,7 @@ class CosmicRaySource
     G4String GetParticles() const;               // charge setting (guan) or species list (expacs)
     G4double GetEnergyMin() const { return fEnergyMin; }
     G4double GetEnergyMax() const { return fEnergyMax; }
+    G4double GetMonoEnergy() const { return fMonoEnergy; }   // 0 = energies sampled from the spectrum
     G4double GetThetaMax() const { return fThetaMax; }
     const G4ThreeVector& GetPlaneCenter() const { return fPlaneCenter; }
 
@@ -84,6 +90,7 @@ class CosmicRaySource
     G4double fHalfY;
     G4double fEnergyMin;      // kinetic (per nucleon for ions)
     G4double fEnergyMax;
+    G4double fMonoEnergy;     // > 0: every particle gets this energy (per nucleon for ions)
     G4double fThetaMax;
     G4String fCharge;         // guan: both, mu-, mu+
     G4double fChargeRatio;    // guan: mu+/mu-

@@ -1,0 +1,12 @@
+### Check run for one lead thickness of a lead x energy scan: the EXPACS muon spectrum itself over
+### the band range of the scan (leadSpectrumMin - leadSpectrumMax, GeV), same plane and selection.
+### Its rates should equal the sums over the mono-energetic points. Needs leadT and the aliases of
+### the scan definition; expects the geometry and source settings of lead_energy_scan_t.mac.
+
+/control/add leadSpectrumSeed {leadSpectrumSeed0} {leadT}
+/gun/seed {leadSpectrumSeed}
+/tof/cosmic/monoEnergy 0 GeV
+/tof/cosmic/energyMin {leadSpectrumMin} GeV
+/tof/cosmic/energyMax {leadSpectrumMax} GeV
+/OutputFile leadspec_t{leadT}
+/run/beamOn {leadSpectrumEvents}

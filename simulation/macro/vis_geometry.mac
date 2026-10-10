@@ -13,6 +13,7 @@
 ###   geometry_oblique_wire.png   all edges of all volumes, axes x (red), y (green), z (blue) at the origin
 ###   geometry_top_xy.png         all edges, looking down: x right, y up (footprints, alignment)
 ###   geometry_oblique.png        solid view from a lower angle, without the Al and steel plates
+###                               (lead walls drawn as outlines in the solid views)
 ###   geometry_front_xz.png       looking along +y, x right, z up
 ###   geometry_side_yz.png        looking along -x, y right, z up
 ###   g4_NN.wrl                   VRML file for an interactive viewer (newest NN)
@@ -53,6 +54,8 @@
 # (this driver does not draw objects behind transparent ones). Attribute changes
 # need /vis/viewer/rebuild before the picture is written.
 /vis/viewer/set/style surface
+/vis/geometry/set/forceWireframe LeadWallXLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallYLogic 0 true
 /vis/geometry/set/visibility FrameworkAlLogic 0 false
 /vis/geometry/set/visibility FrameworkFeLogic 0 false
 /vis/geometry/set/colour ScintillatorLogicX 0 0.1 0.75 0.1 1

@@ -43,10 +43,10 @@ struct global_struct{
 	float time, energy, eDep, px, py, pz, x, y,z, stepLength;
 	char material[10],parentProcess[30], processName[30];
 	int CheckOverlap;
-	char outfile[100];
-	char outdir[100];
-	char infile[100];
-	char indir[100];
+	char outfile[512];
+	char outdir[512];
+	char infile[512];
+	char indir[512];
     G4int seed;
 };
 

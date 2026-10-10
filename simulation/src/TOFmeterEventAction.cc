@@ -181,13 +181,14 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     extern global_struct global;
     if (global.OutputFormat == 0) return; // ASCII output only
 
+    const G4bool detectorEnergy = !fBars.empty() || fCamEdep[0] > 0. || fCamEdep[1] > 0. || fCamEdep[2] > 0.
+                                  || fStackEdep[0] > 0. || fStackEdep[1] > 0.;
     if (global.EventFilter == 1) // skip muons that only crossed air
     {
-      const G4bool anyEnergy = !fBars.empty() || fCamEdep[0] > 0. || fCamEdep[1] > 0. || fCamEdep[2] > 0.
-                               || fStackEdep[0] > 0. || fStackEdep[1] > 0. || fAbsorberEdep > 0.;
       const G4bool stoppedInSetup = fEndVolume != "OutOfWorld" && fEndVolume != "WorldPhys";
-      if (!anyEnergy && !stoppedInSetup) return;
+      if (!detectorEnergy && fAbsorberEdep <= 0. && !stoppedInSetup) return;
     }
+    if (global.EventFilter == 2 && !detectorEnergy) return; // keep only TOF or Compton-detector energy
 
     fBarStation.clear(); fBarIndex.clear(); fBarEdep.clear(); fBarTime.clear();
     fBarX.clear(); fBarY.clear(); fBarZ.clear();

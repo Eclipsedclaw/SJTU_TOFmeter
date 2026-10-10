@@ -98,10 +98,11 @@ TOFmeterDetectorMessenger::TOFmeterDetectorMessenger(Pb::DetectorConstruction* m
 // Event Filter for the ROOT ntuple, 0 for every event, 1 for events with energy in an active volume or a stopped primary
   EventFilterCmd = new G4UIcmdWithAnInteger("/EventFilter", this );
   EventFilterCmd->SetGuidance("EventFilter: 0 write every event to the ROOT ntuple (default),");
-  EventFilterCmd->SetGuidance("1 only events with energy in an active volume or a primary stopped inside the setup");
+  EventFilterCmd->SetGuidance("1 only events with energy in an active volume or a primary stopped inside the setup,");
+  EventFilterCmd->SetGuidance("2 only events with energy in a TOF bar or a Compton-detector layer (stack YSO, camera)");
   EventFilterCmd->SetParameterName("flag",true);
   EventFilterCmd->SetDefaultValue(0);
-  EventFilterCmd->SetRange("flag>=0 && flag<=1");
+  EventFilterCmd->SetRange("flag>=0 && flag<=2");
 
 // Track Type, 0 for all particles, 1 for only primary particle (trackID = 1)
   TrackTypeCmd = new G4UIcmdWithAnInteger("/TrackType", this );
@@ -165,10 +166,20 @@ TOFmeterDetectorMessenger::~TOFmeterDetectorMessenger()
 void TOFmeterDetectorMessenger::SetNewValue(G4UIcommand* command,G4String newValue)
 { 
  extern global_struct global;
-	if(command == OutDirCmd) snprintf(global.outdir, sizeof(global.outdir), "%s", newValue.c_str());
-	if(command == OutFileCmd) snprintf(global.outfile, sizeof(global.outfile), "%s", newValue.c_str());
-	if(command == InDirCmd) snprintf(global.indir, sizeof(global.indir), "%s", newValue.c_str());
-	if(command == InFileCmd) snprintf(global.infile, sizeof(global.infile), "%s", newValue.c_str());
+	// paths go into fixed buffers of global_struct; say so when one has to be cut
+	auto copyPath = [&](char* dest, std::size_t size) {
+		if (newValue.size() >= size) {
+			G4ExceptionDescription ed;
+			ed << command->GetCommandPath() << ": \"" << newValue << "\" is longer than " << size - 1
+			   << " characters and is cut to fit";
+			G4Exception("TOFmeterDetectorMessenger::SetNewValue", "Messenger001", JustWarning, ed);
+		}
+		snprintf(dest, size, "%s", newValue.c_str());
+	};
+	if(command == OutDirCmd) copyPath(global.outdir, sizeof(global.outdir));
+	if(command == OutFileCmd) copyPath(global.outfile, sizeof(global.outfile));
+	if(command == InDirCmd) copyPath(global.indir, sizeof(global.indir));
+	if(command == InFileCmd) copyPath(global.infile, sizeof(global.infile));
   if(command == GunSeedCmd)
   {
       global.seed=(GunSeedCmd->GetNewIntValue(newValue));

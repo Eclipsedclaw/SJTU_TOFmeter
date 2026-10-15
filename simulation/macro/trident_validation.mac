@@ -1,0 +1,47 @@
+### Muon tridents in lead: Geant4 against Russell et al., Phys. Rev. Lett. 26 (1971) 46
+###   ./TOFmeter --preinit macro/physics_tridents.mac macro/trident_validation.mac
+### then  root -l -b -q analysis/trident_validation.C   (the macro runs it at the end)
+### Setup of the paper: a 114.5 g/cm2 (10.09 cm) lead target in vacuum and nothing else; a
+### 10 x 10 cm beam of mu- with p = 10.5 GeV/c (kinetic 10.395 GeV) along the target normal.
+### Tridents are made 10^5 times more often with weights 1e-5, so 10^5 muons give ~1500 tridents
+### instead of ~0.015. Every trident is recorded (tri_*, tmu_* columns); /EventFilter 3 keeps
+### only events with one.
+
+/control/verbose 2
+/tof/det/stations false
+/tof/det/frame false
+/tof/det/stack false
+/tof/det/absorber false
+/tof/det/leadWalls false
+/tof/det/camera false
+/tof/det/worldMaterial G4_Galactic
+/tof/det/worldSize 100 100 100 cm
+/tof/blocks/add PbTarget G4_Pb 0 0 0 40 40 10.088 cm
+/update
+
+# Geant4's trident cross section in lead versus muon energy (needs the physics tables: beamOn 0)
+/run/beamOn 0
+/tof/physics/crossSection muToMuonPairProd mu- G4_Pb 0.85 1 1.5 2 3 5 7 10.395 15 20 50 100
+
+# Tridents 10^5 times more often, each with weight 1e-5
+/process/em/setBiasingFactor muToMuonPairProd 1e5 true
+/run/physicsModified
+
+/OutputFormat 1
+/EventFilter 3
+/OutputDirectory output
+/OutputFile trident_validation
+/gun/seed 5150
+/GeneralParticleSource 1
+/gps/particle mu-
+/gps/ene/type Mono
+/gps/ene/mono 10.395 GeV
+/gps/pos/type Plane
+/gps/pos/shape Rectangle
+/gps/pos/centre 0 0 20 cm
+/gps/pos/halfx 5 cm
+/gps/pos/halfy 5 cm
+/gps/direction 0 0 -1
+/run/beamOn 100000
+
+/control/shell root -l -b -q analysis/trident_validation.C

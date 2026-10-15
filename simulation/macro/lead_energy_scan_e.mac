@@ -1,9 +1,10 @@
-### One point of the log scan (lead_energy_scan_def.mac): leadScanEvents muons of leadScanE GeV,
-### normalised to the band leadScanE / 1.19935 - leadScanE x 1.19935 (1.19935 = 10^(1.5/19), half
-### a step of the 20-point grid from 0.1 to 100 GeV)
+### One point of a log scan (lead_energy_scan_def.mac, lead_thick_scan_def.mac): leadScanEvents
+### muons of leadScanE GeV, normalised to the band leadScanE / leadScanHalfStep - leadScanE x
+### leadScanHalfStep, half a grid step on each side (10^(1.5/19) = 1.19935 for 20 points from 0.1
+### to 100 GeV, 10^(2/59) = 1.08118 for 60 from 0.01 to 100 GeV)
 
-/control/divide leadScanLow {leadScanE} 1.199353946
-/control/multiply leadScanHigh {leadScanE} 1.199353946
+/control/divide leadScanLow {leadScanE} {leadScanHalfStep}
+/control/multiply leadScanHigh {leadScanE} {leadScanHalfStep}
 /tof/cosmic/energyMin {leadScanLow} GeV
 /tof/cosmic/energyMax {leadScanHigh} GeV
 /tof/cosmic/monoEnergy {leadScanE} GeV

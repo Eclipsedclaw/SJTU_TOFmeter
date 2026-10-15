@@ -1,11 +1,12 @@
 ### One lead thickness of a lead x energy scan: all its muon energies, then the check run with the
 ### spectrum itself (lead_spectrum_t.mac). Needs the aliases of a scan definition
-### (lead_energy_scan_def.mac or lead_lowE_scan_def.mac) and leadT, the lead thickness in cm.
+### (lead_energy_scan_def.mac, lead_lowE_scan_def.mac or lead_thick_scan_def.mac) and leadT, the
+### lead thickness in cm.
 ### The seeds depend on the scan and the thickness only, so a thickness gives the same events
-### whether it runs alone (scripts/lead_energy_scan.sh) or inside the full loop.
+### whether it runs alone (scripts/lead_energy_scan.sh) or inside the full loop, unless the
+### definition splits the energies into groups (leadScanGroups > 1), each with its own seed.
 
-/control/execute macro/lead_energy_scan_setup.mac
-/control/foreach {leadScanPoint} leadScanE {leadScanEnergies}
+/control/execute macro/lead_energy_scan_points_t.mac
 /control/execute macro/lead_spectrum_t.mac
 
 # back to the full spectrum

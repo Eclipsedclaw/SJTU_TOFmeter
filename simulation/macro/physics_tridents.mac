@@ -1,0 +1,11 @@
+### Physics switches that Geant4 accepts only before initialisation; use as
+###   ./TOFmeter --preinit macro/physics_tridents.mac <macro>
+### Muon tridents: mu -> mu mu+ mu- (process muToMuonPairProd, Kelner-Kokoulin-Petrukhin cross
+### section, muons above 8 m_mu = 0.85 GeV; no exchange term between the two like-sign muons).
+### Photon conversion to mu+ mu- (process GammaToMuPair), the second step of a pseudotrident.
+### Both are off without this file. To make tridents more frequent, add in the run macro
+###   /process/em/setBiasingFactor muToMuonPairProd <F> true   then   /run/physicsModified
+### (each trident then has weight 1/F; keep F x trident probability per muon << 1).
+
+/physics_lists/em/MuonToMuons true
+/physics_lists/em/GammaToMuons true

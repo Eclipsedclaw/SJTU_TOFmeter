@@ -2,6 +2,8 @@
 
 #include "TOFmeterEventAction.hh"
 
+#include "G4EmProcessSubType.hh"
+#include "G4ParticleDefinition.hh"
 #include "G4Step.hh"
 #include "G4Track.hh"
 #include "G4VPhysicalVolume.hh"
@@ -13,6 +15,17 @@ TOFmeterTrackingAction::TOFmeterTrackingAction(TOFmeterEventAction* eventAction)
 
 void TOFmeterTrackingAction::PostUserTrackingAction(const G4Track* track)
 {
+  // muons made by a trident or by a photon conversion to mu+mu-: energy at creation and at the end
+  if (const G4VProcess* creator = track->GetCreatorProcess()) {
+    const G4int sub = creator->GetProcessSubType();
+    const G4int pdg = track->GetDefinition()->GetPDGEncoding();
+    if (creator->GetProcessType() == fElectromagnetic && (pdg == 13 || pdg == -13)
+        && (sub == fMuonPairProdByCharged || sub == fGammaConversionToMuMu)) {
+      fEventAction->AddTridentMuon(pdg, sub, track->GetVertexKineticEnergy(), track->GetKineticEnergy(),
+                                   track->GetTrackID(), track->GetParentID());
+    }
+  }
+
   if (track->GetTrackID() != 1) return;
 
   const G4StepPoint* last = track->GetStep()->GetPostStepPoint();

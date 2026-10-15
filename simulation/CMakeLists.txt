@@ -1,5 +1,5 @@
-# @author Tsuguo Aramaki
-# @date 2015 March 23
+# @author Jiancheng Zeng with Claude Opus 5.5
+# @date October 2026
 
 #----------------------------------------------------------------------------
 # Setup the project

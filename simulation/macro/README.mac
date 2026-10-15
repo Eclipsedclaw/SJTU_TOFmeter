@@ -1,6 +1,6 @@
 ### Macro file for "TOFmeter.cc"
-### @author Tsuguo Aramaki
-### @date 2015 March 23
+### @author Jiancheng Zeng with Claude Opus 5.5
+### @date October 2026
 ### Updated 2026-10 for the TOF-meter geometry (DetectorConstruction.cc)
 
 # --- Output ---
@@ -13,7 +13,9 @@
 # /OutputType 0 for all, 1 for simple mode (parent process, process name = 0)
 # /EventFilter 0 every event in the ntuple (default), 1 only events with energy in an
 #              active volume or a primary stopped inside the setup, 2 only events with
-#              energy in a TOF bar or a Compton-detector layer (live time unaffected)
+#              energy in a TOF bar or a Compton-detector layer, 3 only events with a muon
+#              trident or a photon conversion to mu+mu-, 4 only events with energy in a
+#              top-TOF bar and in a middle-TOF bar (live time unaffected)
 # /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
 # /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
 
@@ -57,6 +59,18 @@
 
 # /tof/vis/spin 10                    Qt GUI only: turn the viewer at 10 deg/s until the first
 #                                      click, scroll or key press in it; 0 stops
+# --- Physics ---
+# ./TOFmeter --preinit macro/physics_tridents.mac <macro>   muon tridents and gamma -> mu+mu- on
+#                                      (commands accepted only before initialisation)
+# /tof/physics/crossSection muToMuonPairProd mu- G4_Pb 1 10 100   Geant4 cross section (GeV),
+#                                      after a /run/beamOn (0 events is enough)
+# /tof/tridents/keepForVis 0|1|2     keep events (none, with a trident, with a detectable trident)
+#                                      for /vis/reviewKeptEvents; /tof/tridents/maxKept 20 stops the run
+# /tof/tridents/search true          /run/beamOn N (and the Qt Run button) runs until N events are
+#                                      kept, at most /tof/tridents/searchLimit 1000000 muons
+# /process/em/setBiasingFactor muToMuonPairProd 1e5 true, then /run/physicsModified:
+#                                      10^5 times more tridents, weight 1e-5 each (tri_w)
+
 # /Visualization default 0 (unused by DetectorConstruction.cc)
 
 # set active sensitive detector

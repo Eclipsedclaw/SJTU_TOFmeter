@@ -1,0 +1,27 @@
+### Definition of the thick-lead scan of lead_thick_scan.mac, also read by scripts/lead_energy_scan.sh:
+### 60 kinetic energies log-spaced from 0.01 to 100 GeV, each normalised to the band E / 1.08118 -
+### E x 1.08118 (10^(2/59), half a grid step; the bands tile 9.25 MeV-108.1 GeV, the range of the
+### check run), lead 0-50 cm in 1 cm steps, 10^6 muons per point, 2 x 10^6 per check run.
+### The lead top reaches z = 71 cm, so the source plane is at z = 72 cm for every thickness
+### (2 x 2 m, zenith < 75 deg). It still covers every straight path through the top TOF, the middle
+### TOF and the Compton detector: those are at most ~47 deg from the vertical and cross z = 72 cm
+### within 76 cm of the axis. Only events with energy in a top-TOF bar and a middle-TOF bar are
+### written (/EventFilter 4), a superset of the top & middle & Compton coincidences.
+### scripts/lead_energy_scan.sh runs each thickness as leadScanGroups = 6 jobs of 10 energies (seed
+### leadScanSeed0 + 1000 x group + thickness) and one check run.
+
+/control/alias leadScanDir output/leadscan_thick
+/control/alias leadScanEnergies "0.01 0.0116895 0.0136645 0.0159731 0.0186718 0.0218264 0.0255141 0.0298247 0.0348637 0.0407539 0.0476394 0.0556881 0.0650968 0.076095 0.0889513 0.10398 0.121547 0.142083 0.166088 0.194149 0.226951 0.265295 0.310117 0.362512 0.423759 0.495354 0.579044 0.676875 0.791234 0.924915 1.08118 1.26385 1.47738 1.72698 2.01876 2.35983 2.75853 3.22459 3.76939 4.40624 5.15068 6.02089 7.03814 8.22724 9.61725 11.2421 13.1415 15.3617 17.9571 20.991 24.5375 28.6832 33.5292 39.1941 45.816 53.5567 62.6052 73.1824 85.5467 100"
+/control/alias leadScanPoint macro/lead_energy_scan_e.mac
+/control/alias leadScanHalfStep 1.081180751
+/control/alias leadScanTmax 50
+/control/alias leadScanGroups 6
+/control/alias leadScanPlaneZ 72
+/control/alias leadScanHalfXY 100
+/control/alias leadScanFilter 4
+/control/alias leadScanSeed0 10000
+/control/alias leadSpectrumSeed0 20000
+/control/alias leadSpectrumMin 0.00924915
+/control/alias leadSpectrumMax 108.118
+/control/alias leadScanEvents 1000000
+/control/alias leadSpectrumEvents 2000000

@@ -27,23 +27,32 @@
 // $Id: TOFmeterEventAction.cc,v 1.11 2006/06/29 17:48:05 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
  
 #include "TOFmeterEventAction.hh"
 
 #include "G4AnalysisManager.hh"
+#include "G4EmProcessSubType.hh"
+#include "G4GenericMessenger.hh"
+#include "G4Run.hh"
+#include "G4RunManager.hh"
 #include "G4Event.hh"
 #include "G4EventManager.hh"
 #include "G4PrimaryParticle.hh"
 #include "G4PrimaryVertex.hh"
+#include "G4ProcessTable.hh"
+#include "G4LorentzVector.hh"
+#include "G4Step.hh"
+#include "G4Track.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4TrajectoryContainer.hh"
 #include "G4Trajectory.hh"
 #include "G4ios.hh"
 #include "global.h"
+#include <algorithm>
 #include <unistd.h>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -81,6 +90,11 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleDColumn("e_stack1");
   analysisManager->CreateNtupleDColumn("e_absorber");
   analysisManager->CreateNtupleDColumn("cmp_ke");     // primary kinetic energy entering the Compton detector, -1 if never
+  analysisManager->CreateNtupleDColumn("top_ke");     // ... entering a top-TOF bar, -1 if never
+  analysisManager->CreateNtupleDColumn("pb_ke");      // ... leaving the lead layer, -1 if it stopped in it or missed it
+  analysisManager->CreateNtupleIColumn("prim_st");    // TOF stations the primary crossed: bit 0 top, 1 middle, 2 bottom
+  analysisManager->CreateNtupleIColumn("prim_top");   // first top-TOF bar of the primary, -1 if none
+  analysisManager->CreateNtupleIColumn("prim_mid");   // first middle-TOF bar of the primary, -1 if none
   // bars with energy: station 0-2, bar 0-8, energy, first time, energy-weighted position
   analysisManager->CreateNtupleIColumn("bar_st", fBarStation);
   analysisManager->CreateNtupleIColumn("bar_id", fBarIndex);
@@ -98,7 +112,40 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleDColumn("cam_x", fCamX);
   analysisManager->CreateNtupleDColumn("cam_y", fCamY);
   analysisManager->CreateNtupleDColumn("cam_z", fCamZ);
+  // muon tridents, one entry per interaction: vertex, kinetic energy of the muon before and after,
+  // total energy of the produced pair, invariant mass of the two like-sign muons (the muon after
+  // the interaction and the produced one of its charge), weight (1 / biasing factor), PDG code
+  analysisManager->CreateNtupleDColumn("tri_x", fTriX);
+  analysisManager->CreateNtupleDColumn("tri_y", fTriY);
+  analysisManager->CreateNtupleDColumn("tri_z", fTriZ);
+  analysisManager->CreateNtupleDColumn("tri_ein", fTriEin);
+  analysisManager->CreateNtupleDColumn("tri_eout", fTriEout);
+  analysisManager->CreateNtupleDColumn("tri_epair", fTriEpair);
+  analysisManager->CreateNtupleDColumn("tri_mll", fTriMll);
+  analysisManager->CreateNtupleDColumn("tri_w", fTriW);
+  analysisManager->CreateNtupleIColumn("tri_pdg", fTriPdg);
+  analysisManager->CreateNtupleIColumn("tri_parent", fTriParent);   // track ID of the muon, 1 = primary
+  // muons made by a trident (tmu_proc 49) or by a photon conversion to mu+mu- (15, the second step
+  // of a pseudotrident): PDG code, kinetic energy at creation and at the end of the track
+  analysisManager->CreateNtupleIColumn("tmu_pdg", fTmuPdg);
+  analysisManager->CreateNtupleIColumn("tmu_proc", fTmuProc);
+  analysisManager->CreateNtupleDColumn("tmu_e0", fTmuE0);
+  analysisManager->CreateNtupleDColumn("tmu_e1", fTmuE1);
+  analysisManager->CreateNtupleIColumn("tmu_parent", fTmuParent);   // track ID of the muon that made it
+  analysisManager->CreateNtupleIColumn("tmu_st", fTmuSt);           // TOF stations crossed, as prim_st
+  analysisManager->CreateNtupleIColumn("tmu_top", fTmuTop);         // first top-TOF bar, -1 if none
+  analysisManager->CreateNtupleIColumn("tmu_mid", fTmuMid);         // first middle-TOF bar, -1 if none
   analysisManager->FinishNtuple();
+
+  fMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/tridents/", "Muon trident events");
+  fMessenger->DeclareMethod("keepForVis", &TOFmeterEventAction::KeepTridents,
+                            "Keep events for /vis/reviewKeptEvents: 0 none, 1 events with a trident, 2 events with "
+                            "a detectable trident (its three muons all crossed the top and middle TOF); resets the count");
+  fMessenger->DeclareProperty("maxKept", fMaxKept, "Stop the run when this many events have been kept (default 20)");
+  fMessenger->DeclareProperty("search", fSearch,
+                              "true: /run/beamOn N (also the Run button of the Qt toolbar) runs until N events are kept "
+                              "as keepForVis says (1 if it is 0), at most searchLimit muons; false: normal runs");
+  fMessenger->DeclareProperty("searchLimit", fSearchLimit, "Most muons one search may take (default 1000000)");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -119,6 +166,8 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   fStackEdep[0] = fStackEdep[1] = 0.;
   fAbsorberEdep = 0.;
   fComptonEntryKE = -1.;
+  fTopEntryKE = -1.;
+  fLeadExitKE = -1.;
   fEndPos = G4ThreeVector();
   fEndTime = 0.;
   fEndKinE = 0.;
@@ -126,6 +175,11 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   fEndVolume = "none";
   fCamLayer.clear(); fCamPdg.clear(); fCamTrack.clear();
   fCamE.clear(); fCamT.clear(); fCamX.clear(); fCamY.clear(); fCamZ.clear();
+  fTriX.clear(); fTriY.clear(); fTriZ.clear(); fTriEin.clear(); fTriEout.clear();
+  fTriEpair.clear(); fTriMll.clear(); fTriW.clear(); fTriPdg.clear();
+  fTmuPdg.clear(); fTmuProc.clear(); fTmuE0.clear(); fTmuE1.clear();
+  fTriParent.clear(); fTmuParent.clear(); fTmuSt.clear(); fTmuTop.clear(); fTmuMid.clear();
+  fTofTracks.clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -163,6 +217,138 @@ void TOFmeterEventAction::AddStackHit(G4int layer, G4double edep)
   if (layer >= 0 && layer < 2) fStackEdep[layer] += edep;
 }
 
+void TOFmeterEventAction::AddTrident(const G4Step& step, const std::vector<const G4Track*>& secondaries)
+{
+  const G4StepPoint* post = step.GetPostStepPoint();
+  const G4int pdg = step.GetTrack()->GetDefinition()->GetPDGEncoding();
+  // the incoming muon after the interaction, plus the produced muon of the same charge
+  G4LorentzVector likeSign(post->GetMomentum(), post->GetTotalEnergy());
+  G4double pairEnergy = 0.;
+  G4double weight = post->GetWeight();
+  G4int nMuons = 0;
+  for (const G4Track* t : secondaries) {
+    const G4int q = t->GetDefinition()->GetPDGEncoding();
+    if (q != 13 && q != -13) continue;
+    ++nMuons;
+    pairEnergy += t->GetTotalEnergy();
+    weight = t->GetWeight();
+    if (q == pdg) likeSign += G4LorentzVector(t->GetMomentum(), t->GetTotalEnergy());
+  }
+  if (nMuons == 0) return;  // interaction rejected by the integral method: nothing was produced
+
+  fTriX.push_back(post->GetPosition().x() / cm);
+  fTriY.push_back(post->GetPosition().y() / cm);
+  fTriZ.push_back(post->GetPosition().z() / cm);
+  fTriEin.push_back((post->GetKineticEnergy() + pairEnergy) / MeV);  // the nucleus takes no energy
+  fTriEout.push_back(post->GetKineticEnergy() / MeV);
+  fTriEpair.push_back(pairEnergy / MeV);
+  fTriMll.push_back(likeSign.m() / MeV);
+  fTriW.push_back(weight);
+  fTriPdg.push_back(pdg);
+  fTriParent.push_back(step.GetTrack()->GetTrackID());
+}
+
+void TOFmeterEventAction::AddTridentMuon(G4int pdg, G4int creatorSubType, G4double kinE0, G4double kinE1,
+                                         G4int trackID, G4int parentID)
+{
+  const auto it = fTofTracks.find(trackID);
+  const TOFTrack tof = (it == fTofTracks.end()) ? TOFTrack() : it->second;
+  fTmuParent.push_back(parentID);
+  fTmuSt.push_back(tof.mask);
+  fTmuTop.push_back(tof.topBar);
+  fTmuMid.push_back(tof.midBar);
+  fTmuPdg.push_back(pdg);
+  fTmuProc.push_back(creatorSubType);
+  fTmuE0.push_back(kinE0 / MeV);
+  fTmuE1.push_back(kinE1 / MeV);
+}
+
+void TOFmeterEventAction::MarkTOFTrack(G4int trackID, G4int station, G4int bar)
+{
+  TOFTrack& t = fTofTracks[trackID];
+  t.mask |= 1 << station;
+  if (station == 0 && t.topBar < 0) t.topBar = bar;
+  if (station == 1 && t.midBar < 0) t.midBar = bar;
+}
+
+void TOFmeterEventAction::KeepTridents(G4int mode)
+{
+  fKeepTridents = mode;
+  fKept = 0;
+}
+
+// /run/beamOn n with /tof/tridents/search true (TOFmeterRunManager): keep events as keepForVis
+// says (every trident if it is 0) and stop the run at the n-th kept one
+G4int TOFmeterEventAction::BeginTridentSearch(G4int n)
+{
+  if (!G4ProcessTable::GetProcessTable()->FindProcess("muToMuonPairProd", "mu-")) {
+    G4cout << "Trident search: no muon trident process (muToMuonPairProd); start TOFmeter with "
+              "--preinit macro/physics_tridents.mac"
+           << G4endl;
+    return 0;
+  }
+  if (fKeepTridents <= 0) fKeepTridents = 1;
+  fSearchTarget = n;
+  fKept = 0;
+  G4cout << "Trident search: looking for " << n << (n == 1 ? " event" : " events") << " with "
+         << (fKeepTridents == 2 ? "a detectable trident" : "a trident") << " (at most " << fSearchLimit
+         << " muons)" << G4endl;
+  return fSearchLimit;
+}
+
+void TOFmeterEventAction::EndTridentSearch(G4int muons)
+{
+  if (fSearchTarget <= 0) return;
+  G4cout << "Trident search: found " << fKept << " of " << fSearchTarget << " in " << muons << " muons";
+  if (fKept < fSearchTarget) G4cout << " (/tof/tridents/searchLimit sets the most muons per search)";
+  G4cout << G4endl;
+  fSearchTarget = 0;
+}
+
+// A trident of the primary whose three muons (the primary after it and the produced pair) all
+// crossed a bar of the top TOF and a bar of the middle TOF
+G4bool TOFmeterEventAction::DetectableTrident() const
+{
+  const G4int topAndMiddle = 0x3;
+  if ((fPrimSt & topAndMiddle) != topAndMiddle) return false;
+  if (std::find(fTriParent.begin(), fTriParent.end(), 1) == fTriParent.end()) return false;
+  G4int produced = 0;
+  for (std::size_t i = 0; i < fTmuProc.size(); ++i) {
+    if (fTmuProc[i] != fMuonPairProdByCharged || fTmuParent[i] != 1) continue;
+    if ((fTmuSt[i] & topAndMiddle) != topAndMiddle) return false;
+    ++produced;
+  }
+  return produced >= 2;
+}
+
+void TOFmeterEventAction::KeepForVisualisation(const G4Event* evt)
+{
+  const G4int maxKept = fSearchTarget > 0 ? fSearchTarget : fMaxKept;   // a search keeps its own number
+  if (fKeepTridents <= 0 || fTriX.empty() || fKept >= maxKept) return;
+  if (fKeepTridents == 2 && !DetectableTrident()) return;
+  G4EventManager::GetEventManager()->KeepTheCurrentEvent();
+  ++fKept;
+
+  // one line per kept event, to go with its picture
+  G4String top = std::to_string(fPrimTop), middle = std::to_string(fPrimMid);
+  for (std::size_t i = 0; i < fTmuProc.size(); ++i) {
+    if (fTmuProc[i] != fMuonPairProdByCharged) continue;
+    top += " " + std::to_string(fTmuTop[i]);
+    middle += " " + std::to_string(fTmuMid[i]);
+  }
+  G4cout << "Kept trident event " << fKept << "/" << maxKept << ": event " << evt->GetEventID() << ", muon "
+         << fTriEin[0] / 1000. << " -> " << fTriEout[0] / 1000. << " GeV, pair " << fTriEpair[0] / 1000.
+         << " GeV at (" << fTriX[0] << ", " << fTriY[0] << ", " << fTriZ[0] << ") cm, like-sign mass "
+         << fTriMll[0] << " MeV; bars of the primary and the pair, top TOF: " << top << ", middle TOF: " << middle
+         << G4endl;
+  if (fKept >= maxKept) {
+    // the run stops here; its label in the viewer (/vis/scene/add/eventID) then gives the muons used
+    G4RunManager* runManager = G4RunManager::GetRunManager();
+    if (G4Run* run = runManager->GetNonConstCurrentRun()) run->SetNumberOfEventToBeProcessed(evt->GetEventID() + 1);
+    runManager->AbortRun(true);
+  }
+}
+
 void TOFmeterEventAction::SetPrimaryEnd(const G4ThreeVector& pos, G4double time, G4double kinE,
                                         const G4String& process, const G4String& volume)
 {
@@ -180,6 +366,13 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     G4int event_id = evt->GetEventID();
     if (event_id < 10 || event_id%1000 == 0) G4cout << ">>> Event " << evt->GetEventID() << G4endl;
 
+    // TOF stations and bars of the primary
+    const auto primary = fTofTracks.find(1);
+    fPrimSt = (primary == fTofTracks.end()) ? 0 : primary->second.mask;
+    fPrimTop = (primary == fTofTracks.end()) ? -1 : primary->second.topBar;
+    fPrimMid = (primary == fTofTracks.end()) ? -1 : primary->second.midBar;
+    KeepForVisualisation(evt);
+
     extern global_struct global;
     if (global.OutputFormat == 0) return; // ASCII output only
 
@@ -191,6 +384,17 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
       if (!detectorEnergy && fAbsorberEdep <= 0. && !stoppedInSetup) return;
     }
     if (global.EventFilter == 2 && !detectorEnergy) return; // keep only TOF or Compton-detector energy
+    if (global.EventFilter == 3 && fTriX.empty() && fTmuPdg.empty()) return; // keep only muon-pair events
+    if (global.EventFilter == 4) // keep only energy in both a top-TOF and a middle-TOF bar
+    {
+      G4bool top = false, middle = false;
+      for (const auto& [key, sum] : fBars) {
+        if (sum.edep <= 0.) continue;
+        top = top || key / 100 == 0;
+        middle = middle || key / 100 == 1;
+      }
+      if (!top || !middle) return;
+    }
 
     fBarStation.clear(); fBarIndex.clear(); fBarEdep.clear(); fBarTime.clear();
     fBarX.clear(); fBarY.clear(); fBarZ.clear();
@@ -243,6 +447,11 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fStackEdep[1] / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fAbsorberEdep / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fComptonEntryKE < 0. ? -1. : fComptonEntryKE / MeV);
+    analysisManager->FillNtupleDColumn(fNtupleId, col++, fTopEntryKE < 0. ? -1. : fTopEntryKE / MeV);
+    analysisManager->FillNtupleDColumn(fNtupleId, col++, fLeadExitKE < 0. ? -1. : fLeadExitKE / MeV);
+    analysisManager->FillNtupleIColumn(fNtupleId, col++, fPrimSt);
+    analysisManager->FillNtupleIColumn(fNtupleId, col++, fPrimTop);
+    analysisManager->FillNtupleIColumn(fNtupleId, col++, fPrimMid);
     analysisManager->AddNtupleRow(fNtupleId);
 }
 

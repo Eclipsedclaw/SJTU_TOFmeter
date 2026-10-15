@@ -1,0 +1,63 @@
+### Pictures of muon trident events in the TOF-meter, as PNG files (batch)
+###   ./TOFmeter --preinit macro/physics_tridents.mac macro/vis_tridents.mac
+### Cosmic muons above 0.85 GeV (no trident below) from the scan plane, tridents made 10^5 times
+### more often. The run keeps the first tridentMax events with a detectable trident (all three muons
+### cross the top and the middle TOF; tridentKeep 1 keeps every trident event) and then stops. Each
+### kept event is drawn twice by macro/vis_trident_event.mac: output/trident_views/trident_view_<n>.png with n = 2k
+### (oblique) and 2k + 1 (side view) for kept event k; trident_view_1.png is the empty detector. Only muon tracks are drawn, mu- red and mu+ blue; lead, plates and beams are wireframe. The
+### log line "Kept trident event ..." of each event gives its energies, vertex and the TOF bars of
+### the three muons. To look at them in the Qt GUI instead: macro/vis_tridents_qt.mac.
+
+/control/alias tridentKeep 2
+/control/alias tridentMax 20
+
+/control/verbose 2
+/vis/open TSG_OFFSCREEN
+/vis/tsg/offscreen/set/size 1400 1050
+/control/shell mkdir -p output/trident_views
+/vis/tsg/offscreen/set/file auto output/trident_views/trident_view_
+/vis/viewer/set/autoRefresh false
+/vis/drawVolume
+/vis/geometry/set/visibility WorldLogic 0 false
+/vis/geometry/set/forceWireframe AbsorberLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallXLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallYLogic 0 true
+/vis/geometry/set/forceWireframe FrameworkFeLogic 0 true
+/vis/geometry/set/forceWireframe FrameworkAlLogic 0 true
+/vis/geometry/set/forceWireframe SupportBeamLogic 0 true
+/vis/viewer/set/style surface
+/vis/viewer/set/background white
+/vis/viewer/set/upVector 0 0 1
+/vis/viewer/zoomTo 1.1
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByParticleID
+/vis/modeling/trajectories/drawByParticleID-0/set mu- red
+/vis/modeling/trajectories/drawByParticleID-0/set mu+ blue
+/vis/modeling/trajectories/drawByParticleID-0/default/setLineWidth 2
+/vis/filtering/trajectories/create/particleFilter
+/vis/filtering/trajectories/particleFilter-0/add mu-
+/vis/filtering/trajectories/particleFilter-0/add mu+
+/vis/scene/add/eventID
+
+/process/em/setBiasingFactor muToMuonPairProd 1e5 true
+/run/physicsModified
+/OutputFormat 1
+/EventFilter 3
+/OutputDirectory output
+/OutputFile vis_tridents
+/gun/seed 6161
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 42 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin 0.85 GeV
+/tof/cosmic/energyMax 1000 GeV
+/tof/tridents/keepForVis {tridentKeep}
+/tof/tridents/maxKept {tridentMax}
+
+# no drawing while running; the kept events are drawn afterwards
+/vis/disable
+/run/beamOn 2000000
+/vis/enable
+/vis/reviewKeptEvents macro/vis_trident_event.mac

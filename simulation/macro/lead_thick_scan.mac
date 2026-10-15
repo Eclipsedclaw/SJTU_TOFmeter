@@ -1,0 +1,15 @@
+### Thick-lead version of lead_energy_scan.mac: top & middle & Compton coincidences and the muon
+### energy after the lead, versus muon energy (60 points, 0.01-100 GeV) and top-lead thickness
+### (0-50 cm), 10^6 muons per point (lead_thick_scan_def.mac)
+###   caffeinate -is sh scripts/lead_energy_scan.sh macro/lead_thick_scan_def.mac [jobs]
+### (one process per thickness and group of 10 energies; about 2 days on 10 cores), or all in one
+### process (weeks): ./TOFmeter macro/lead_thick_scan.mac
+### then  root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_thick")'
+###       root -l -b -q 'analysis/lead_after_spectrum.C("output/leadscan_thick")'
+### (the script runs both at the end). Each event written has the kinetic energy of the primary
+### leaving the lead layer (pb_ke), entering the top TOF (top_ke) and entering the Compton detector
+### (cmp_ke). Output: output/leadscan_thick/leadscan_t<cm>_E<GeV>.root and leadspec_t<cm>.root.
+
+/control/verbose 0
+/control/execute macro/lead_thick_scan_def.mac
+/control/loop macro/lead_energy_scan_t.mac leadT 0 50 1

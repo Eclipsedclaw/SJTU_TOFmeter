@@ -1,0 +1,42 @@
+### Sea-level muon spectrum before and after a lead slab of leadT cm, with nothing else around:
+### the EXPACS muons of the thick-lead scan (from 9.25 MeV, mu+ and mu-, Guan zenith shape,
+### zenith < 75 deg) fall from a 2 x 2 m plane lying 0.1 mm above an 8 x 8 m lead slab in vacuum.
+### Every muon enters the slab; one that gets through leaves it from below and keeps its energy to
+### the end of the world (vacuum), so ekin is its kinetic energy before the lead and end_ke after.
+### The slab is wide enough that no muon leaves it through a side. One process per thickness (or
+### several, with different seeds), started by
+###   sh scripts/lead_filter.sh [--below E] [--parts n] [jobs] [muons] [thicknesses in cm]
+### which sets the aliases leadT (cm), leadFilterEvents, leadFilterSeed, leadFilterEmax (GeV, the
+### top of the simulated spectrum: 108.118, or only what can leave the lead below E),
+### leadFilterDir and leadFilterFile.
+
+/tof/det/stations false
+/tof/det/frame false
+/tof/det/stack false
+/tof/det/absorber false
+/tof/det/leadWalls false
+/tof/det/camera false
+/tof/det/worldMaterial G4_Galactic
+/tof/det/worldSize 1000 1000 300 cm
+/tof/blocks/add PbSlab G4_Pb 0 0 0 800 800 {leadT} cm
+/update
+
+/control/divide leadFilterHalf {leadT} 2
+/control/add leadFilterPlaneZ {leadFilterHalf} 0.01
+/gun/seed {leadFilterSeed}
+/OutputFormat 1
+/EventFilter 0
+/OutputDirectory {leadFilterDir}
+/OutputFile {leadFilterFile}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 {leadFilterPlaneZ} cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/monoEnergy 0 GeV
+/tof/cosmic/energyMin 0.00924915 GeV
+/tof/cosmic/energyMax {leadFilterEmax} GeV
+/run/beamOn {leadFilterEvents}

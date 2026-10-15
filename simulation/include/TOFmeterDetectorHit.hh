@@ -27,8 +27,8 @@
 // $Id: TOFmeterDetectorHit.hh,v 1.8 2006/06/29 17:47:53 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 

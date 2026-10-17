@@ -1,200 +1,211 @@
-# Set up and ping a DAQ card on dbar
+# DAQ card link setup on dbar
 
-Follow this for each digitizer card that connects to dbar by fiber, one card at a time: connect it, give its server port an address, ping it, make the setting permanent, and record the result. Allow about ten minutes per card.
+How to connect a digitizer card to the dbar server over fiber, give the link an address, ping the card, and make the setting permanent. Do one card at a time; each takes about ten minutes.
 
-Server
+## Setup at a glance
 
-dbar, a Dell PowerEdge R740 running Debian 12
-
-Fiber ports
-
-`ens1f0` to `ens1f3` (network card in riser slot 1) and `ens3f0` to `ens3f3` (riser slot 3)
-
-Lab network
-
-`eno4`, 192.168.35.100. Never change it.
-
-Card settings
-
-One small file per card in `/etc/network/interfaces.d/`
-
-Already done
-
-Card 1: 192.168.69.19 on `ens3f3`, server side 192.168.69.1/24
+| Item | Value |
+|---|---|
+| Server | dbar (Dell PowerEdge R740, Debian 12) |
+| Fiber ports | `ens1f0`–`ens1f3` (network card in riser slot 1) and `ens3f0`–`ens3f3` (riser slot 3) |
+| Lab network | `eno4`, 192.168.35.100. Never change it. |
+| Card settings | One file per card in `/etc/network/interfaces.d/` |
+| Address rule | Tag `69.19` means the card is `192.168.69.19`; the server port gets `192.168.69.1/24` |
+| Already done | Card 1: `192.168.69.19` on `ens3f3`, server side `192.168.69.1/24` |
 
 ## Before you start
 
-- Open a terminal on dbar and run this once, typing your password when asked:
+> [!IMPORTANT]
+> Run `sudo -v` once and type your password. Then paste **one code block at a time** and wait for the prompt to come back before pasting the next. If sudo asks for a password in the middle of a pasted block, it swallows the lines that follow. Sudo remembers your password for 15 minutes; after a long break, run `sudo -v` again.
 
-  ```
-  sudo -v
-  ```
+> [!WARNING]
+> Only work on the eight fiber ports. Never change `eno4`, never edit `/etc/network/interfaces` itself, and never add a `gateway` line to a card's settings file. The server reaches the internet through `eno4`, and a second gateway breaks that.
 
-  After that, paste one block at a time and wait for the prompt to come back before pasting the next. If sudo stops to ask for a password in the middle of a pasted block, it swallows the lines that follow. Sudo remembers your password for 15 minutes; after a long break, run `sudo -v` again.
-- Only work on the eight fiber ports. Never change `eno4`, and never edit `/etc/network/interfaces` itself.
-- One card, one port, one address range. Two ports must never get addresses in the same 192.168.X range.
-- Never add a `gateway` line to a card's settings file. The server reaches the internet through `eno4`, and a second gateway breaks that.
-- If a step fails twice, stop and ask for help (see the end of this page).
+- One card, one port, one address range: two ports must never have addresses in the same `192.168.X` range.
+- The commands use shell variables (`CARD`, `CARD_IP`, `PORT`, and so on). They only exist in the terminal where you set them. If you open a new terminal or log in again, run step 0 and the `PORT=` line from step 1 again.
+- If a step fails twice, stop and see [If you get stuck](#if-you-get-stuck).
 
-## Your card
+## Step 0: Set your card's values
 
-Fill these in first. Every command on this page updates to match, so you can copy them as they are.
+Edit the first two lines for your card, then paste the block:
 
-Card number
+```bash
+CARD=2                    # card number
+CARD_IP=192.168.70.19     # from the tag: "70.19" means 192.168.70.19
+NET=${CARD_IP%.*}         # the first three numbers, e.g. 192.168.70
+SERVER=$NET.1             # server side of this link
+[ "${CARD_IP##*.}" = 1 ] && SERVER=$NET.100   # only if the card's own address ends in .1
+echo "card $CARD: $CARD_IP   server: $SERVER/24"
+```
 
-Address on tag The tag shows the last two numbers: 69.19 means 192.168.69.19.
+**Passes if** the printed line matches the card's tag.
 
-Server port Step 1 tells you which one.
+## Step 1: Connect the card and find its port
 
-dbar, port
+Power the card on and plug its fiber into a free port on the back of dbar. Then switch on all eight fiber ports. This is safe to repeat; ports that are already set up don't change.
 
-fiber, 850 nm
+```bash
+for p in ens1f0 ens1f1 ens1f2 ens1f3 ens3f0 ens3f1 ens3f2 ens3f3; do sudo ip link set $p up; done
+```
 
-Card
+Wait five seconds, then list every fiber port with its link and address:
 
-The server port takes the card's first three numbers and ends in .1. The /24 means the whole 192.168.X range is reached through that one port.
+```bash
+sleep 5; for p in ens1f0 ens1f1 ens1f2 ens1f3 ens3f0 ens3f1 ens3f2 ens3f3; do printf "%-8s link=%-4s addr=%s\n" $p "$(sudo ethtool $p | awk '/Link detected/{print $3}')" "$(ip -br -4 addr show $p | awk '{print $3}')"; done
+```
 
-## Steps for one card
+**Passes if** exactly one port shows `link=yes` with nothing after `addr=`. That's your card's port. Ports that already show an address belong to cards set up earlier. For example, with card 2 on `ens1f0`:
 
-1. ### Connect the card and find its port
+```text
+ens1f0   link=yes  addr=
+ens1f1   link=no   addr=
+ens1f2   link=no   addr=
+ens1f3   link=no   addr=
+ens3f0   link=no   addr=
+ens3f1   link=no   addr=
+ens3f2   link=no   addr=
+ens3f3   link=yes  addr=192.168.69.1/24
+```
 
-   Power the card on and plug its fiber into a free port on the back of dbar. Then switch on all eight fiber ports. This is safe to repeat; ports that are already set up don't change.
+Set `PORT` to the port you found (edit the name), and check it:
 
-   ```
-   for p in ens1f0 ens1f1 ens1f2 ens1f3 ens3f0 ens3f1 ens3f2 ens3f3; do sudo ip link set $p up; done
-   ```
+```bash
+PORT=ens1f0
+[[ $PORT == ens[13]f[0-3] ]] && echo "OK: $PORT is a fiber port" || echo "STOP: $PORT is not a fiber port"
+```
 
-   This waits five seconds, then lists every fiber port with its link and address:
+Make the port's LED blink for ten seconds so you can find the socket, then label both ends of the fiber with the card number and port:
 
-   ```
-   sleep 5; for p in ens1f0 ens1f1 ens1f2 ens1f3 ens3f0 ens3f1 ens3f2 ens3f3; do printf "%-8s link=%-4s addr=%s\n" $p "$(sudo ethtool $p | awk '/Link detected/{print $3}')" "$(ip -br -4 addr show $p | awk '{print $3}')"; done
-   ```
+```bash
+sudo ethtool -p $PORT 10
+```
 
-   It passes if exactly one port shows `link=yes` with nothing after `addr=`. That's your card's port: choose it under [Your card](#card). Ports that already show an address belong to cards set up earlier. If card 2 were on `ens1f0`, you'd see something like:
+## Step 2: Check the light
 
-   ```
-   ens1f0   link=yes  addr=
-   ens1f1   link=no   addr=
-   ens1f2   link=no   addr=
-   ens1f3   link=no   addr=
-   ens3f0   link=no   addr=
-   ens3f1   link=no   addr=
-   ens3f2   link=no   addr=
-   ens3f3   link=yes  addr=192.168.69.1/24
-   ```
+```bash
+sudo ethtool -m $PORT | grep -iE 'wavelength|optical power'
+```
 
-   To be sure which socket that is, make its light blink for ten seconds, then label both ends of the fiber with the card number:
+**Passes if** it shows `850nm` and a receive power between about −3 and −10 dBm. Card 1 reads −5.31 dBm. If the power line is missing, the module doesn't report it; carry on.
 
-   ```
+## Step 3: Give the server port its address
 
-   ```
+> [!CAUTION]
+> The first line below clears every address on `$PORT`. Never run it with `PORT=eno4`.
 
-   [ ] Step 1 passed for card
-2. ### Check the light
+```bash
+sudo ip addr flush dev $PORT
+sudo ip addr add $SERVER/24 dev $PORT
+ip -br addr show $PORT
+ip route get $CARD_IP
+```
 
-   ```
+**Passes if** the third line shows your port as `UP` with `$SERVER/24`, and the last line reads `<card IP> dev <your port> src <server IP>`. That last line is Linux confirming it will reach the card through the right port, from the right address.
 
-   ```
+## Step 4: Ping the card
 
-   It passes if it shows `850nm` and a receive power between about −3 and −10 dBm. Card 1 reads −5.31 dBm. Some modules don't report power; if that line is missing, carry on. Write the power in the record table.
+```bash
+ping -c 5 $CARD_IP
+ip neigh show dev $PORT
+printf 'expected MAC: 02:00:%02x:%02x:%02x:%02x\n' ${CARD_IP//./ }
+```
 
-   [ ] Step 2 passed for card
-3. ### Give the server port its address
+**Passes if** you see `5 received, 0% packet loss` with times around 0.1 ms, and `ip neigh` shows the card's IP with `lladdr <MAC> REACHABLE` (`STALE` is fine too). The first reply can be a little slower: that's Linux asking the card for its hardware (MAC) address.
 
-   ```
+The last line prints the MAC expected from card 1's pattern: the card's own address written in hexadecimal. If yours is different but the ping works, just record what you see.
 
-   ```
+## Step 5: Make it permanent
 
-   The first line clears any old address on only. Never run it on `eno4`.
+Create the card's settings file and show it. Paste this whole block at once:
 
-   It passes if the third line shows ` UP ` and the last line starts with ` dev src `. That last line is Linux confirming it will reach the card through the right port, from the right address.
+```bash
+sudo tee /etc/network/interfaces.d/daq-card$CARD > /dev/null <<EOF
+# DAQ card $CARD ($CARD_IP) on fiber port $PORT
+auto $PORT
+iface $PORT inet static
+    address $SERVER/24
+EOF
+cat /etc/network/interfaces.d/daq-card$CARD
+```
 
-   [ ] Step 3 passed for card
-4. ### Ping the card
+The file must show real values, such as `auto ens1f0`. If you see an empty name or a `$`, your variables aren't set: run step 0 and the `PORT=` line again, then repeat this step.
 
-   ```
+Hand the port over to the networking service:
 
-   ```
+```bash
+sudo ip addr flush dev $PORT
+sudo ifup $PORT
+```
 
-   It passes if you see `5 received, 0% packet loss` with times around 0.1 ms. The first reply can be a little slower: that's Linux asking the card for its hardware (MAC) address. The second command should show ` lladdr REACHABLE` (`STALE` is fine too). Write the MAC and the ping result in the record table.
+Check it again:
 
-   The expected MAC follows card 1's pattern: the card's own address written in hexadecimal. If yours is different but the ping works, just record what you see.
+```bash
+ip -br addr show $PORT
+ping -c 3 $CARD_IP
+```
 
-   [ ] Step 4 passed for card
-5. ### Make it permanent
+**Passes if** `$SERVER/24` is back on your port and the ping works. The file has no gateway line on purpose.
 
-   Create the card's settings file. Paste this whole block at once; it's a single command:
+## Step 6: Record and label
 
-   ```
+Add the card's row to the [record](#record) below, with the light level from step 2 and the MAC and ping result from step 4. Check that the fiber is labeled at both ends. Then go back to step 0 for the next card.
 
-   ```
+## Record
 
-   Hand the port over to the networking service:
+| Card | Card IP | Server port | Server IP | MAC | Light (dBm) | Ping | Settings file | Checked by, date |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 192.168.69.19 | ens3f3 | 192.168.69.1/24 | 02:00:c0:a8:45:13 | −5.31 | 0% loss, 0.10 ms | | |
+| 2 | | | | | | | | |
+| 3 | | | | | | | | |
+| 4 | | | | | | | | |
+| 5 | | | | | | | | |
+| 6 | | | | | | | | |
+| 7 | | | | | | | | |
+| 8 | | | | | | | | |
 
-   ```
+## Check all cards at once
 
-   ```
+Run this after a reboot or before a data run. Put every finished card's IP in `CARDS`, separated by spaces. It prints OK or FAIL for each card, then lists the address on every fiber port.
 
-   Check it again:
-
-   ```
-
-   ```
-
-   It passes if is back on and the ping works. The file has no gateway line on purpose.
-
-   [ ] Step 5 passed for card
-6. ### Record and label
-
-   Click [Add to record table](#card) under Your card, then fill in the light level, MAC, and ping result from steps 2 and 4, the settings file name, and your name and the date. Check that the fiber is labeled at both ends. Then pick the next card number under Your card and start again at step 1.
-
-   [ ] Step 6 passed for card
+```bash
+CARDS="192.168.69.19"
+for ip in $CARDS; do
+  if ping -c 2 -W 1 $ip > /dev/null; then echo "$ip  OK"; else echo "$ip  FAIL"; fi
+done
+ip -br addr | grep ens
+```
 
 ## If something goes wrong
 
 | What you see | What it means | What to do |
-| --- | --- | --- |
-| No port shows `link=yes` in step 1 | No light gets through: the card is off, a plug isn't seated, or the two fibers are swapped. | Re-seat both SFP modules and the fiber. Swap the two LC plugs at one end only. Then read the light with step 2. |
-| Receive power is `-inf` or below about −17 dBm | Almost no light arrives. | Same as above. Also check that the card's module is 850 nm multimode, like the server's. |
-| `RTNETLINK answers: File exists` | The address is already on the port. | Run the step 3 block again from its first line, which clears the old address. |
-| `ip route get` names a different port, or `eno4` | Another port already uses this 192.168.X range. | Stop. Run `ip -br addr` and send the output to your supervisor. |
-| `100% packet loss`, and `ip neigh` shows `FAILED` or `INCOMPLETE` | The card didn't answer at all: wrong address, card not running, or a different range. | Re-read the tag and power-cycle the card. Then list every device that answers in that range:      Or listen for 30 seconds while you reset the card: |
-| Ping fails, but `ip neigh` shows a MAC | The card is reachable, but its firmware doesn't answer ping. | Record it and tell your supervisor. Data may still flow normally. |
-| `ifup: interface … already configured` | The networking service already set up this port. | Restart it: |
-| The address is gone after a reboot | The settings file is missing or has a typo. | Show it and compare with step 5: |
-
-If `arp-scan` isn't found, install it first with `sudo apt install -y arp-scan`.
+|---|---|---|
+| `STOP: ... is not a fiber port` | `PORT` is wrong or not set | Set `PORT=` to the port step 1 found |
+| No port shows `link=yes` in step 1 | No light gets through: the card is off, a plug isn't seated, or the two fibers are swapped | Re-seat both SFP modules and the fiber. Swap the two LC plugs at one end only. Then read the light with step 2 |
+| Receive power is `-inf` or below about −17 dBm | Almost no light arrives | Same as above. Also check that the card's module is 850 nm multimode, like the server's |
+| `RTNETLINK answers: File exists` | The address is already on the port | Run the step 3 block again from its first line, which clears the old address |
+| `ip route get` names a different port, or `eno4` | Another port already uses this `192.168.X` range | Stop. Run `ip -br addr` and send the output to your supervisor |
+| `100% packet loss`, and `ip neigh` shows `FAILED` or `INCOMPLETE` | The card didn't answer at all: wrong address, card not running, or a different range | Re-read the tag and power-cycle the card. List every device that answers in the range with `sudo arp-scan -I $PORT $NET.0/24` (install it with `sudo apt install -y arp-scan`), or listen while you reset the card with `sudo timeout 30 tcpdump -i $PORT -n -e` |
+| Ping fails, but `ip neigh` shows a MAC | The card is reachable, but its firmware doesn't answer ping | Record it and tell your supervisor. Data may still flow normally |
+| `ifup: interface ... already configured` | The networking service already set up this port | Run `sudo ifdown $PORT && sudo ifup $PORT` |
+| The address is gone after a reboot | The settings file is missing or has a typo | Run `cat /etc/network/interfaces.d/daq-card$CARD` and compare it with step 5 |
 
 ## Undo a card's setup
 
-To remove a card's settings, for example after choosing the wrong port, run this, then start again from step 3:
+To remove a card's settings, for example after choosing the wrong port. `CARD` and `PORT` must be set to the values you used:
 
+```bash
+sudo ifdown $PORT
+sudo rm /etc/network/interfaces.d/daq-card$CARD
+sudo ip addr flush dev $PORT
 ```
 
-```
-
-If `ifdown` says the interface isn't configured, that's fine; the last line still clears the address.
-
-## Record
-
-Entries are saved in this browser only. Use Copy table to paste them into the lab log or a spreadsheet.
-
-| Card | Card IP | Server port | Server IP | MAC | Light (dBm) | Ping | Settings file | Checked by, date |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-
-## Check all cards at once
-
-Run this after a reboot or before a data run. It pings every card in the record table, prints OK or FAIL for each, then lists the address on every fiber port.
-
-```
-
-```
+If `ifdown` says the interface isn't configured, that's fine; the last line still clears the address. Then start again from step 3.
 
 ## How a ping reaches the card
 
 1. **Light.** Each SFP module has to see light from the other end before the link comes up. Steps 1 and 2 check this.
-2. **Address and route.** Giving the port tells Linux that every .x address is reached through that port. Step 3 checks this with `ip route get`.
-3. **ARP.** Before talking to the card, Linux broadcasts "who has ?" and the card answers with its hardware (MAC) address. `ip neigh` in step 4 shows that answer.
+2. **Address and route.** Giving the port `192.168.X.1/24` tells Linux that every `192.168.X` address is reached through that port. Step 3 checks this with `ip route get`.
+3. **ARP.** Before talking to the card, Linux broadcasts "who has 192.168.X.Y?" and the card answers with its hardware (MAC) address. `ip neigh` in step 4 shows that answer.
 4. **Ping.** An echo request goes to that MAC address and the card sends back an echo reply. On a direct fiber the round trip takes about 0.1 ms.
 
 ## If you get stuck

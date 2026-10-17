@@ -5,6 +5,12 @@
 /control/alias leadScanDir output/leadscan
 /control/alias leadScanEnergies "0.1 0.143845 0.206914 0.297635 0.428133 0.615848 0.885867 1.27427 1.83298 2.63665 3.79269 5.45559 7.8476 11.2884 16.2378 23.3572 33.5982 48.3293 69.5193 100"
 /control/alias leadScanPoint macro/lead_energy_scan_e.mac
+/control/alias leadScanHalfStep 1.199353946
+/control/alias leadScanTmax 20
+/control/alias leadScanGroups 1
+/control/alias leadScanPlaneZ 42
+/control/alias leadScanHalfXY 100
+/control/alias leadScanFilter 2
 /control/alias leadScanSeed0 1000
 /control/alias leadSpectrumSeed0 2000
 /control/alias leadSpectrumMin 0.0833782

@@ -38,7 +38,13 @@ when CMake finds the Qt SVG module.
 | `acceptance.mac` | cosmic-muon rates and geometric acceptance A*Omega per layer and coincidence (~5 min) |
 | `muon_spectrum_check.mac` | generated muon energy spectrum vs. the EXPACS table, the Guan formula and the scan's band fluxes; integral numbers vs. PDG (`analysis/muon_spectrum.C`, ~1 min) |
 | `lead_energy_scan.mac` | top & middle & Compton versus muon energy (20 points, 0.1-100 GeV) and top-lead thickness (0-20 cm); in parallel with `scripts/lead_energy_scan.sh` |
+| `trident_validation.mac` | muon tridents (mu -> mu mu+ mu-) in lead against Russell et al., PRL 26 (1971) 46: Geant4 cross section versus energy, biased 10.5 GeV/c beam on 114.5 g/cm2 of lead, `analysis/trident_validation.C`; run with `--preinit macro/physics_tridents.mac` (~10 s) |
+| `vis_tridents_qt.mac`, `vis_tridents.mac` | only muon trident events, kept and drawn (Qt GUI: one more trident each time the Run button is pressed, the last one staying in the viewer, which turns slowly until the first click as in `vis_qt.mac`; batch: PNG files in `output/trident_views/`); alias `tridentKeep` (1 every trident, 2 detectable), batch also `tridentMax` (20); with `--preinit macro/physics_tridents.mac` |
+| `trident_cosmic.mac` | rate of muon tridents in the TOF-meter, biased x10^5: `sh scripts/trident_cosmic.sh [jobs] [muons per job] [lead cm]`, then `analysis/trident_rate.C` |
+| `trident_scan_def.mac` | the same rate with F = 10^3 (10^5 gives rates ~5-6% low, see below) for lead 10-50 cm, 80 x 10^7 muons per thickness (519 h of exposure, ~8 h on 10 cores), source plane at z = 72 cm: `mkdir -p output/tridents_F1e3; nohup nice -n 15 caffeinate -is sh scripts/trident_scan.sh macro/trident_scan_def.mac 10 >> output/tridents_F1e3/scan.log 2>&1 &`; `trident_rate.C` runs on `output/tridents_F1e3/t<cm>/` when that thickness is done, `summary.txt` at the end; `touch output/tridents_F1e3/STOP` stops after the running processes, starting again (without STOP) goes on; `sh scripts/trident_remote.sh "40 50" [jobs]` in an unpacked copy of this folder builds and runs some thicknesses on another computer (same seeds), to be copied back with `scp -r` |
 | `lead_lowE_scan.mac` | the same for 100-500 MeV in 20 MeV steps; in parallel with `sh scripts/lead_energy_scan.sh macro/lead_lowE_scan_def.mac` |
+| `lead_thick_scan.mac` | the same for 60 energies (0.01-100 GeV) and lead 0-50 cm, 10^6 muons per point, source plane at z = 72 cm, with the muon energy after the lead (`pb_ke top_ke cmp_ke`): `caffeinate -is sh scripts/lead_energy_scan.sh macro/lead_thick_scan_def.mac 10` (about 2 days on 10 cores), then `analysis/lead_energy_scan.C` and `analysis/lead_after_spectrum.C` (run by the script) |
+| `lead_filter.mac` | sea-level muon spectrum before and after a plain lead slab (8 x 8 m, in vacuum, nothing else), one thickness per process: `sh scripts/lead_filter.sh [jobs] [muons] [thicknesses in cm]` (default 6 jobs, 2x10^6 muons, 5-50 cm, ~25 min), then `analysis/lead_filter_spectrum.C`: spectra before and after, the probability to get through versus energy, and the flux of slow muons after the lead. `--below E` simulates only the muons that can leave the lead below E GeV (many more statistics there; `--below 2 --parts 4 10 15000000` gives 10x the default below 2 GeV in ~1 h, ~15 GB), `--parts n` splits each thickness into n processes |
 | `vis.mac`, `vis_camera.mac`, `vis_example.mac` | PNG pictures (oblique and side view) with 30-40 muons |
 | `geom_camera_only.mac`, `geom_tofmeter_example.mac` | geometry setups used by the macros above |
 | `test.mac` | the example of the original framework (antiprotons, ASCII) |
@@ -47,6 +53,26 @@ when CMake finds the Qt SVG module.
 The ROOT macros in `analysis/` are copied to the build directory as well, e.g.
 `root -l -b -q 'analysis/camera_validation.C("output/camera_validation.root")'`.
 Files added to `macro/`, `analysis/` or `scripts/` need a re-run of `cmake` to be copied.
+`scripts/lead_energy_scan.sh` marks every finished process with `<dir>/log/<name>.done` and skips
+those when started again, so an interrupted scan goes on where it stopped (delete the `.done`
+files to redo it); a macro edited in `macro/` reaches the build directory with `make` or `cmake .`.
+`sh scripts/lead_scan_stop.sh [definition]` stops a scan after the processes now running (none
+is started any more; those running finish all their points), and
+`sh scripts/lead_scan_resume.sh [definition] [jobs]` goes on from there in the background, first
+waiting for processes still finishing (default `macro/lead_thick_scan_def.mac`, 10 jobs).
+`sh scripts/lead_scan_status.sh [definition]` shows which points are finished (1), running (R) or
+pending (0), as a chart per thickness and energy, `<dir>/scan_status.csv` and `<dir>/scan_status.png`.
+
+`./TOFmeter --preinit <file.mac> [macro]` runs `file.mac` before the kernel is initialised, for the
+commands Geant4 accepts only then. `macro/physics_tridents.mac` switches on muon tridents
+(`muToMuonPairProd`, muons above 0.85 GeV) and photon conversion to mu+mu- (`GammaToMuPair`); both
+are off otherwise. `/tof/physics/crossSection <process> <particle> <material> <E1 E2 ... GeV>` prints
+a process's Geant4 cross section after a `/run/beamOn` (0 events is enough). Rare processes can be
+made more frequent with `/process/em/setBiasingFactor <process> <F> true` and `/run/physicsModified`;
+the affected tracks then carry weight 1/F (`tri_w`). Keep F times the probability per track well
+below 1: a second biased interaction of a track already at 1/F gets 1/F^2, so rates come out low by
+about half that probability (cosmic tridents with 10-20 cm of lead: 5.2-6.1% of the primary tridents
+at F = 10^5, 20-30% above 100 GeV; ~0.05% at F = 10^3).
 
 ## Geometry
 
@@ -98,17 +124,37 @@ copy number: station 0-2 for bars (`copyNb` = bar 0-8), 10 for the camera (`copy
 
 `/OutputFormat 1` (or 2 for both) writes `<dir>/<file>.root` with two trees (MeV, ns, cm):
 - `events`, one row per event (`/EventFilter 1` drops events that only crossed air, `/EventFilter 2`
-  keeps only events with energy in a TOF bar or a Compton-detector layer):
+  keeps only events with energy in a TOF bar or a Compton-detector layer, `/EventFilter 4` only
+  those with energy in both a top-TOF and a middle-TOF bar):
   primary `pdg ekin costh phi x0 y0 z0`; where it ended `end_x end_y end_z end_t end_ke end_proc end_vol`
   (`end_vol` = OutOfWorld if it left; a mu- stop ends with `muMinusCaptureAtRest`);
   camera `e_ch0..2`, first-deposit times `t_ch0..2` (-1 if none), `cam_prim` (bit k: primary
   deposited in CHk) and every camera step `cam_layer cam_pdg cam_trk cam_e cam_t cam_x cam_y cam_z`;
   bars with energy `bar_st bar_id bar_e bar_t bar_x bar_y bar_z` (energy-weighted positions);
   `e_stack0 e_stack1 e_absorber`; `cmp_ke`, the kinetic energy of the primary where it first enters a
-  layer of the Compton detector (stack Si or YSO, camera), -1 if it never does.
+  layer of the Compton detector (stack Si or YSO, camera), -1 if it never does; `top_ke` the same
+  where it first enters a bar of the top TOF, and `pb_ke` where it first leaves the lead layer (-1
+  if it stopped in it or went round it). Muon tridents, one
+  entry per interaction: `tri_x tri_y tri_z` (vertex), `tri_ein tri_eout` (muon kinetic energy
+  before and after), `tri_epair` (total energy of the pair), `tri_mll` (invariant mass of the two
+  like-sign muons), `tri_w` (weight), `tri_pdg`; and per muon from a trident (`tmu_proc` 49) or
+  from a photon conversion to mu+mu- (15): `tmu_pdg tmu_e0 tmu_e1` (kinetic energy at creation and
+  at the end), `tmu_parent` (track ID of the muon that made it), `tri_parent` (the same for the
+  trident), and the TOF stations crossed by each trident muon, `tmu_st` (bit 0 top, 1 middle, 2
+  bottom), with its first top and middle bar `tmu_top tmu_mid`; `prim_st prim_top prim_mid` are the
+  same for the primary. `/EventFilter 3` keeps only events with one of them.
+  `/tof/tridents/keepForVis 1|2` keeps events with a trident (1) or a detectable one (2: the
+  primary and its pair all cross the top and middle TOF) for `/vis/reviewKeptEvents`, and stops the
+  run after `/tof/tridents/maxKept` (20) events, printing one line per kept event.
+  `/tof/tridents/search true` turns `/run/beamOn N`, and so the Run button of the Qt toolbar
+  (`/run/beamOn 1`), into a search: muons are run until N events have been kept as `keepForVis`
+  says (1 if it is 0), at most `/tof/tridents/searchLimit` (10^6) muons; `false` gives normal runs
+  again. With `/vis/drawOnlyToBeKeptEvents` the viewer shows the last trident until the next one.
+  This is done by `TOFmeterRunManager`, a `G4RunManager` whose `BeamOn` is otherwise unchanged.
 - `run`, one row per run: `n_events generator seed`, and for cosmic runs `flux` (/cm2/s through the
   plane), `area` (cm2), `live_time` (s), `e_min e_max theta_max plane_z model particles`, `e_mono`
-  (MeV, 0 unless mono-energetic); `lead_cm`, the lead-layer thickness (0 if not built).
+  (MeV, 0 unless mono-energetic); `lead_cm`, the lead-layer thickness (0 if not built);
+  `event_filter`, the `/EventFilter` of the run.
 
 Energies are true deposits: apply the measured resolution (camera ~4% at 662 keV as sigma/E,
 ~5.5% for MIPs, ~2 mm position) in the analysis.

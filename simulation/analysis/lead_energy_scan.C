@@ -2,9 +2,11 @@
 // macro/lead_energy_scan_t.mac in one directory: leadscan_t<cm>_E<GeV>.root (one per point) and
 // the spectrum check runs leadspec_t<cm>.root. The energies, their bands and the thicknesses are
 // read from the files, so the same macro serves the log scan (lead_energy_scan.mac, 0.1-100 GeV)
-// and the fine low-energy scan (lead_lowE_scan.mac, 100-500 MeV in 20 MeV steps).
+// the fine low-energy scan (lead_lowE_scan.mac, 100-500 MeV in 20 MeV steps) and the thick-lead
+// scan (lead_thick_scan.mac, 50 energies, 0-50 cm).
 //   root -l -b -q analysis/lead_energy_scan.C
 //   root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_lowE")'
+//   root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_thick")'
 //   root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan", 0.2, 0.1, 24)'   (24 h exposure)
 //
 // For every point (lead thickness t, muon kinetic energy E):
@@ -25,8 +27,15 @@
 // which is why the band flux, not dJ/dE, is the weight. ratio x w is the flux-weighted ratio,
 // and ratio x w x N_ref, with N_ref = J_max x plane area x exposure the muons of that band
 // crossing the plane, the expected number of TMC muons in the exposure (= rate x exposure).
+// muonOnly = true: the selections also require the muon itself (the primary) to have crossed the
+// TOFs (prim_st) and entered the Compton detector (cmp_ke >= 0), i.e. no coincidence made only by
+// its secondaries or decay electron; needs those columns (scans from October 2026 on). The output
+// then has "_muon" in its names.
 // Writes <dir>/lead_energy_scan.csv (every point) and <dir>/lead_energy_scan.pdf (maps, totals
 // per thickness, ratio versus thickness per energy, flux calibration) with a .png per page.
+// With more than 25 energies the point tables are only in the CSV, and the ratio-versus-thickness
+// page shows a selection of the energies. n_top is -1 for scans that wrote only events with
+// energy in both the top and the middle TOF (/EventFilter 4, run column event_filter).
 
 namespace {
 enum { kTop, kTM, kTMC, kTMCnoB, kTMCstop, kNSel };
@@ -64,7 +73,11 @@ bool ReadCounts(const TString& path, const TString* cuts, Counts& c)
   run->SetBranchAddress("lead_cm", &c.lead);
   run->GetEntry(0);
   c.generated = nEvents;
+  int filter = 2;
+  if (run->GetBranch("event_filter")) run->SetBranchAddress("event_filter", &filter);
+  run->GetEntry(0);
   for (int s = 0; s < kNSel; ++s) c.n[s] = events->GetEntries(cuts[s]);
+  if (filter == 4) c.n[kTop] = -1;  // only events with top and middle TOF energy were written
   c.filled = true;
   return true;
 }
@@ -90,20 +103,44 @@ std::vector<double> CentreEdges(const std::vector<double>& c)
 }  // namespace
 
 void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, double comptonThr = 0.1,
-                      double exposureHours = 1.)
+                      double exposureHours = 1., bool muonOnly = false)
 {
+  const TString suffix = muonOnly ? "_muon" : "";
   const TString top = Form("Sum$(bar_st==0 && bar_e>%g)>0", barThr);
   const TString middle = Form("Sum$(bar_st==1 && bar_e>%g)>0", barThr);
   const TString bottom = Form("Sum$(bar_st==2 && bar_e>%g)>0", barThr);
   const TString compton = Form("(e_stack0>%g || e_stack1>%g || e_ch0>%g || e_ch1>%g || e_ch2>%g)",
                                comptonThr, comptonThr, comptonThr, comptonThr, comptonThr);
   const TString stopped = "(end_ke < 0.001 && end_z > -52.5 && end_z < -32.5 && abs(end_x) < 40 && abs(end_y) < 40)";
-  const TString tmc = top + " && " + middle + " && " + compton;
-  const TString cuts[kNSel] = {top, top + " && " + middle, tmc, tmc + " && !(" + bottom + ")",
+  // the muon itself: crossed the top (bit 0) and middle (bit 1) TOF, entered the Compton detector
+  const TString muonTop = muonOnly ? " && (prim_st & 1) != 0" : "";
+  const TString muonTM = muonOnly ? " && (prim_st & 3) == 3" : "";
+  const TString muonC = muonOnly ? " && cmp_ke >= 0" : "";
+  const TString tmc = top + " && " + middle + " && " + compton + muonTM + muonC;
+  const TString cuts[kNSel] = {top + muonTop, top + " && " + middle + muonTM, tmc, tmc + " && !(" + bottom + ")",
                                tmc + " && " + stopped};
 
   // ---- read the scan points and the spectrum check runs
   std::vector<Counts> points, checks;
+  if (muonOnly) {   // the columns of the muon-only selection must exist
+    bool ok = false, any = false;
+    if (void* d = gSystem->OpenDirectory(dir)) {
+      while (const char* entry = gSystem->GetDirEntry(d)) {
+        const TString name = entry;
+        if (!name.BeginsWith("leadscan_t") || !name.EndsWith(".root")) continue;
+        TFile file(Form("%s/%s", dir, entry));
+        auto events = dynamic_cast<TTree*>(file.Get("events"));
+        any = true;
+        ok = events && events->GetBranch("prim_st") && events->GetBranch("cmp_ke");
+        break;
+      }
+      gSystem->FreeDirectory(d);
+    }
+    if (any && !ok) {
+      printf("%s: no prim_st / cmp_ke columns (scan made before they existed); muon-only selection not possible\n", dir);
+      return;
+    }
+  }
   void* dirp = gSystem->OpenDirectory(dir);
   if (!dirp) {
     printf("cannot open %s\n", dir);
@@ -184,15 +221,20 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
   printf("\n=== Lead thickness x muon energy scan (%s): %d energies x %d thicknesses, %d of %d points "
          "missing, %d spectrum check runs ===\n", dir, nE, nT, missing, nE * nT, int(checks.size()));
   printf("energies %s to %s %s in bands of %s width covering %s%s; source plane %.0f cm2 at z = %g cm, "
-         "%lld muons per point\nTOF bar > %.2f MeV, Compton layer > %.2f MeV\n", energyText(0).Data(),
+         "%lld muons per point\nTOF bar > %.2f MeV, Compton layer > %.2f MeV%s\n", energyText(0).Data(),
          energyText(nE - 1).Data(), unit, equalBands ? "equal" : "log", rangeText.Data(),
-         contiguous ? "" : " (with gaps)", any->area, any->planeZ, any->generated, barThr, comptonThr);
+         contiguous ? "" : " (with gaps)", any->area, any->planeZ, any->generated, barThr, comptonThr,
+         muonOnly ? "; muon only: the muon itself crossed the top and middle TOF and entered the Compton detector" : "");
   for (const auto& c : checks)
     if (std::abs(c.eMin - bandLow[0]) > 1e-3 * bandLow[0] || std::abs(c.eMax - bandHigh[nE - 1]) > 1e-3 * bandHigh[nE - 1])
       printf("warning: the check run for %g cm covers %g-%g MeV, not the bands of the points\n", c.lead, c.eMin, c.eMax);
 
   // ---- tables: rows = lead thickness, columns = energy
   auto printMatrix = [&](const char* title, auto value, const char* format) {
+    if (nE > 25) {
+      printf("\n%s: in the CSV (%d energies)\n", title, nE);
+      return;
+    }
     printf("\n%s\nlead\\E %s", title, unit);
     for (int ie = 0; ie < nE; ++ie) printf(" %6s", energyText(ie).Data());
     printf("\n");
@@ -300,7 +342,7 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
          "disagree, the spectrum check run is the measurement)\n");
 
   // ---- every point to CSV
-  const TString csvName = Form("%s/lead_energy_scan.csv", dir);
+  const TString csvName = Form("%s/lead_energy_scan%s.csv", dir, suffix.Data());
   if (FILE* csv = fopen(csvName, "w")) {
     fprintf(csv, "lead_cm,E_GeV,E_low_GeV,E_high_GeV,generated,live_time_s,band_flux_cm2s,plane_cm2");
     for (int s = 0; s < kNSel; ++s) fprintf(csv, ",n_%s", kSelName[s]);
@@ -341,7 +383,8 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
     auto h = new TH2D(name, title, nE, eEdges.data(), nT, tEdges.data());
     for (int it = 0; it < nT; ++it)
       for (int ie = 0; ie < nE; ++ie)
-        if (grid[it][ie].filled) h->SetBinContent(ie + 1, it + 1, value(grid[it][ie]));
+        if (grid[it][ie].filled)   // a point with no coincidence at all in the lowest colour, not blank
+          h->SetBinContent(ie + 1, it + 1, std::max(value(grid[it][ie]), 1e-12));
     h->GetXaxis()->SetTitle(energyTitle);
     h->GetYaxis()->SetTitle("lead thickness (cm)");
     if (logAxis) h->GetXaxis()->SetMoreLogLabels();
@@ -400,25 +443,52 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
   // ratio versus thickness, one curve per energy. The energies below 500 MeV, which range out
   // within the scanned thicknesses, get thick lines in distinct colours and a label at their drop;
   // the others overlap on the plateau and get thin lines in blue-grey shades with open markers.
+  // With more than 21 energies only a selection is drawn: up to 12 of those whose ratio falls
+  // below half of its value at the thinnest lead within the scan (thick lines) and 6 others.
   TCanvas c2("c2", "ratio versus thickness", 1200, 820);
   gPad->SetRightMargin(0.17);
   gPad->SetLeftMargin(0.09);
   gPad->SetGridy();
   auto mg2 = new TMultiGraph("mg2", "top & middle & Compton / muons generated;lead thickness (cm);ratio (10^{-3})");
   auto legend2 = new TLegend(0.84, 0.1, 0.995, 0.9);
-  legend2->SetHeader(Form("E (%s)", unit));
+  std::vector<bool> shown(nE, true), isBold(nE, false);
+  int nLowE = 0;  // energies below 500 MeV, for the expected numbers
+  for (double e : energies) if (e < 500.) ++nLowE;
+  if (nE <= 21) {
+    for (int ie = 0; ie < nE; ++ie) isBold[ie] = energies[ie] < 500.;
+  } else {
+    std::vector<int> fall, rest;
+    for (int ie = 0; ie < nE; ++ie) {
+      bool falls = false;
+      const double first = grid[0][ie].filled ? grid[0][ie].Ratio(kTMC) : 0.;
+      for (int it = 1; it < nT && first > 0.; ++it)
+        if (grid[it][ie].filled && grid[it][ie].Ratio(kTMC) < 0.5 * first) falls = true;
+      (falls ? fall : rest).push_back(ie);
+    }
+    auto pick = [](const std::vector<int>& v, int n) {  // n of them evenly spaced, both ends included
+      if (int(v.size()) <= n) return v;
+      std::vector<int> out;
+      for (int k = 0; k < n; ++k) out.push_back(v[std::lround(k * (v.size() - 1.) / (n - 1))]);
+      return out;
+    };
+    std::fill(shown.begin(), shown.end(), false);
+    for (int ie : pick(fall, 12)) shown[ie] = isBold[ie] = true;
+    for (int ie : pick(rest, 6)) shown[ie] = true;
+  }
+  legend2->SetHeader(nE <= 21 ? Form("E (%s)", unit) : Form("E (%s), %d of %d", unit, int(std::count(shown.begin(), shown.end(), true)), nE));
   legend2->SetTextSize(nE > 20 ? 0.024 : 0.026);
   const int boldColours[] = {kRed + 1, kOrange + 7, kGreen + 2, kBlue + 1, kMagenta + 1, kCyan + 2,
                              kOrange - 3, kViolet + 2, kSpring - 6, kAzure + 7, kPink + 9, kGray + 3};
   const int boldMarkers[] = {20, 21, 22, 23, 33, 34, 29, 47, 43, 45, 39, 41};
   const int openMarkers[] = {24, 25, 26, 32, 27, 28, 30, 46, 42, 44};
-  int nBold = 0;
-  for (double e : energies) if (e < 500.) ++nBold;
-  const int nPlain = nE - nBold;
+  int nBold = 0, nPlain = 0, iBold = 0, iPlain = 0;
+  for (int ie = 0; ie < nE; ++ie)
+    if (shown[ie]) ++(isBold[ie] ? nBold : nPlain);
   std::vector<TLatex*> labels;
   std::vector<TGraph*> boldGraphs;
   double maxRatio = 0.;
   for (int ie = 0; ie < nE; ++ie) {
+    if (!shown[ie]) continue;
     auto g = new TGraphErrors();
     for (int it = 0; it < nT; ++it) {
       const Counts& p = grid[it][ie];
@@ -428,22 +498,29 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
       g->SetPointError(n, 0., 1e3 * p.RatioErr(kTMC));
       maxRatio = std::max(maxRatio, 1e3 * (p.Ratio(kTMC) + p.RatioErr(kTMC)));
     }
-    if (ie < nBold) {
-      const int colour = boldColours[ie % 12];
+    if (isBold[ie]) {
+      const int k = iBold++;
+      const int colour = boldColours[k % 12];
       g->SetLineColor(colour);
       g->SetMarkerColor(colour);
       g->SetLineWidth(nBold > 8 ? 3 : 4);
-      g->SetMarkerStyle(boldMarkers[ie % 12]);
+      g->SetMarkerStyle(boldMarkers[k % 12]);
       g->SetMarkerSize(nBold > 8 ? 1.1 : 1.4);
       boldGraphs.push_back(g);
       // label just right of where the curve falls below half of its value at the thinnest lead,
       // in staggered rows so that neighbouring labels do not overlap
+      // with more than 21 energies, the curves falling within the first 1.5 cm get no label (legend only)
       for (int k = 1; k < g->GetN(); ++k) {
         if (g->GetPointY(k) < 0.5 * g->GetPointY(0)) {
+          if (nE > 21 && g->GetPointX(k) < 1.5) break;
           const int row = int(labels.size());
           const double y = nBold > 5 ? 0.6 + 0.55 * (row % 6) : 1.0 + 0.45 * row;
           const double x = std::min(g->GetPointX(k) + 0.3, tEdges.back() - (mev ? 1.0 : 2.5));  // inside the frame
           auto label = new TLatex(x, y, mev ? energyText(ie) : energyText(ie) + " GeV");
+          if (x > tEdges.front() + 0.8 * (tEdges.back() - tEdges.front())) {   // near the right edge: left of the drop
+            label->SetX(g->GetPointX(k) - 0.3);
+            label->SetTextAlign(31);
+          }
           label->SetTextColor(colour);
           label->SetTextSize(nBold > 8 ? 0.03 : 0.035);
           label->SetTextFont(62);
@@ -454,12 +531,13 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
     }
     else {
       // light to dark blue-grey with energy
-      const double f = nPlain > 1 ? double(ie - nBold) / (nPlain - 1) : 0.;
+      const int k = iPlain++;
+      const double f = nPlain > 1 ? double(k) / (nPlain - 1) : 0.;
       const int colour = TColor::GetColor(Float_t(0.70 - 0.55 * f), Float_t(0.75 - 0.55 * f), Float_t(0.85 - 0.35 * f));
       g->SetLineColor(colour);
       g->SetMarkerColor(colour);
       g->SetLineWidth(1);
-      g->SetMarkerStyle(openMarkers[(ie - nBold) % 10]);
+      g->SetMarkerStyle(openMarkers[k % 10]);
       g->SetMarkerSize(0.9);
     }
     mg2->Add(g, "PL");
@@ -534,18 +612,30 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
   mg3->Add(gAll, "PL");
   auto legend4 = new TLegend(0.4, 0.4, 0.89, 0.55);
   legend4->AddEntry(gAll, Form("all %d energies (%s)", nE, rangeText.Data()), "pl");
-  if (nPlain > 0 && nBold > 0) {  // only when the low energies are a subset
+  if (nLowE > 0 && nLowE < nE) {  // only when the low energies are a subset
     gLow->SetMarkerStyle(21);
     gLow->SetMarkerColor(kRed + 1);
     gLow->SetLineColor(kRed + 1);
     mg3->Add(gLow, "PL");
-    legend4->AddEntry(gLow, Form("the %d energies below 500 MeV", nBold), "pl");
+    legend4->AddEntry(gLow, Form("the %d energies below 500 MeV", nLowE), "pl");
   }
   mg3->Draw("A");
   mg3->GetYaxis()->SetRangeUser(0., 1.15 * total[best] * 60. * exposureHours);
   legend4->Draw();
 
-  const TString base = Form("%s/lead_energy_scan", dir);
+  const TString base = Form("%s/lead_energy_scan%s", dir, suffix.Data());
+  if (muonOnly) {   // mark every page of the muon-only selection
+    TCanvas* pages[] = {&c1, &c2, &c3};
+    for (TCanvas* page : pages) {
+      page->cd(0);
+      auto note = new TLatex(0.995, 0.997, "muon only: the muon itself crossed the top and middle TOF and entered the Compton detector");
+      note->SetNDC();
+      note->SetTextAlign(33);
+      note->SetTextSize(0.016);
+      note->SetTextColor(kRed + 1);
+      note->Draw();
+    }
+  }
   c1.Print(base + ".pdf(");
   c2.Print(base + ".pdf");
   c3.Print(base + ".pdf)");

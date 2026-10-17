@@ -2,8 +2,8 @@
 //	TOFmeter Detector Simulation Program (from the Original / GSIM framework)
 //	FHG 20 OCT 2003
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 

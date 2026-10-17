@@ -27,8 +27,8 @@
 // $Id: TOFmeterDetectorMessenger.cc,v 1.11 2006/06/29 17:48:02 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -99,10 +99,12 @@ TOFmeterDetectorMessenger::TOFmeterDetectorMessenger(Pb::DetectorConstruction* m
   EventFilterCmd = new G4UIcmdWithAnInteger("/EventFilter", this );
   EventFilterCmd->SetGuidance("EventFilter: 0 write every event to the ROOT ntuple (default),");
   EventFilterCmd->SetGuidance("1 only events with energy in an active volume or a primary stopped inside the setup,");
-  EventFilterCmd->SetGuidance("2 only events with energy in a TOF bar or a Compton-detector layer (stack YSO, camera)");
+  EventFilterCmd->SetGuidance("2 only events with energy in a TOF bar or a Compton-detector layer (stack YSO, camera),");
+  EventFilterCmd->SetGuidance("3 only events with a muon trident or a photon conversion to mu+mu-,");
+  EventFilterCmd->SetGuidance("4 only events with energy in a bar of the top TOF and in one of the middle TOF");
   EventFilterCmd->SetParameterName("flag",true);
   EventFilterCmd->SetDefaultValue(0);
-  EventFilterCmd->SetRange("flag>=0 && flag<=2");
+  EventFilterCmd->SetRange("flag>=0 && flag<=4");
 
 // Track Type, 0 for all particles, 1 for only primary particle (trackID = 1)
   TrackTypeCmd = new G4UIcmdWithAnInteger("/TrackType", this );

@@ -22,8 +22,8 @@
 //
 // $Id: TOFmeterPhysicsList.cc,v 1.4 2003/06/16 16:47:06 gunter Exp $
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 

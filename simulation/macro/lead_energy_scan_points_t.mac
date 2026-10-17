@@ -1,0 +1,8 @@
+### The mono-energetic points of one lead thickness of a lead x energy scan, without the check run:
+### geometry and source (lead_energy_scan_setup.mac), then every energy of leadScanEnergies.
+### scripts/lead_energy_scan.sh runs it per thickness, or per group of energies when the
+### definition sets leadScanGroups > 1 (with leadScanEnergies and leadScanSeed0 of the group).
+### Needs the aliases of a scan definition and leadT, the lead thickness in cm.
+
+/control/execute macro/lead_energy_scan_setup.mac
+/control/foreach {leadScanPoint} leadScanE {leadScanEnergies}

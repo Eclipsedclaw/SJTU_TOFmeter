@@ -27,8 +27,8 @@
 // $Id: exampleN02.cc,v 1.12 2006/06/29 17:47:25 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -42,6 +42,8 @@
 #include "TOFmeterTrackingAction.hh"
 #include "TOFmeterViewSpinner.hh"
 #include "TOFmeterAppIcon.hh"
+#include "TOFmeterPhysicsMessenger.hh"
+#include "TOFmeterRunManager.hh"
 
 #include "G4RunManager.hh"
 #include "G4UImanager.hh"
@@ -57,7 +59,9 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <memory>
+#include <vector>
 
 #ifdef TOF_USE_QT
 #include <QCoreApplication>
@@ -78,9 +82,25 @@ int main(int argc,char** argv)
   if (!std::getenv("GEANT4_DATA_DIR") && std::strlen(TOF_GEANT4_DATA_DIR) > 0)
     setenv("GEANT4_DATA_DIR", TOF_GEANT4_DATA_DIR, 0);
 
-  // Run manager
+  // ./TOFmeter --preinit <file.mac> [macro]: commands of file.mac run before the kernel is
+  // initialised, for those Geant4 accepts only then (e.g. /physics_lists/em/MuonToMuons true,
+  // see macro/physics_tridents.mac); the remaining arguments work as without the option
+  std::vector<char*> args(argv, argv + argc);
+  G4String preinitMacro;
+  if (args.size() > 2 && G4String(args[1]) == "--preinit") {
+    preinitMacro = args[2];
+    args.erase(args.begin() + 1, args.begin() + 3);
+    if (!std::ifstream(preinitMacro)) {
+      G4cerr << "--preinit: cannot open " << preinitMacro << G4endl;
+      return 1;
+    }
+  }
+  argc = static_cast<int>(args.size());
+  argv = args.data();
+
+  // Run manager: G4RunManager plus the trident search of /run/beamOn (/tof/tridents/search)
   //
-  G4RunManager * runManager = new G4RunManager;
+  G4RunManager * runManager = new TOFmeterRunManager;
 
   // User Initialization classes (mandatory)
   //
@@ -88,6 +108,8 @@ int main(int argc,char** argv)
   runManager->SetUserInitialization(detector);
   // /OutputDirectory, /OutputFile, /gun/seed, /update, ... (seed: /gun/seed or /random/setSeeds)
   auto detectorMessenger = new TOFmeterDetectorMessenger(detector);
+  // /tof/physics/crossSection
+  auto physicsMessenger = new TOFmeterPhysicsMessenger;
   //
 
   // Reference physics list: QGSP_BERT unless the PHYSLIST environment variable
@@ -117,6 +139,12 @@ int main(int argc,char** argv)
   //
   runManager->SetUserAction(new TOFmeterSteppingAction(detector, event_action));
   runManager->SetUserAction(new TOFmeterTrackingAction(event_action));
+  // Commands that Geant4 accepts only before the kernel is initialised (--preinit)
+  if (!preinitMacro.empty()) {
+    G4cout << "Pre-initialisation macro: " << preinitMacro << G4endl;
+    G4UImanager::GetUIpointer()->ApplyCommand("/control/execute " + preinitMacro);
+  }
+
   // Initialize G4 kernel
   //
   runManager->Initialize();
@@ -159,6 +187,7 @@ int main(int argc,char** argv)
   delete visManager;
 
   delete detectorMessenger;
+  delete physicsMessenger;
   delete runManager;
 
   return 0;

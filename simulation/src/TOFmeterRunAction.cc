@@ -27,8 +27,8 @@
 // $Id: TOFmeterRunAction.cc,v 1.9 2006/06/29 17:48:16 gunter Exp $
 // GEANT4 tag $Name: geant4-09-00 $
 //
-// @author Tsuguo Aramaki
-// @date 2015 March 23 
+// @author Jiancheng Zeng with Claude Opus 5.5
+// @date October 2026
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -80,6 +80,7 @@ TOFmeterRunAction::TOFmeterRunAction(TOFmeterPrimaryGeneratorAction* primaryGene
   analysisManager->CreateNtupleSColumn("particles");   // cosmic: species (expacs) or charge (guan)
   analysisManager->CreateNtupleDColumn("e_mono");      // cosmic: energy of every particle, MeV; 0 = spectrum
   analysisManager->CreateNtupleDColumn("lead_cm");     // lead layer on top, cm (0 = none)
+  analysisManager->CreateNtupleIColumn("event_filter"); // /EventFilter: which events the events ntuple keeps
   analysisManager->FinishNtuple();
 }
 
@@ -162,6 +163,7 @@ void TOFmeterRunAction::EndOfRunAction(const G4Run* aRun)
 		auto detector = dynamic_cast<const Pb::DetectorConstruction*>(
 			G4RunManager::GetRunManager()->GetUserDetectorConstruction());
 		analysisManager->FillNtupleDColumn(fRunNtupleId, col++, detector ? detector->GetLeadThickness()/cm : -1.);
+		analysisManager->FillNtupleIColumn(fRunNtupleId, col++, global.EventFilter);
 		analysisManager->AddNtupleRow(fRunNtupleId);
 		analysisManager->Write();
 		analysisManager->CloseFile();

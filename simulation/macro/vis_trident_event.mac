@@ -1,0 +1,6 @@
+### Draws the current kept event of /vis/reviewKeptEvents twice (used by vis_tridents.mac): oblique
+### view, then side view; with TSG_OFFSCREEN every rebuild writes the next PNG file
+/vis/viewer/set/viewpointThetaPhi 60 30 deg
+/vis/viewer/rebuild
+/vis/viewer/set/viewpointThetaPhi 90 0.1 deg
+/vis/viewer/rebuild

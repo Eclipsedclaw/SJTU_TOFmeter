@@ -1,0 +1,83 @@
+### Muon tridents in the Qt GUI, one more each time the Run button of the toolbar is pressed
+###   ./TOFmeter --preinit macro/physics_tridents.mac     then in the GUI's command line:
+###   /control/execute macro/vis_tridents_qt.mac
+### Cosmic muons above 0.85 GeV (no trident below) from the scan plane; tridents are made 10^5 times
+### more often (/process/em/setBiasingFactor), otherwise one would take ~10^7 muons.
+### /tof/tridents/search true turns /run/beamOn N, and so the Run button (/run/beamOn 1), into a
+### search: muons are run until N events with a trident have been kept (/tof/tridents/keepForVis),
+### at most /tof/tridents/searchLimit muons (10^6). Only kept events are drawn
+### (/vis/drawOnlyToBeKeptEvents), so a trident stays in the viewer until the next one replaces it.
+### The macro ends by finding the first one. The log line "Kept trident event ..." of each event
+### gives its energies, vertex and TOF bars; "Trident search: found ..." the muons it took.
+### tridentKeep: 1 = every trident event, 2 = only detectable ones (the primary and its pair all cross
+### the top and middle TOF); in the session: /tof/tridents/keepForVis 2. Only muon tracks are drawn:
+### mu- red, mu+ blue.
+### Keep the earlier tridents on the screen as well: /vis/scene/endOfRunAction accumulate.
+### Several at once: /run/beamOn 20, then /vis/reviewKeptEvents to see them one at a time ("cont"
+### for the next). Normal runs again: /tof/tridents/search false.
+### Batch version writing PNG files: macro/vis_tridents.mac.
+
+# ---------------- tune here ----------------
+# Camera tilt: theta is measured from the vertical (z) axis.
+#   90 = level side view; smaller = looking down from higher up.
+#   Keep it above ~10: at 0 the camera points along the up vector.
+/control/alias viewTheta 70
+# Starting azimuth (the spin carries it around from here)
+/control/alias viewPhi 30
+# Turn speed in deg/s (0 = no turning)
+/control/alias spinSpeed 10
+# -------------------------------------------
+
+/control/alias tridentKeep 1
+
+/vis/open TSGQt 1000x800-0+0
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+/vis/drawVolume
+/vis/geometry/set/visibility WorldLogic 0 false
+/vis/geometry/set/forceWireframe AbsorberLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallXLogic 0 true
+/vis/geometry/set/forceWireframe LeadWallYLogic 0 true
+/vis/geometry/set/forceWireframe FrameworkFeLogic 0 true
+/vis/geometry/set/forceWireframe FrameworkAlLogic 0 true
+/vis/geometry/set/forceWireframe SupportBeamLogic 0 true
+/vis/viewer/set/style surface
+/vis/viewer/set/background white
+/vis/viewer/set/upVector 0 0 1
+/vis/viewer/set/viewpointThetaPhi {viewTheta} {viewPhi} deg
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByParticleID
+/vis/modeling/trajectories/drawByParticleID-0/set mu- red
+/vis/modeling/trajectories/drawByParticleID-0/set mu+ blue
+/vis/modeling/trajectories/drawByParticleID-0/default/setLineWidth 2
+/vis/filtering/trajectories/create/particleFilter
+/vis/filtering/trajectories/particleFilter-0/add mu-
+/vis/filtering/trajectories/particleFilter-0/add mu+
+/vis/scene/add/eventID
+/vis/scene/endOfEventAction accumulate
+/vis/scene/endOfRunAction refresh
+/vis/drawOnlyToBeKeptEvents
+/vis/viewer/set/autoRefresh true
+/vis/verbose warnings
+
+/process/em/setBiasingFactor muToMuonPairProd 1e5 true
+/run/physicsModified
+/OutputFormat 1
+/EventFilter 3
+/OutputDirectory output
+/OutputFile vis_tridents_qt
+/GeneralParticleSource 2
+/tof/cosmic/planeCenter 0 0 42 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin 0.85 GeV
+/tof/cosmic/energyMax 1000 GeV
+/tof/tridents/keepForVis {tridentKeep}
+/tof/tridents/search true
+
+# the first trident; then press the Run button for the next one
+/run/beamOn 1
+
+# Slow turn about the vertical axis until you interact with the viewer
+/tof/vis/spin {spinSpeed}

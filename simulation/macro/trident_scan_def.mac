@@ -1,0 +1,26 @@
+### Muon-trident rate versus lead thickness with a small bias factor: definition for
+### scripts/trident_scan.sh (the script reads these aliases, every process executes this file).
+### In the build directory, in the background, at low priority and keeping the computer awake:
+###   mkdir -p output/tridents_F1e3
+###   nohup nice -n 15 caffeinate -is sh scripts/trident_scan.sh macro/trident_scan_def.mac 10 >> output/tridents_F1e3/scan.log 2>&1 &
+### Stop after the running processes: touch output/tridents_F1e3/STOP; go on: delete STOP, start again.
+### Each thickness t gives output/tridents_F1e3/t<t>/ with trident_rate.png/.pdf/.txt
+### (analysis/trident_rate.C) as soon as its processes are done; output/tridents_F1e3/summary.txt at the end.
+###
+### F = 1e3 instead of the 1e5 of scripts/trident_cosmic.sh: with 1e5 a muon often has a second biased
+### trident, which gets weight 1/F^2, so the rate came out ~5-6% low (20-30% above 100 GeV); with 1e3
+### this is ~0.05%. 100 times more muons keep the number of simulated tridents: 80 x 10^7 muons per
+### thickness = 519 h of sea-level exposure (8 x 10^6 = 5.19 h before), about 8 h on 10 cores.
+### The 2 x 2 m source plane is at z = 72 cm for every thickness (lead top 71 cm at 50 cm, as in
+### lead_thick_scan_def.mac); it covers all detectable tridents (>= 99.7% of those of the 42 cm runs).
+
+/control/alias tridentScanDir output/tridents_F1e3
+# thicknesses (cm), run in this order
+/control/alias tridentScanLead "10 20 30 40 50"
+# processes per thickness and muons per process
+/control/alias tridentScanJobs 80
+/control/alias tridentEvents 10000000
+/control/alias tridentBias 1e3
+/control/alias tridentPlaneZ 72
+# seed of process k at thickness t: tridentScanSeed0 + 1000 t + k
+/control/alias tridentScanSeed0 2000000

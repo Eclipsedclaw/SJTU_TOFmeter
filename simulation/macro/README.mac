@@ -69,7 +69,8 @@
 # /tof/tridents/search true          /run/beamOn N (and the Qt Run button) runs until N events are
 #                                      kept, at most /tof/tridents/searchLimit 1000000 muons
 # /process/em/setBiasingFactor muToMuonPairProd 1e5 true, then /run/physicsModified:
-#                                      10^5 times more tridents, weight 1e-5 each (tri_w)
+#                                      10^5 times more tridents, weight 1e-5 each (tri_w); for rates
+#                                      use 1e3 (1e5 gives ~5% too few: scripts/trident_scan.sh)
 
 # /Visualization default 0 (unused by DetectorConstruction.cc)
 

@@ -15,10 +15,13 @@
 // Also the energy when they leave the lead layer (pb_ke), compared over the thicknesses with the
 // spectrum of the same kind of muons without lead (0 cm, at sea level), as the plain lead slab of
 // analysis/lead_filter_spectrum.C but for these coincidence muons only.
-// Writes <dir>/lead_steps.pdf with <dir>/lead_steps_flux.png (rate spectra of the three steps, one
-// panel per thickness), <dir>/lead_steps_energy.png and _energy_loglog.png (energy after the lead,
-// all thicknesses together, linear below 2 GeV and log-log), <dir>/lead_steps_quantiles.png (median
-// and spread of the energy at each step) and <dir>/lead_steps.csv (quantiles, means, spectra).
+// The spectra are drawn as flux per m2 s sr GeV: each rate divided by the coincidence's geometric
+// factor G(E) = rate / vertical flux at sea level, fitted to the 0 cm points (see below).
+// Writes <dir>/lead_steps.pdf with <dir>/lead_steps_flux.png (spectra of the three steps, one panel
+// per thickness, over the sea-level spectrum of all muons in grey; _flux_zoom.png: 10-1000 MeV), <dir>/lead_steps_energy.png and _energy_loglog.png (energy after the lead, all
+// thicknesses together, linear below 2 GeV and log-log), <dir>/lead_steps_quantiles.png (median and
+// spread of the energy at each step), <dir>/lead_steps.csv (quantiles, means), lead_steps_after_lead.csv
+// (the linear spectra, rates and fluxes) and lead_steps_geometric_factor.csv (G of each 0 cm point).
 
 namespace {
 const int kSteps = 3;
@@ -76,8 +79,34 @@ struct ScanPoint {
   int it = -1;
   std::size_t band = 0;
   double eMono = 0., eMin = 0., eMax = 0., w = 0.;
+  double accept = 0.;     // cm2 sr per selected muon: area x 2 pi PlaneFactor / muons simulated
+  double vertical = 0.;   // the generator's vertical flux in the band, per m2 s sr GeV
   std::vector<std::array<double, 3>> muons;
 };
+
+// Zenith shape of the generator's muons (as src/CosmicRaySource.cc, Guan et al., arXiv:1509.06176):
+// intensity at total energy e (GeV) and cos(theta) c, up to a constant
+double GuanIntensity(double e, double c)
+{
+  const double p1 = 0.102573, p2 = -0.068287, p3 = 0.958633, p4 = 0.0407253, p5 = 0.817285;
+  const double cs = std::sqrt((c * c + p1 * p1 + p2 * std::pow(c, p3) + p4 * std::pow(c, p5)) / (1. + p1 * p1 + p2 + p4));
+  return std::pow(e * (1. + 3.64 / (e * std::pow(cs, 1.29))), -2.7)
+         * (1. / (1. + 1.1 * e * cs / 115.) + 0.054 / (1. + 1.1 * e * cs / 850.));
+}
+
+// Int_cosMin^1 I(c) / I(1) c dc at kinetic energy eKin (MeV): the flux through the source plane (per
+// cm2 s) is the vertical flux (per cm2 s sr) times 2 pi this
+double PlaneFactor(double eKin, double cosMin)
+{
+  const double e = eKin / 1000. + 0.1056583755;
+  const int n = 400;   // Simpson
+  double sum = 0.;
+  for (int k = 0; k <= n; ++k) {
+    const double c = cosMin + (1. - cosMin) * k / n;
+    sum += (k == 0 || k == n ? 1. : (k % 2 ? 4. : 2.)) * GuanIntensity(e, c) * c;
+  }
+  return sum * (1. - cosMin) / (3. * n) / GuanIntensity(e, 1.);
+}
 
 double Quantile(const TH1D* h, double q)   // MeV, from the bin contents (log-interpolated in a bin)
 {
@@ -152,19 +181,25 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
   edges.insert(edges.begin(), edges.empty() ? lows[0] / ratio : edges.front() / ratio);
   for (double e : lows) edges.push_back(e);
   edges.push_back(top);
-  TH1D* steps[nShow][kSteps];
-  TH1D *afterLog[nShow], *afterLin[nShow], *seaLin[nShow];   // leaving the lead; sea level, linear
+  // rates per hour (quantiles, table, CSV) and, with I in the name, flux per m2 s sr (plots)
+  TH1D *steps[nShow][kSteps], *stepsI[nShow][kSteps];
+  TH1D *afterLin[nShow], *seaLin[nShow];                       // leaving the lead; sea level, linear
+  TH1D *afterLogI[nShow], *afterLinI[nShow], *seaLinI[nShow];
   double rate[nShow] = {}, meanE[nShow][kSteps] = {};
   for (int i = 0; i < nShow; ++i)
     for (int s = 0; s < kSteps; ++s) {
       steps[i][s] = new TH1D(Form("step_%d_%d", i, s), "", int(edges.size()) - 1, edges.data());
+      stepsI[i][s] = new TH1D(Form("stepI_%d_%d", i, s), "", int(edges.size()) - 1, edges.data());
       steps[i][s]->Sumw2();
+      stepsI[i][s]->Sumw2();
     }
   for (int i = 0; i < nShow; ++i) {
-    afterLog[i] = new TH1D(Form("afterLog_%d", i), "", int(edges.size()) - 1, edges.data());
+    afterLogI[i] = new TH1D(Form("afterLogI_%d", i), "", int(edges.size()) - 1, edges.data());
     afterLin[i] = new TH1D(Form("afterLin_%d", i), "", 100, 0., 2000.);   // 20 MeV bins
     seaLin[i] = new TH1D(Form("seaLin_%d", i), "", 100, 0., 2000.);
-    TH1D* hs[] = {afterLog[i], afterLin[i], seaLin[i]};
+    afterLinI[i] = new TH1D(Form("afterLinI_%d", i), "", 100, 0., 2000.);
+    seaLinI[i] = new TH1D(Form("seaLinI_%d", i), "", 100, 0., 2000.);
+    TH1D* hs[] = {afterLogI[i], afterLin[i], seaLin[i], afterLinI[i], seaLinI[i]};
     for (TH1D* h : hs) h->Sumw2();
   }
   long nEvents = 0;
@@ -184,12 +219,17 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
     auto run = dynamic_cast<TTree*>(file.Get("run"));
     auto events = dynamic_cast<TTree*>(file.Get("events"));
     if (!run || !events || run->GetEntries() != 1 || !events->GetBranch("top_ke") || !events->GetBranch("prim_st")) continue;
-    double lead = 0., eMono = 0., eMin = 0., eMax = 0., liveTime = 0.;
+    double lead = 0., eMono = 0., eMin = 0., eMax = 0., liveTime = 0., flux = 0., area = 0., thetaMax = 0.;
+    int simulated = 0;
     run->SetBranchAddress("lead_cm", &lead);
     run->SetBranchAddress("e_mono", &eMono);
     run->SetBranchAddress("e_min", &eMin);
     run->SetBranchAddress("e_max", &eMax);
     run->SetBranchAddress("live_time", &liveTime);
+    run->SetBranchAddress("flux", &flux);
+    run->SetBranchAddress("area", &area);
+    run->SetBranchAddress("theta_max", &thetaMax);
+    run->SetBranchAddress("n_events", &simulated);
     run->GetEntry(0);
     int it = -1;
     for (int i = 0; i < nShow; ++i)
@@ -206,6 +246,9 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
     point.eMin = eMin;
     point.eMax = eMax;
     point.w = 3600. / liveTime;
+    const double solid = TMath::TwoPi() * PlaneFactor(eMono, std::cos(thetaMax * TMath::DegToRad()));   // sr
+    point.accept = simulated > 0 ? area * solid / simulated : 0.;
+    point.vertical = flux / solid / ((eMax - eMin) / 1000.) * 1e4;
     monos[point.band] = eMono;
     std::vector<int>* barSt = nullptr;
     std::vector<double>* barE = nullptr;
@@ -268,9 +311,31 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
     if (k >= nBands || lowest[it][j][q] < kStretchMin || lowest[it][k][q] < kStretchMin || monos[k] <= monos[j]) return 1.;
     return std::min(std::max((medians[it][k][q] - medians[it][j][q]) / (monos[k] - monos[j]), 0.5), 2.);
   };
+  // Flux per sr: the geometric factor of the coincidence, G(E) = rate / vertical flux of the
+  // muons at sea level (cm2 sr), from the 0 cm points. It grows with E, ~200 cm2 sr at 0.06 GeV to
+  // ~260 at 100 GeV, as the zenith distribution widens; a cubic in ln E fits it from 55 MeV, where
+  // the coincidence is fully efficient. Each muon's rate is divided by G at its sea-level energy
+  // (which sets its zenith angle), so the 0 cm curves are the generator's vertical flux; below
+  // 55 MeV G is taken at 55 MeV, leaving in the curves the muons that do not reach the Compton detector.
+  const double kGeoMin = 55.;   // MeV
+  TGraphErrors geo;
+  for (const ScanPoint& p : points)
+    if (p.it == 0 && p.eMono >= kGeoMin && p.muons.size() >= 100) {
+      const int k = geo.GetN();
+      geo.SetPoint(k, std::log(p.eMono), p.muons.size() * p.accept);
+      geo.SetPointError(k, 0., std::sqrt(double(p.muons.size())) * p.accept);
+    }
+  if (geo.GetN() < 8) {
+    printf("too few 0 cm points above %g MeV for the geometric factor in %s\n", kGeoMin, dir);
+    return;
+  }
+  TF1 geoFit("geoFit", "pol3", std::log(kGeoMin), std::log(2e5));
+  geo.Fit(&geoFit, "Q0");
+  auto geometric = [&](double e) { return geoFit.Eval(std::log(std::max(e, kGeoMin))); };   // cm2 sr
+
   for (const ScanPoint& p : points) {
     const int it = p.it;
-    const double w = p.w, g = slopes[p.band];
+    const double w = p.w, wI = w / 3600. / (1e-4 * geometric(p.eMono)), g = slopes[p.band];
     double jLow[3], jHigh[3];
     for (int q = 0; q < 3; ++q) {
       jLow[q] = p.band > 0 ? stretch(it, p.band - 1, p.band, q) : 1.;
@@ -281,14 +346,20 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
       ++nEvents;
       rate[it] += w;
       FillPart(steps[it][0], sea, p.eMin, p.eMax, w);
+      FillPart(stepsI[it][0], sea, p.eMin, p.eMax, wI);
       FillPart(seaLin[it], sea, p.eMin, p.eMax, w);
+      FillPart(seaLinI[it], sea, p.eMin, p.eMax, wI);
       if (m[0] >= 0.) {
         const Spread after{m[0], p.eMono, p.eMin, p.eMax, g, jLow[0], jHigh[0]};
-        FillBandShift(afterLog[it], after, w);
+        FillBandShift(afterLogI[it], after, wI);
         FillBandShift(afterLin[it], after, w);
+        FillBandShift(afterLinI[it], after, wI);
       }
-      FillBandShift(steps[it][1], Spread{m[1], p.eMono, p.eMin, p.eMax, g, jLow[1], jHigh[1]}, w);
-      FillBandShift(steps[it][2], Spread{m[2], p.eMono, p.eMin, p.eMax, g, jLow[2], jHigh[2]}, w);
+      for (int s = 1; s < kSteps; ++s) {
+        const Spread step{m[s], p.eMono, p.eMin, p.eMax, g, jLow[s], jHigh[s]};
+        FillBandShift(steps[it][s], step, w);
+        FillBandShift(stepsI[it][s], step, wI);
+      }
       meanE[it][0] += w * p.eMono;
       meanE[it][1] += w * m[1];
       meanE[it][2] += w * m[2];
@@ -329,18 +400,34 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
     printf("  %2g cm: lead + steel %6.1f MeV, TOF bars + Al plates %5.1f MeV\n", wanted[i],
            (meanE[i][0] - meanE[i][1]) / rate[i], (meanE[i][1] - meanE[i][2]) / rate[i]);
   }
+  printf("geometric factor G = rate / vertical flux at sea level (cm2 sr), cubic in ln E (chi2 %.0f, %d points):\n ",
+         geoFit.GetChisquare(), geo.GetN());
+  for (double e : {60., 300., 1000., 3000., 1e4, 3e4, 1e5}) printf("  %g GeV %.0f", e / 1000., geometric(e));
+  printf("\n");
+  std::vector<const ScanPoint*> zero;
+  for (const ScanPoint& p : points)
+    if (p.it == 0) zero.push_back(&p);
+  std::sort(zero.begin(), zero.end(), [](const ScanPoint* a, const ScanPoint* b) { return a->eMono < b->eMono; });
+  if (FILE* out = fopen(Form("%s/lead_steps_geometric_factor.csv", dir), "w")) {
+    fprintf(out, "E_MeV,G_cm2sr,G_err_cm2sr,G_used_cm2sr,generator_vertical_flux_m2ssrGeV\n");
+    for (const ScanPoint* p : zero)
+      fprintf(out, "%g,%.6g,%.6g,%.6g,%.6g\n", p->eMono, p->muons.size() * p->accept, std::sqrt(double(p->muons.size())) * p->accept,
+              geometric(p->eMono), p->vertical);
+    fclose(out);
+  }
 
-  // ---- page 1: rate spectra of the four steps, one panel per thickness
+  // ---- page 1: flux spectra of the three steps, one panel per thickness
   gStyle->SetOptStat(0);
+  const char* fluxTitle = "flux [m^{2} s sr GeV/n]^{-1}";
   const int stepColours[kSteps] = {kBlack, kBlue + 1, kRed + 1};
   const int stepStyles[kSteps] = {1, 1, 2};   // the Compton entry is only ~6 MeV below the top TOF: dashed, on top
-  TCanvas cf("cf", "steps: rate spectra", 2000, 1050);
+  TCanvas cf("cf", "steps: spectra", 2000, 1050);
   cf.Divide(4, 2);
   double yMax = 0., yMin = 1e30;
   std::vector<std::vector<TH1D*>> curves(nShow);
   for (int i = 0; i < nShow; ++i)
     for (int s = 0; s < kSteps; ++s) {
-      TH1D* h = PerGeV(steps[i][s], Form("flux_%d_%d", i, s));
+      TH1D* h = PerGeV(stepsI[i][s], Form("flux_%d_%d", i, s));
       h->SetLineColor(stepColours[s]);
       h->SetLineStyle(stepStyles[s]);
       h->SetLineWidth(2);
@@ -351,6 +438,13 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
         }
       curves[i].push_back(h);
     }
+  // the reference in every panel: the sea-level spectrum of all the muons, the generator's vertical
+  // flux in each band (the black line is only the muons that make the coincidence at that thickness)
+  auto seaAll = static_cast<TH1D*>(stepsI[0][0]->Clone("seaAll"));
+  seaAll->Reset();
+  for (const ScanPoint& p : points) seaAll->SetBinContent(seaAll->FindFixBin(std::sqrt(p.eMin * p.eMax)), p.vertical);
+  seaAll->SetLineColor(kGray);
+  seaAll->SetLineWidth(6);   // a light band under the other lines
   for (int i = 0; i < nShow; ++i) {
     cf.cd(i + 1);
     gPad->SetLogx();
@@ -360,16 +454,49 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
     gPad->SetBottomMargin(0.12);
     gPad->SetLeftMargin(0.14);
     auto frame = gPad->DrawFrame(1., std::max(0.5 * yMin, 1e-4 * yMax), 1.2e5, 3. * yMax);
-    frame->SetTitle(Form("%g cm lead: %.0f muons per hour;kinetic energy (MeV);dR/dE (h^{-1} GeV^{-1})", wanted[i], rate[i]));
+    frame->SetTitle(Form("%g cm lead: %.0f muons per hour;kinetic energy (MeV);%s", wanted[i], rate[i], fluxTitle));
     frame->GetXaxis()->SetTitleOffset(1.2);
+    seaAll->Draw("HIST SAME ][");
     for (TH1D* h : curves[i]) h->Draw("HIST SAME ][");
   }
   cf.cd(8);
-  auto legend = new TLegend(0.05, 0.3, 0.95, 0.85);
+  auto legend = new TLegend(0.05, 0.25, 0.95, 0.85);
   legend->SetBorderSize(0);
   legend->SetTextSize(0.045);
   legend->SetHeader("the same muons (muon only)", "L");
   for (int s = 0; s < kSteps; ++s) legend->AddEntry(curves[0][s], kStepNames[s], "l");
+  legend->AddEntry(seaAll, "sea level, all muons (EXPACS)", "l");
+  legend->Draw();
+
+  // ---- the same page zoomed to 10-1000 MeV, the y range from the curves in that window
+  const double zoomLo = 10., zoomHi = 1000.;
+  double zMax = 0., zMin = 1e30;
+  for (int i = 0; i < nShow; ++i)
+    for (TH1D* h : curves[i])
+      for (int b = h->FindFixBin(zoomLo); b <= h->FindFixBin(zoomHi); ++b)
+        if (h->GetBinContent(b) > 0.) {
+          zMax = std::max(zMax, h->GetBinContent(b));
+          zMin = std::min(zMin, h->GetBinContent(b));
+        }
+  TCanvas cz("cz", "steps: spectra, 10-1000 MeV", 2000, 1050);
+  cz.Divide(4, 2);
+  for (int i = 0; i < nShow; ++i) {
+    cz.cd(i + 1);
+    gPad->SetLogx();
+    gPad->SetLogy();
+    gPad->SetGridx();
+    gPad->SetGridy();
+    gPad->SetBottomMargin(0.12);
+    gPad->SetLeftMargin(0.14);
+    auto frame = gPad->DrawFrame(zoomLo, std::max(0.5 * zMin, 3e-3 * zMax), zoomHi, 2. * zMax);
+    frame->SetTitle(Form("%g cm lead: %.0f muons per hour;kinetic energy (MeV);%s", wanted[i], rate[i], fluxTitle));
+    frame->GetXaxis()->SetTitleOffset(1.2);
+    frame->GetXaxis()->SetMoreLogLabels();
+    frame->GetXaxis()->SetNoExponent();
+    seaAll->Draw("HIST SAME ][");
+    for (TH1D* h : curves[i]) h->Draw("HIST SAME ][");
+  }
+  cz.cd(8);
   legend->Draw();
 
   // ---- the energy after the lead, all thicknesses together (as analysis/lead_filter_spectrum.C)
@@ -378,8 +505,8 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
   gPad->SetGridy();
   gPad->SetBottomMargin(0.12);
   gPad->SetLeftMargin(0.11);
-  TH1D* ref = PerGeV(seaLin[0], "refLin");
-  ref->SetTitle("TMC muons (muon only): kinetic energy leaving the lead, below 2 GeV;kinetic energy (MeV);dR/dE (h^{-1} GeV^{-1})");
+  TH1D* ref = PerGeV(seaLinI[0], "refLin");
+  ref->SetTitle(Form("TMC muons (muon only): kinetic energy leaving the lead, below 2 GeV;kinetic energy (MeV);%s", fluxTitle));
   ref->SetLineColor(kBlack);
   ref->SetLineWidth(3);
   ref->SetMinimum(0.);
@@ -387,7 +514,7 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
   std::vector<TH1D*> linCurves;
   for (int i = 1; i < nShow; ++i) {
     if (rate[i] <= 0.) continue;
-    TH1D* h = PerGeV(afterLin[i], Form("afterLinGeV_%d", i));
+    TH1D* h = PerGeV(afterLinI[i], Form("afterLinGeV_%d", i));
     h->SetLineColor(thickColours[i]);
     h->SetLineWidth(2);
     h->SetTitle(Form("after %g cm of lead", wanted[i]));
@@ -412,12 +539,12 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
   gPad->SetGridy();
   gPad->SetBottomMargin(0.12);
   gPad->SetLeftMargin(0.11);
-  TH1D* refLog = PerGeV(steps[0][0], "refLog");
+  TH1D* refLog = PerGeV(stepsI[0][0], "refLog");
   double logMax = refLog->GetMaximum(), logMin = 1e30;
   std::vector<TH1D*> logCurves;
   for (int i = 1; i < nShow; ++i) {
     if (rate[i] <= 0.) continue;
-    TH1D* h = PerGeV(afterLog[i], Form("afterLogGeV_%d", i));
+    TH1D* h = PerGeV(afterLogI[i], Form("afterLogGeV_%d", i));
     h->SetLineColor(thickColours[i]);
     h->SetLineWidth(2);
     logMax = std::max(logMax, h->GetMaximum());
@@ -426,7 +553,7 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
     logCurves.push_back(h);
   }
   auto frameL = gPad->DrawFrame(10., std::max(0.5 * logMin, 1e-4 * logMax), 1.2e5, 3. * logMax);
-  frameL->SetTitle("TMC muons (muon only): kinetic energy leaving the lead;kinetic energy (MeV);dR/dE (h^{-1} GeV^{-1})");
+  frameL->SetTitle(Form("TMC muons (muon only): kinetic energy leaving the lead;kinetic energy (MeV);%s", fluxTitle));
   frameL->GetXaxis()->SetTitleOffset(1.2);
   refLog->SetLineColor(kBlack);
   refLog->SetLineWidth(3);
@@ -437,12 +564,20 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
   legendL->AddEntry(refLog, "no lead (0 cm), at sea level", "l");
   for (std::size_t k = 0; k < logCurves.size(); ++k) legendL->AddEntry(logCurves[k], linCurves[k]->GetTitle(), "l");
   legendL->Draw();
-  if (FILE* out = fopen(Form("%s/lead_steps_after_lead.csv", dir), "w")) {   // the linear spectra
+  if (FILE* out = fopen(Form("%s/lead_steps_after_lead.csv", dir), "w")) {   // the linear spectra: rates, fluxes
     fprintf(out, "E_low_MeV,E_high_MeV,no_lead_sea_level_hGeV");
-    for (int i = 1; i < nShow; ++i) fprintf(out, ",after_%gcm_hGeV", wanted[i]);
+    for (int i = 1; i < nShow; ++i)
+      if (rate[i] > 0.) fprintf(out, ",after_%gcm_hGeV", wanted[i]);
+    fprintf(out, ",no_lead_sea_level_m2ssrGeV");
+    for (int i = 1; i < nShow; ++i)
+      if (rate[i] > 0.) fprintf(out, ",after_%gcm_m2ssrGeV", wanted[i]);
     fprintf(out, "\n");
     for (int b = 1; b <= ref->GetNbinsX(); ++b) {
-      fprintf(out, "%g,%g,%.6g", ref->GetBinLowEdge(b), ref->GetBinLowEdge(b + 1), ref->GetBinContent(b));
+      const double width = ref->GetBinWidth(b) / 1000.;
+      fprintf(out, "%g,%g,%.6g", ref->GetBinLowEdge(b), ref->GetBinLowEdge(b + 1), seaLin[0]->GetBinContent(b) / width);
+      for (int i = 1; i < nShow; ++i)
+        if (rate[i] > 0.) fprintf(out, ",%.6g", afterLin[i]->GetBinContent(b) / width);
+      fprintf(out, ",%.6g", ref->GetBinContent(b));
       for (TH1D* h : linCurves) fprintf(out, ",%.6g", h->GetBinContent(b));
       fprintf(out, "\n");
     }
@@ -527,13 +662,15 @@ void lead_steps(const char* dir = "output/leadscan_thick", double barThr = 0.2, 
 
   const TString base = Form("%s/lead_steps", dir);
   cf.Print(base + ".pdf(");
+  cz.Print(base + ".pdf");
   cc.Print(base + ".pdf");
   ccl.Print(base + ".pdf");
   ce.Print(base + ".pdf)");
   cf.SaveAs(base + "_flux.png");
+  cz.SaveAs(base + "_flux_zoom.png");
   cc.SaveAs(base + "_energy.png");
   ccl.SaveAs(base + "_energy_loglog.png");
   ce.SaveAs(base + "_quantiles.png");
-  printf("plots: %s.pdf, %s_flux.png, %s_energy.png, %s_energy_loglog.png, %s_quantiles.png; tables: %s, %s_after_lead.csv\n",
-         base.Data(), base.Data(), base.Data(), base.Data(), base.Data(), csvName.Data(), base.Data());
+  printf("plots: %s.pdf, %s_flux.png, %s_flux_zoom.png, %s_energy.png, %s_energy_loglog.png, %s_quantiles.png; tables: %s, %s_after_lead.csv\n",
+         base.Data(), base.Data(), base.Data(), base.Data(), base.Data(), base.Data(), csvName.Data(), base.Data());
 }

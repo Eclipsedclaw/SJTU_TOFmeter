@@ -41,6 +41,7 @@ when CMake finds the Qt SVG module.
 | `trident_validation.mac` | muon tridents (mu -> mu mu+ mu-) in lead against Russell et al., PRL 26 (1971) 46: Geant4 cross section versus energy, biased 10.5 GeV/c beam on 114.5 g/cm2 of lead, `analysis/trident_validation.C`; run with `--preinit macro/physics_tridents.mac` (~10 s) |
 | `vis_tridents_qt.mac`, `vis_tridents.mac` | only muon trident events, kept and drawn (Qt GUI: one more trident each time the Run button is pressed, the last one staying in the viewer, which turns slowly until the first click as in `vis_qt.mac`; batch: PNG files in `output/trident_views/`); alias `tridentKeep` (1 every trident, 2 detectable), batch also `tridentMax` (20); with `--preinit macro/physics_tridents.mac` |
 | `trident_cosmic.mac` | rate of muon tridents in the TOF-meter, biased x10^5: `sh scripts/trident_cosmic.sh [jobs] [muons per job] [lead cm]`, then `analysis/trident_rate.C` |
+| `trident_scan_def.mac` | the same rate with F = 10^3 (10^5 gives rates ~5-6% low, see below) for lead 10-50 cm, 80 x 10^7 muons per thickness (519 h of exposure, ~8 h on 10 cores), source plane at z = 72 cm: `mkdir -p output/tridents_F1e3; nohup nice -n 15 caffeinate -is sh scripts/trident_scan.sh macro/trident_scan_def.mac 10 >> output/tridents_F1e3/scan.log 2>&1 &`; `trident_rate.C` runs on `output/tridents_F1e3/t<cm>/` when that thickness is done, `summary.txt` at the end; `touch output/tridents_F1e3/STOP` stops after the running processes, starting again (without STOP) goes on; `sh scripts/trident_remote.sh "40 50" [jobs]` in an unpacked copy of this folder builds and runs some thicknesses on another computer (same seeds), to be copied back with `scp -r` |
 | `lead_lowE_scan.mac` | the same for 100-500 MeV in 20 MeV steps; in parallel with `sh scripts/lead_energy_scan.sh macro/lead_lowE_scan_def.mac` |
 | `lead_thick_scan.mac` | the same for 60 energies (0.01-100 GeV) and lead 0-50 cm, 10^6 muons per point, source plane at z = 72 cm, with the muon energy after the lead (`pb_ke top_ke cmp_ke`): `caffeinate -is sh scripts/lead_energy_scan.sh macro/lead_thick_scan_def.mac 10` (about 2 days on 10 cores), then `analysis/lead_energy_scan.C` and `analysis/lead_after_spectrum.C` (run by the script) |
 | `lead_filter.mac` | sea-level muon spectrum before and after a plain lead slab (8 x 8 m, in vacuum, nothing else), one thickness per process: `sh scripts/lead_filter.sh [jobs] [muons] [thicknesses in cm]` (default 6 jobs, 2x10^6 muons, 5-50 cm, ~25 min), then `analysis/lead_filter_spectrum.C`: spectra before and after, the probability to get through versus energy, and the flux of slow muons after the lead. `--below E` simulates only the muons that can leave the lead below E GeV (many more statistics there; `--below 2 --parts 4 10 15000000` gives 10x the default below 2 GeV in ~1 h, ~15 GB), `--parts n` splits each thickness into n processes |
@@ -68,7 +69,10 @@ commands Geant4 accepts only then. `macro/physics_tridents.mac` switches on muon
 are off otherwise. `/tof/physics/crossSection <process> <particle> <material> <E1 E2 ... GeV>` prints
 a process's Geant4 cross section after a `/run/beamOn` (0 events is enough). Rare processes can be
 made more frequent with `/process/em/setBiasingFactor <process> <F> true` and `/run/physicsModified`;
-the affected tracks then carry weight 1/F (`tri_w`).
+the affected tracks then carry weight 1/F (`tri_w`). Keep F times the probability per track well
+below 1: a second biased interaction of a track already at 1/F gets 1/F^2, so rates come out low by
+about half that probability (cosmic tridents with 10-20 cm of lead: 5.2-6.1% of the primary tridents
+at F = 10^5, 20-30% above 100 GeV; ~0.05% at F = 10^3).
 
 ## Geometry
 

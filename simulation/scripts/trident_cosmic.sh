@@ -3,7 +3,8 @@
 # different seeds, then analysis/trident_rate.C. Run it in the build directory:
 #   sh scripts/trident_cosmic.sh [jobs, default 8] [muons per job, default 1000000] [lead cm, default 10]
 # Writes output/tridents_t<lead>/trident_cosmic_<job>.root (earlier files of this script there are
-# replaced) and one macro and log per job in output/tridents_t<lead>/log/.
+# replaced) and one macro and log per job in output/tridents_t<lead>/log/. Bias F = 1e5, source plane
+# at z = 42 cm (so at most 20 cm of lead); scripts/trident_scan.sh runs other F, planes and many jobs.
 
 jobs=${1:-8}
 events=${2:-1000000}
@@ -24,6 +25,8 @@ for k in $(seq 1 "$jobs"); do
     echo "/control/alias tridentDir $dir"
     echo "/control/alias tridentFile trident_cosmic_$k"
     echo "/control/alias tridentLead $lead"
+    echo "/control/alias tridentBias 1e5"
+    echo "/control/alias tridentPlaneZ 42"
     echo "/control/execute macro/trident_cosmic.mac"
   } > "$dir/log/job$k.mac"
 done

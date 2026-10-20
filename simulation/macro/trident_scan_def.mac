@@ -11,8 +11,8 @@
 ### trident, which gets weight 1/F^2, so the rate came out ~5-6% low (20-30% above 100 GeV); with 1e3
 ### this is ~0.05%. 100 times more muons keep the number of simulated tridents: 80 x 10^7 muons per
 ### thickness = 519 h of sea-level exposure (8 x 10^6 = 5.19 h before), about 8 h on 10 cores.
-### The 2 x 2 m source plane is at z = 72 cm for every thickness (lead top 71 cm at 50 cm, as in
-### lead_thick_scan_def.mac); it covers all detectable tridents (>= 99.7% of those of the 42 cm runs).
+### The 2 x 2 m source plane is at z = 142 cm for every thickness (lead top 141 cm at 50 cm, as in
+### lead_thick_scan_def.mac); it covers all detectable tridents (>= 99.7% of those of the 112 cm runs).
 
 /control/alias tridentScanDir output/tridents_F1e3
 # thicknesses (cm), run in this order
@@ -21,6 +21,6 @@
 /control/alias tridentScanJobs 80
 /control/alias tridentEvents 10000000
 /control/alias tridentBias 1e3
-/control/alias tridentPlaneZ 72
+/control/alias tridentPlaneZ 142
 # seed of process k at thickness t: tridentScanSeed0 + 1000 t + k
 /control/alias tridentScanSeed0 2000000

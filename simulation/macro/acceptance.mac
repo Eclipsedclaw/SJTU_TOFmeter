@@ -13,7 +13,7 @@
 ### is enlarged to 13 x 13 x 4 m for the 12 x 12 m plane of run 2.
 
 /control/verbose 0
-/control/alias accPlaneZ 40
+/control/alias accPlaneZ 110
 /control/alias cosmicHalf 300
 /control/alias geoHalf 600
 /control/alias geoThetaMax 80

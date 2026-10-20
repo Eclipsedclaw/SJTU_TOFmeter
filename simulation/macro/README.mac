@@ -27,7 +27,7 @@
 #                                      (default mu+ mu-)
 # /tof/cosmic/angular pairs            expacs: <species|all> <n|guan>, I ~ cos^n(theta); guan = muon
 #                                      shape of Guan et al. (default all 2 mu+ guan mu- guan)
-# /tof/cosmic/planeCenter x y z unit   centre of the horizontal source plane (default 0 0 75 cm)
+# /tof/cosmic/planeCenter x y z unit   centre of the horizontal source plane (default 0 0 145 cm)
 # /tof/cosmic/halfX, halfY value unit  plane half sizes (default 150 cm)
 # /tof/cosmic/energyMin, energyMax     kinetic energy range, per nucleon for ions (default 0 - 1000 GeV)
 # /tof/cosmic/monoEnergy value unit    > 0: every particle gets this energy, zenith law of that
@@ -40,6 +40,8 @@
 # /physics_engine/neutron/timeLimit 10 ms   let slow neutrons live long enough to arrive
 
 # --- Geometry (apply with /update) ---
+# z = 0 is the ground (bottom of the setup), x = y = 0 its axis; heights in README.md
+# macro/geom_target_al.mac: Al target 20 x 20 x 1 cm above the Compton detector (/tof/target/...)
 # /tof/det/stations | frame | stack | absorber | leadWalls  true|false   parts of DetectorConstruction.cc
 # /tof/det/leadThickness 10 cm         lead layer on the steel plate (bottom fixed, 0 = none);
 #                                      the lead walls end level with its top

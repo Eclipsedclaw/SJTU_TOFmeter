@@ -67,7 +67,7 @@
 /OutputDirectory output
 /OutputFile vis_tridents_qt
 /GeneralParticleSource 2
-/tof/cosmic/planeCenter 0 0 42 cm
+/tof/cosmic/planeCenter 0 0 112 cm
 /tof/cosmic/halfX 100 cm
 /tof/cosmic/halfY 100 cm
 /tof/cosmic/thetaMax 75 deg

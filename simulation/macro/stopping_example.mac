@@ -13,7 +13,7 @@
 /gun/seed 3
 
 /GeneralParticleSource 2
-/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/planeCenter 0 0 105 cm
 /tof/cosmic/halfX 60 cm
 /tof/cosmic/halfY 60 cm
 /tof/cosmic/thetaMax 60 deg

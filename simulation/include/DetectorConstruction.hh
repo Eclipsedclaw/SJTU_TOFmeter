@@ -77,6 +77,8 @@ public:
 
     // Thickness of the lead layer on top, 0 when it is not built
     G4double GetLeadThickness() const { return fBuildAbsorber ? fLeadThickness : 0.; }
+    // z of the bottom of the setup (Al4, corner beams, lead walls), the ground: 0
+    G4double GetSetupBottomZ() const { return fSetupBottomZ; }
 
     // Passive boxes (/tof/blocks/add, /tof/blocks/clear); spec is
     // "name material x y z dx dy dz unit" with centre and full sizes
@@ -133,6 +135,7 @@ private:
     G4bool fBuildAbsorber;
     G4bool fBuildLeadWalls;
     G4double fLeadThickness;        // lead layer on the steel plate (/tof/det/leadThickness)
+    G4double fSetupBottomZ;         // bottom of Al4 (the ground), set by Construct()
     G4String fWorldMaterialName;
     G4ThreeVector fWorldSize;
 

@@ -50,7 +50,7 @@
 /OutputDirectory output
 /OutputFile vis_qt
 /GeneralParticleSource 2
-/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/planeCenter 0 0 105 cm
 /tof/cosmic/halfX 40 cm
 /tof/cosmic/halfY 40 cm
 /run/beamOn 10

@@ -130,6 +130,7 @@ DetectorConstruction::DetectorConstruction()
       fBuildAbsorber(true),
       fBuildLeadWalls(true),
       fLeadThickness(10.0 * cm),
+      fSetupBottomZ(0.),
       fWorldMaterialName("G4_AIR"),
       fWorldSize(4.0 * m, 4.0 * m, 3.0 * m),
       fBuildCamera(false),
@@ -344,11 +345,12 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
     // z points up: muons come from +z. From the top: lead layer, steel plate,
     // top TOF on Al1, middle TOF on Al2, Si/YSO stack (Compton detector) on Al3,
-    // bottom TOF on Al4; four lead walls around everything.
+    // bottom TOF on Al4; four lead walls around everything. The setup stands on the
+    // ground at z = 0: the bottom of Al4, of the corner beams and of the lead walls.
 
     // Framework Fe: stainless-steel plate holding the lead layer
     G4double framework_Fe_sizeXY = 80 * cm, framework_Fe_sizeZ = 1 * cm;
-    G4double framework_Fe_z = 20.5 * cm;
+    G4double framework_Fe_z = 90.5 * cm;
     const G4double frameTopZ = framework_Fe_z + 0.5 * framework_Fe_sizeZ;     // top of the steel plate
 
     // Stainless-steel L beams on the four corners of the steel plate: 10 cm legs, 1 cm thick
@@ -407,11 +409,12 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     G4double framework_Al_sizeShort = framework_Fe_sizeXY + 2 * beamThick - 2 * beamLeg;
     G4double framework_Al_sizeZ     = 3.0 * mm;
 
+// plate centres; Al4 lies on the ground (z = 0 to 0.3 cm)
 std::vector<G4double> alPositions = {
-    -2.35 * cm,   // Al1: under the top TOF
-    -32.35 * cm,  // Al2: under the middle TOF
-    -52.35 * cm,  // Al3: under the Si/YSO stack
-    -69.85 * cm   // Al4: under the bottom TOF
+    67.65 * cm,   // Al1: under the top TOF
+    37.65 * cm,   // Al2: under the middle TOF
+    17.65 * cm,   // Al3: under the Si/YSO stack
+    0.15 * cm     // Al4: under the bottom TOF
 };
 
 // true:  long side along world X
@@ -425,6 +428,7 @@ std::vector<G4bool> alLongAlongX = {
 
 // Vertical extent of the frame and of the whole setup
 const G4double setupBottomZ = alPositions[3] - 0.5 * framework_Al_sizeZ;   // bottom of Al4
+fSetupBottomZ = setupBottomZ;
 const G4double leadTopZ = frameTopZ + leadLayerThick;                       // top of the lead layer
 
     if (fBuildFrame) {
@@ -684,7 +688,7 @@ for (const auto& station : scintStations) {
     fKinds[logic_YSO] = DetectorKind::StackYSO;
     fKinds[logic_Silicon] = DetectorKind::StackSi;
 
-    // 底部 Si 贴合在 Al3 铝框架 (z = -52.35 cm) 的上表面, 其余各层向上排列
+    // 底部 Si 贴合在 Al3 铝框架 (z = 17.65 cm) 的上表面, 其余各层向上排列
     G4double firstSiliconCenterZ = stackAlFrameZ + stackAlFrameHalfZ + siliconLayerHalfZ;
     std::vector<G4double> siliconLayerPositions = {
         firstSiliconCenterZ,

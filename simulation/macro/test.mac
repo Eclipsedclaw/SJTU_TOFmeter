@@ -27,7 +27,7 @@
 /gps/ene/type Mono
 /gps/ene/mono 0.001 MeV
 /gps/pos/type Point
-/gps/pos/centre 0.0 0.0 0.0 cm
+/gps/pos/centre 0.0 0.0 70.0 cm
 /gps/ang/type iso
 
 /OutputFile test

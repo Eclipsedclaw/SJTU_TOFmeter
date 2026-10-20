@@ -8,7 +8,7 @@
 /control/alias leadScanHalfStep 1.199353946
 /control/alias leadScanTmax 20
 /control/alias leadScanGroups 1
-/control/alias leadScanPlaneZ 42
+/control/alias leadScanPlaneZ 112
 /control/alias leadScanHalfXY 100
 /control/alias leadScanFilter 2
 /control/alias leadScanSeed0 1000

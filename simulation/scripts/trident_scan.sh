@@ -36,10 +36,10 @@ for v in dir leads perLead events bias planeZ seed0; do
     exit 1
   fi
 done
-# the muons start on the plane: it must be above the lead layer (bottom at 21 cm)
+# the muons start on the plane: it must be above the lead layer (bottom at 91 cm)
 for t in $leads; do
-  if ! awk -v t="$t" -v z="$planeZ" 'BEGIN { exit !(t + 21 < z) }'; then
-    echo "lead $t cm reaches z = $(awk -v t="$t" 'BEGIN { print t + 21 }') cm, not below the source plane at $planeZ cm" >&2
+  if ! awk -v t="$t" -v z="$planeZ" 'BEGIN { exit !(t + 91 < z) }'; then
+    echo "lead $t cm reaches z = $(awk -v t="$t" 'BEGIN { print t + 91 }') cm, not below the source plane at $planeZ cm" >&2
     exit 1
   fi
 done

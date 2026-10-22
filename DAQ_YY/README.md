@@ -162,6 +162,8 @@ Add the card's row to the [record](#record) below, with the light level from ste
 | 6 | | | | | | | |
 | 7 | | | | | | | |
 | 8 | | | | | | | |
+<img width="1298" height="913" alt="Screenshot 2026-10-22 at 5 58 54 PM" src="https://github.com/user-attachments/assets/56f2dc19-f9f3-43b5-af1c-1fbdcd344173" />
+
 
 ## Check all cards at once
 

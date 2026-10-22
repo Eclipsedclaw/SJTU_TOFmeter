@@ -3,15 +3,28 @@
 #include "TOFmeterEventAction.hh"
 
 #include "G4EmProcessSubType.hh"
+#include "G4Gamma.hh"
 #include "G4ParticleDefinition.hh"
+#include "G4PhysicsModelCatalog.hh"
 #include "G4Step.hh"
 #include "G4Track.hh"
 #include "G4VPhysicalVolume.hh"
 #include "G4VProcess.hh"
 
 TOFmeterTrackingAction::TOFmeterTrackingAction(TOFmeterEventAction* eventAction)
-  : fEventAction(eventAction)
+  : fEventAction(eventAction),
+    fCascadeModelID(G4PhysicsModelCatalog::GetModelID("model_muMinusCaptureAtRest_EMCascade")),
+    fCaptureModelID(G4PhysicsModelCatalog::GetModelID("model_muMinusCaptureAtRest_NuclearCapture"))
 {}
+
+void TOFmeterTrackingAction::PreUserTrackingAction(const G4Track* track)
+{
+  // photons of a mu- capture at rest, labelled by the model that made them
+  if (track->GetDefinition() != G4Gamma::Gamma()) return;
+  const G4int model = track->GetCreatorModelID();
+  if (model == fCascadeModelID) fEventAction->AddCapturePhoton(*track, 0);
+  else if (model == fCaptureModelID) fEventAction->AddCapturePhoton(*track, 1);
+}
 
 void TOFmeterTrackingAction::PostUserTrackingAction(const G4Track* track)
 {

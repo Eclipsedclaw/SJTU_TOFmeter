@@ -15,7 +15,8 @@
 #              active volume or a primary stopped inside the setup, 2 only events with
 #              energy in a TOF bar or a Compton-detector layer, 3 only events with a muon
 #              trident or a photon conversion to mu+mu-, 4 only events with energy in a
-#              top-TOF bar and in a middle-TOF bar (live time unaffected)
+#              top-TOF bar and in a middle-TOF bar, 5 only events with a photon of a mu-
+#              capture (muonic X-ray or nuclear-capture gamma; columns mux_*) (live time unaffected)
 # /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
 # /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
 
@@ -66,6 +67,10 @@
 #                                      (commands accepted only before initialisation)
 # /tof/physics/crossSection muToMuonPairProd mu- G4_Pb 1 10 100   Geant4 cross section (GeV),
 #                                      after a /run/beamOn (0 events is enough)
+# /tof/physics/muonCascade firstPrinciples|geant4   atomic cascade of stopped mu- (muonic X-rays):
+#                                      TOFmeterEmCaptureCascade (default) or Geant4's G4EmCaptureCascade
+# /tof/physics/muonCascadeZmax 92    first-principles cascade only up to this Z, Geant4's above
+#                                      (its heavy-element K lines are far too high, e.g. Pb 14 MeV)
 # /tof/tridents/keepForVis 0|1|2     keep events (none, with a trident, with a detectable trident)
 #                                      for /vis/reviewKeptEvents; /tof/tridents/maxKept 20 stops the run
 # /tof/tridents/search true          /run/beamOn N (and the Qt Run button) runs until N events are

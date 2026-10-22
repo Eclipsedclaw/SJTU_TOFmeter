@@ -135,6 +135,17 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleIColumn("tmu_st", fTmuSt);           // TOF stations crossed, as prim_st
   analysisManager->CreateNtupleIColumn("tmu_top", fTmuTop);         // first top-TOF bar, -1 if none
   analysisManager->CreateNtupleIColumn("tmu_mid", fTmuMid);         // first middle-TOF bar, -1 if none
+  // photons of mu- captures at rest, one entry each: energy at creation, energy when it first left the
+  // volume it was born in (-1 if it never did, i.e. it was absorbed there), creation time and place,
+  // source (0 muonic X-ray of the atomic cascade, 1 gamma of the nuclear capture), track ID of the muon
+  analysisManager->CreateNtupleDColumn("mux_e", fMuxE);
+  analysisManager->CreateNtupleDColumn("mux_exit", fMuxExit);
+  analysisManager->CreateNtupleDColumn("mux_t", fMuxT);
+  analysisManager->CreateNtupleDColumn("mux_x", fMuxX);
+  analysisManager->CreateNtupleDColumn("mux_y", fMuxY);
+  analysisManager->CreateNtupleDColumn("mux_z", fMuxZ);
+  analysisManager->CreateNtupleIColumn("mux_src", fMuxSrc);
+  analysisManager->CreateNtupleIColumn("mux_parent", fMuxParent);
   analysisManager->FinishNtuple();
 
   fMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/tridents/", "Muon trident events");
@@ -180,6 +191,7 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   fTmuPdg.clear(); fTmuProc.clear(); fTmuE0.clear(); fTmuE1.clear();
   fTriParent.clear(); fTmuParent.clear(); fTmuSt.clear(); fTmuTop.clear(); fTmuMid.clear();
   fTofTracks.clear();
+  fCapturePhotons.clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -261,6 +273,22 @@ void TOFmeterEventAction::AddTridentMuon(G4int pdg, G4int creatorSubType, G4doub
   fTmuProc.push_back(creatorSubType);
   fTmuE0.push_back(kinE0 / MeV);
   fTmuE1.push_back(kinE1 / MeV);
+}
+
+void TOFmeterEventAction::AddCapturePhoton(const G4Track& track, G4int source)
+{
+  CapturePhoton& photon = fCapturePhotons[track.GetTrackID()];
+  photon.energy = track.GetKineticEnergy();
+  photon.time = track.GetGlobalTime();
+  photon.position = track.GetPosition();
+  photon.source = source;
+  photon.parent = track.GetParentID();
+}
+
+void TOFmeterEventAction::SetCapturePhotonExit(G4int trackID, G4double kinE)
+{
+  const auto it = fCapturePhotons.find(trackID);
+  if (it != fCapturePhotons.end() && it->second.exitEnergy < 0.) it->second.exitEnergy = kinE;
 }
 
 void TOFmeterEventAction::MarkTOFTrack(G4int trackID, G4int station, G4int bar)
@@ -394,6 +422,20 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
         middle = middle || key / 100 == 1;
       }
       if (!top || !middle) return;
+    }
+    if (global.EventFilter == 5 && fCapturePhotons.empty()) return; // keep only events with mu- capture photons
+
+    fMuxE.clear(); fMuxExit.clear(); fMuxT.clear(); fMuxX.clear(); fMuxY.clear(); fMuxZ.clear();
+    fMuxSrc.clear(); fMuxParent.clear();
+    for (const auto& [trackID, photon] : fCapturePhotons) {
+      fMuxE.push_back(photon.energy / MeV);
+      fMuxExit.push_back(photon.exitEnergy < 0. ? -1. : photon.exitEnergy / MeV);
+      fMuxT.push_back(photon.time / ns);
+      fMuxX.push_back(photon.position.x() / cm);
+      fMuxY.push_back(photon.position.y() / cm);
+      fMuxZ.push_back(photon.position.z() / cm);
+      fMuxSrc.push_back(photon.source);
+      fMuxParent.push_back(photon.parent);
     }
 
     fBarStation.clear(); fBarIndex.clear(); fBarEdep.clear(); fBarTime.clear();

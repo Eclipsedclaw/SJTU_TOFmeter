@@ -1,0 +1,30 @@
+### Muonic X-rays of muons stopped in the target, one job (scripts/muonic_xray.sh runs several).
+### Needs the aliases muxSeed, muxEvents, muxDir, muxFile, muxGeometry (geometry macro, e.g.
+### macro/geom_target_al.mac), muxHalf (half size of the source plane, cm), muxWorld (world size in
+### x and y, cm; at least 2 x muxHalf), muxEmin and muxEmax (GeV).
+### EXPACS mu+ and mu- with kinetic energies muxEmin - muxEmax from a horizontal plane at z = 112 cm
+### (11 cm above the 10 cm lead layer), zenith < 75 deg. The band only speeds the run up: the live
+### time is that of the band, so rates are right as long as no muon outside it stops in the volumes
+### studied (0.1 - 2 GeV covers every stop in Al in a full-spectrum test). Only events with a photon
+### of a mu- capture are written (/EventFilter 5): columns mux_* (energy at creation and when leaving
+### the volume it was born in, time, place, source 0 muonic X-ray / 1 nuclear-capture gamma).
+
+/tof/det/worldSize {muxWorld} {muxWorld} 300 cm
+/control/execute {muxGeometry}
+
+/OutputFormat 1
+/EventFilter 5
+/OutputDirectory {muxDir}
+/OutputFile {muxFile}
+/gun/seed {muxSeed}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 112 cm
+/tof/cosmic/halfX {muxHalf} cm
+/tof/cosmic/halfY {muxHalf} cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin {muxEmin} GeV
+/tof/cosmic/energyMax {muxEmax} GeV
+/run/beamOn {muxEvents}

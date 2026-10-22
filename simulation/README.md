@@ -35,6 +35,7 @@ when CMake finds the Qt SVG module.
 | `stopping_example.mac` | mu- below 0.5 GeV through the example layout; summarise with `analysis/stops_summary.C` |
 | `vis_geometry.mac` | geometry check, no particles: position table, volume tree, 5 PNG views, VRML file |
 | `geom_target_al.mac` | the default setup plus the muonic X-ray target: Al panel 20 x 20 x 1 cm centred above the Si/YSO stack at z = 35.5 to 36.5 cm, 3.9 cm above the stack and 1 cm below the Al2 plate (the free space between them is 5.9 cm); muons stopping in it end in `Target` (`end_vol`) |
+| `muonic_xray.mac` | muonic X-rays of cosmic mu- stopped in the target, as an ideal detector sees them (every photon of the capture, energy at creation and when leaving the volume): `sh scripts/muonic_xray.sh [--half cm] [--band "Emin Emax"] [--geometry macro] [--dir path] [processes] [muons per process] [at a time]` (default `geom_target_al.mac`, muons of 0.1-2 GeV from a 4 x 4 m plane at z = 112 cm, 30 x 5 x 10^6 muons = 50 h of exposure, ~1.5 h on 10 cores; a 2 x 2 m plane misses ~10% of the target's stops and 15-30% of the plates'; stop with `touch <dir>/STOP`, start again with more processes to add statistics), then `analysis/muonic_xray.C` for the target and for the Al plates |
 | `vis_target.mac` | geometry check of `geom_target_al.mac`, no particles: position table and 4 PNG views (whole setup, target region, two edge-on views with labels) in `output/geometry_target/` |
 | `vis_qt.mac` | in the Qt GUI: geometry and 10 cosmic muons; the view turns slowly until you click, scroll or press a key in it (`/tof/vis/spin`) |
 | `acceptance.mac` | cosmic-muon rates and geometric acceptance A*Omega per layer and coincidence (~5 min) |
@@ -71,6 +72,7 @@ The ROOT macros in `analysis/` are copied to the build directory as well, e.g.
 | `trident_validation.C` | `trident_validation.mac` (runs it): Geant4 tridents against Russell et al. |
 | `trident_rate.C` | one folder of trident runs (the scripts run it): rates per day, where, and how many bars |
 | `trident_thickness.C` | a trident scan (`output/tridents_F1e3`): detectable tridents per year versus lead thickness |
+| `muonic_xray.C` | `scripts/muonic_xray.sh` (runs it): muonic X-ray and nuclear-capture gamma spectra of mu- stopped in a volume, emitted and leaving it, per day; the lines with their transitions and yields per stop; a range and bin width zoom in, e.g. `muonic_xray.C("output/muonic_xray", "Target", "mux_", 13, 27, 100, 0.25)` for 0-100 keV; a last argument `true` gives the yield (muonic X-rays / stopped mu-, per bin) instead of the rate per day (`_yield` files) |
 
 Files added to `macro/`, `analysis/`, `scripts/` or `data/` need a re-run of `cmake` to be copied.
 `scripts/lead_energy_scan.sh` marks every finished process with `<dir>/log/<name>.done` and skips
@@ -86,7 +88,20 @@ pending (0), as a chart per thickness and energy, `<dir>/scan_status.csv` and `<
 `./TOFmeter --preinit <file.mac> [macro]` runs `file.mac` before the kernel is initialised, for the
 commands Geant4 accepts only then. `macro/physics_tridents.mac` switches on muon tridents
 (`muToMuonPairProd`, muons above 0.85 GeV) and photon conversion to mu+mu- (`GammaToMuPair`); both
-are off otherwise. `/tof/physics/crossSection <process> <particle> <material> <E1 E2 ... GeV>` prints
+are off otherwise.
+
+The atomic cascade of a stopped mu- (its muonic X-rays and Auger electrons) comes from
+`TOFmeterEmCaptureCascade` by default: an (n,l)-resolved cascade from n = 14 with calculated
+radiative (E1) and K/L Auger rates and an initial l distribution (2l+1) exp(0.16 l), whose rates use
+the tabulated 1s level and whose emitted energies use pure hydrogen-like levels with the reduced mass
+(the user's model, from a G4EmCaptureCascade of the same name, renamed because Geant4's own class has
+that name). `/tof/physics/muonCascade geant4` switches back to Geant4's `G4EmCaptureCascade`;
+`/tof/physics/muonCascadeZmax Z` keeps the first-principles model for elements up to Z only. For Al
+it gives K_alpha 354.9 keV with 0.80 per stop (measured 346.8 keV, ~0.8; Geant4's model 334.7 keV,
+0.56); for heavy elements its point-nucleus 1s level is far too deep (Pb K_alpha 14.2 MeV instead of
+~5.9 MeV, Geant4 5.67 MeV; Fe ~13% high), so use `muonCascadeZmax` (e.g. 20) when the lead's photons
+matter. Its rate tables take a few seconds per isotope at the first capture in it.
+`/tof/physics/crossSection <process> <particle> <material> <E1 E2 ... GeV>` prints
 a process's Geant4 cross section after a `/run/beamOn` (0 events is enough). Rare processes can be
 made more frequent with `/process/em/setBiasingFactor <process> <F> true` and `/run/physicsModified`;
 the affected tracks then carry weight 1/F (`tri_w`). Keep F times the probability per track well
@@ -178,6 +193,11 @@ copy number: station 0-2 for bars (`copyNb` = bar 0-8), 10 for the camera (`copy
   trident), and the TOF stations crossed by each trident muon, `tmu_st` (bit 0 top, 1 middle, 2
   bottom), with its first top and middle bar `tmu_top tmu_mid`; `prim_st prim_top prim_mid` are the
   same for the primary. `/EventFilter 3` keeps only events with one of them.
+  Photons of mu- captures at rest, one entry each: `mux_e` (energy at creation), `mux_exit` (energy
+  when it first left the volume it was born in, -1 if it was absorbed there), `mux_t` (creation time),
+  `mux_x mux_y mux_z`, `mux_src` (0 muonic X-ray of the atomic cascade, 1 gamma of the nuclear
+  capture) and `mux_parent` (track ID of the captured muon, 1 = primary). `/EventFilter 5` keeps only
+  events with one of them.
   `/tof/tridents/keepForVis 1|2` keeps events with a trident (1) or a detectable one (2: the
   primary and its pair all cross the top and middle TOF) for `/vis/reviewKeptEvents`, and stops the
   run after `/tof/tridents/maxKept` (20) events, printing one line per kept event.
@@ -264,11 +284,31 @@ EXPACS muons (Guan muons give rates within 1-4%):
 | top & middle & not bottom | 317 +- 6 | 857 +- 14 |
 
 
+## Muonic X-rays of the Al target, ideal detector (`muonic_xray.mac`)
+
+`sh scripts/muonic_xray.sh 30` (first-principles cascade, 50 h of exposure, 1.3 h on 10 cores), every
+photon of the capture counted, no detector. Per day of sea-level exposure:
+
+| | Al target 20 x 20 x 1 cm | Al plates Al1-Al4 |
+|---|---|---|
+| mu- stopped and captured | 324 +- 12 | 4509 +- 46 |
+| K_alpha 354.9 keV (0.82 / 0.80 per stop) emitted / leaving unscattered | 264 / 193 | 3624 / 3160 |
+| L_alpha 65.7 keV emitted / leaving unscattered | 209 / 122 | 2951 / 2241 |
+| M_alpha 23.0 keV emitted / leaving unscattered | 116 / 12 | 1692 / 438 |
+| K_beta + K_gamma + K_delta emitted | 47 | 677 |
+| nuclear-capture gammas (0.1-8 MeV, ~0.8 us after the stop) | 408 | 5933 |
+
+The plates catch 14 times more mu- than the target and give the same lines. Geant4's own cascade
+(15 h sample) gives K_alpha at 334.7 keV with 0.57 per stop and L_alpha 0.40 per stop instead.
+Muons stopping in the target have 186-396 MeV at sea level. Plots and line lists:
+`output/muonic_xray/muonic_xray_Target.*`, `muonic_xray_FrameworkAlPhys.*`.
+
 ## Known limitations
 
-- Muonic X-rays come from Geant4's `G4EmCaptureCascade`: 2p-1s energies are 1.4-3.9% low
-  (Al 334.7, Fe 1233.7, Cu 1490.8, Pb 5673.9 keV) and the Pb 2p doublet is missing. Fine for
-  rates and geometry studies; inject tabulated lines for spectral identification.
+- Muonic X-ray energies are model lines without fine structure: the first-principles cascade
+  (default) puts Al K_alpha at 354.9 keV (+2.3%) and heavy elements far too high (above); Geant4's
+  model is 1.4-3.9% low (Al 334.7, Fe 1233.7, Cu 1490.8, Pb 5673.9 keV) and lacks the Pb 2p doublet.
+  Fine for rates and geometry studies; inject tabulated lines for spectral identification.
 - Sequential only (the framework keeps global state); run several jobs with different
   `/gun/seed` values in parallel instead.
 - No intrinsic 176Lu activity, no optical photons, no digitisation yet.

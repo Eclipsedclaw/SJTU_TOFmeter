@@ -87,10 +87,20 @@ class TOFmeterEventAction : public G4UserEventAction
     void EndTridentSearch(G4int muons);
     void SetPrimaryEnd(const G4ThreeVector& pos, G4double time, G4double kinE,
                        const G4String& process, const G4String& volume);
+    // Photons of a mu- capture at rest (muMinusCaptureAtRest): muonic X-rays of the atomic cascade
+    // (source 0) and gammas of the nuclear capture (source 1), recorded when they start (tracking
+    // action), and the energy with which they first leave the volume they were born in (stepping action)
+    void AddCapturePhoton(const G4Track& track, G4int source);
+    void SetCapturePhotonExit(G4int trackID, G4double kinE);
 
   private:
     struct BarSum { G4double edep = 0., time = -1., ex = 0., ey = 0., ez = 0.; };
     struct TOFTrack { G4int mask = 0, topBar = -1, midBar = -1; };  // stations crossed, first bars
+    struct CapturePhoton {
+      G4double energy = 0., exitEnergy = -1., time = 0.;   // exitEnergy -1: never left its volume
+      G4ThreeVector position;
+      G4int source = 0, parent = 0;
+    };
 
     G4bool DetectableTrident() const;
     void KeepForVisualisation(const G4Event*);
@@ -122,6 +132,9 @@ class TOFmeterEventAction : public G4UserEventAction
     std::vector<G4double> fTmuE0, fTmuE1;
     std::vector<G4int> fTriParent, fTmuParent, fTmuSt, fTmuTop, fTmuMid;
     std::map<G4int, TOFTrack> fTofTracks;   // muons that crossed a TOF bar, by track ID
+    std::map<G4int, CapturePhoton> fCapturePhotons;   // photons of mu- captures, by track ID
+    std::vector<G4double> fMuxE, fMuxExit, fMuxT, fMuxX, fMuxY, fMuxZ;
+    std::vector<G4int> fMuxSrc, fMuxParent;
     G4int fPrimSt = 0, fPrimTop = -1, fPrimMid = -1;
 
     G4int fKeepTridents = 0;

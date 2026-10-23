@@ -76,3 +76,6 @@ simulation/output/
 # unfinished x-ray patch
 simulation/src/G4EmCaptureCascade.cc
 simulation/include/G4EmCaptureCascade.hh
+
+# wired stuff
+.vscode/

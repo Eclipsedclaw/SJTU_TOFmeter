@@ -152,16 +152,18 @@ Add the card's row to the [record](#record) below, with the light level from ste
 
 ## Record
 
-| Card | Card IP | Server port | Server IP | MAC | Light (dBm) | Ping | Settings file | Checked by, date |
-|---|---|---|---|---|---|---|---|---|
-| 1 | 192.168.69.19 | ens3f3 | 192.168.69.1/24 | 02:00:c0:a8:45:13 | −5.31 | 0% loss, 0.10 ms | | |
-| 2 | | | | | | | | |
-| 3 | | | | | | | | |
-| 4 | | | | | | | | |
-| 5 | | | | | | | | |
-| 6 | | | | | | | | |
-| 7 | | | | | | | | |
-| 8 | | | | | | | | |
+| Card | Card IP | Server port | Server IP | MAC | Light (dBm) | fiber port | Checked by, date |
+|---|---|---|---|---|---|---|---|
+| 1 | 192.168.63.19 | ens1f0 | 192.168.63.1/24 | 02:00:c0:a8:3f:13 | -6.86 | 1-a | 2026.10.22|
+| 2 | 192.168.59.19 | ens1f1 | 192.168.59.1/24 | 02:00:c0:a8:3b:13 | -7.12 | 1-b | 2026.10.22 |
+| 3 | 192.168.110.19  | ens1f2 | 192.168.110.1/24 | 02:00:c0:a8:6e:13 | -7.57 | 1-c | 2026.10.22 |
+| 4 | | | | | | | |
+| 5 | | | | | | | |
+| 6 | | | | | | | |
+| 7 | | | | | | | |
+| 8 | | | | | | | |
+<img width="1298" height="913" alt="Screenshot 2026-10-22 at 5 58 54 PM" src="https://github.com/user-attachments/assets/56f2dc19-f9f3-43b5-af1c-1fbdcd344173" />
+
 
 ## Check all cards at once
 

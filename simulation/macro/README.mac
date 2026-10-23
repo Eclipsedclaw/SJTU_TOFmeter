@@ -42,7 +42,8 @@
 
 # --- Geometry (apply with /update) ---
 # z = 0 is the ground (bottom of the setup), x = y = 0 its axis; heights in README.md
-# macro/geom_target_al.mac: Al target 20 x 20 x 1 cm above the Compton detector (/tof/target/...)
+# /tof/target/enable true|false      the muonic X-ray target, on by default: Al 20 x 20 x 1 cm at
+#                                      z = 35.5 to 36.5 cm (macro/geom_target_al.mac sets it explicitly)
 # /tof/det/stations | frame | stack | absorber | leadWalls  true|false   parts of DetectorConstruction.cc
 # /tof/det/leadThickness 10 cm         lead layer on the steel plate (bottom fixed, 0 = none);
 #                                      the lead walls end level with its top

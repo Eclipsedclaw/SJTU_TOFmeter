@@ -13,6 +13,7 @@
 /tof/det/stack false
 /tof/det/absorber false
 /tof/det/leadWalls false
+/tof/target/enable false
 /tof/det/camera false
 /tof/det/worldMaterial G4_Galactic
 /tof/det/worldSize 100 100 100 cm

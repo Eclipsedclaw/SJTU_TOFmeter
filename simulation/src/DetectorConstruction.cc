@@ -138,10 +138,10 @@ DetectorConstruction::DetectorConstruction()
       fCameraRotationX(0.),
       fCameraSpacing21(25.0 * mm),
       fCameraSpacing10(35.0 * mm),
-      fBuildTarget(false),
-      fTargetMaterialName("G4_Fe"),
-      fTargetSize(10.0 * cm, 10.0 * cm, 2.0 * cm),
-      fTargetPosition(0., 0., 0.),
+      fBuildTarget(true),   // the muonic X-ray target is part of the default setup
+      fTargetMaterialName("G4_Al"),
+      fTargetSize(20.0 * cm, 20.0 * cm, 1.0 * cm),
+      fTargetPosition(0., 0., 36.0 * cm),   // z = 35.5 to 36.5 cm: 3.9 cm above the stack, 1 cm below Al2
       fBuildDegrader(false),
       fDegraderMaterialName("G4_Pb"),
       fDegraderSize(40.0 * cm, 40.0 * cm, 5.0 * cm),
@@ -884,7 +884,8 @@ void DetectorConstruction::ConstructComptonCamera()
 
 void DetectorConstruction::ConstructTargetAndDegrader()
 {
-    // 未知材料 (target) and 降速铅砖 (degrader); passive, off by default
+    // 未知材料 (target), on by default: 20 x 20 x 1 cm Al at z = 35.5 to 36.5 cm, above the Compton
+    // detector (/tof/target/...); 降速铅砖 (degrader), off by default. Both passive.
     if (fBuildTarget) {
         auto solid_Target = new G4Box("TargetSolid", 0.5 * fTargetSize.x(), 0.5 * fTargetSize.y(), 0.5 * fTargetSize.z());
         auto logic_Target = new G4LogicalVolume(solid_Target, FindMaterial(fTargetMaterialName), "TargetLogic");
@@ -1094,7 +1095,8 @@ void DetectorConstruction::DefineCommands()
 
     auto target = std::make_unique<G4GenericMessenger>(this, "/tof/target/",
         "Target (unknown material); changes take effect with /update");
-    target->DeclareProperty("enable", fBuildTarget, "Build the target box");
+    target->DeclareProperty("enable", fBuildTarget,
+        "Build the target box (default true: 20 x 20 x 1 cm G4_Al centred at z = 36 cm)");
     target->DeclareProperty("material", fTargetMaterialName, "Target material (NIST or YSO/LYSO/CdZnTe)");
     target->DeclarePropertyWithUnit("size", "cm", fTargetSize, "Full target size x y z");
     target->DeclarePropertyWithUnit("position", "cm", fTargetPosition, "Target centre");

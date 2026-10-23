@@ -34,10 +34,10 @@ when CMake finds the Qt SVG module.
 | `camera_validation.mac` | camera alone looking up, 2.7x10^6 muons (~15.5 h); compare with `analysis/camera_validation.C` |
 | `stopping_example.mac` | mu- below 0.5 GeV through the example layout; summarise with `analysis/stops_summary.C` |
 | `vis_geometry.mac` | geometry check, no particles: position table, volume tree, 5 PNG views, VRML file |
-| `geom_target_al.mac` | the default setup plus the muonic X-ray target: Al panel 20 x 20 x 1 cm centred above the Si/YSO stack at z = 35.5 to 36.5 cm, 3.9 cm above the stack and 1 cm below the Al2 plate (the free space between them is 5.9 cm); muons stopping in it end in `Target` (`end_vol`) |
+| `geom_target_al.mac` | the muonic X-ray target set explicitly (the default since 2026-10-23): Al panel 20 x 20 x 1 cm centred above the Si/YSO stack at z = 35.5 to 36.5 cm, 3.9 cm above the stack and 1 cm below the Al2 plate (the free space between them is 5.9 cm); copy it for another target; muons stopping in it end in `Target` (`end_vol`) |
 | `muonic_xray.mac` | muonic X-rays of cosmic mu- stopped in the target, as an ideal detector sees them (every photon of the capture, energy at creation and when leaving the volume): `sh scripts/muonic_xray.sh [--half cm] [--band "Emin Emax"] [--geometry macro] [--dir path] [processes] [muons per process] [at a time]` (default `geom_target_al.mac`, muons of 0.1-2 GeV from a 4 x 4 m plane at z = 112 cm, 30 x 5 x 10^6 muons = 50 h of exposure, ~1.5 h on 10 cores; a 2 x 2 m plane misses ~10% of the target's stops and 15-30% of the plates'; stop with `touch <dir>/STOP`, start again with more processes to add statistics), then `analysis/muonic_xray.C` for the target and for the Al plates |
 | `vis_target.mac` | geometry check of `geom_target_al.mac`, no particles: position table and 4 PNG views (whole setup, target region, two edge-on views with labels) in `output/geometry_target/` |
-| `vis_qt.mac` | in the Qt GUI: geometry and 10 cosmic muons; the view turns slowly until you click, scroll or press a key in it (`/tof/vis/spin`) |
+| `vis_qt.mac` | in the Qt GUI: geometry and 10 cosmic muons, the Al plates as outlines so that the target and the stack show; the view turns slowly until you click, scroll or press a key in it (`/tof/vis/spin`) |
 | `acceptance.mac` | cosmic-muon rates and geometric acceptance A*Omega per layer and coincidence (~5 min) |
 | `muon_spectrum_check.mac` | generated muon energy spectrum vs. the EXPACS table, the Guan formula and the scan's band fluxes; integral numbers vs. PDG (`analysis/muon_spectrum.C`, ~1 min) |
 | `lead_energy_scan.mac` | top & middle & Compton versus muon energy (20 points, 0.1-100 GeV) and top-lead thickness (0-20 cm); in parallel with `scripts/lead_energy_scan.sh` |
@@ -123,6 +123,7 @@ axis. From the top:
 | 67.5 to 67.8 | plate Al1 under it | `/tof/det/frame` |
 | 39.8 to 40.4 | middle TOF: station 1, bars along y | |
 | 37.5 to 37.8 | plate Al2 | |
+| 35.5 to 36.5 | muonic X-ray target `Target`: Al 20x20x1 cm on the axis, 3.9 cm above the stack and 1 cm below Al2 (not supported in the model) | `/tof/target/enable` |
 | 17.8 to 31.6 | Compton detector: Si/YSO stack, 20x20 cm, Si 6 mm x3 and YSO 3 mm x2 alternating | `/tof/det/stack` |
 | 17.5 to 17.8 | plate Al3 under the stack | |
 | 2.3 to 2.9 | bottom TOF: station 2, bars along x | |
@@ -130,7 +131,8 @@ axis. From the top:
 | 0 to 91 | four stainless L beams (10 cm legs, 1 cm thick) on the outside of the steel-plate corners | `/tof/det/frame` |
 | 0 to 101 | four 10 cm lead walls, inner faces at +-45 cm (5 cm from the steel-plate edges), tops level with the lead layer | `/tof/det/leadWalls` |
 
-Until 2026-10-20 z = 0 was at the top TOF, so every z was 70 cm lower (lead layer 21 to 31, Al4 at
+Until 2026-10-23 the target was off by default: the lead and trident scans and earlier runs have
+none (the muonic X-ray run set the same panel with `geom_target_al.mac`). Until 2026-10-20 z = 0 was at the top TOF, so every z was 70 cm lower (lead layer 21 to 31, Al4 at
 -70 cm). Files made before have no run column `setup_bottom_z`; the analysis macros that use
 positions (`lead_energy_scan.C`, `trident_rate.C`, `trident_thickness.C`) then take -70 cm, so old
 and new files can be analysed alike. Macros of stand-alone setups (camera alone, plain lead slab,
@@ -145,15 +147,17 @@ air under the setup (no floor is modelled), and the source plane can be at most 
 the 9 bars of a station sit in an air envelope, so every bar has its own ID; the world has copy
 number -1. The Si-YSO face-to-face gap is 2.85 cm (the code's pitch adds only the YSO thickness).
 
-Optional parts (off by default, set with macro commands then `/update`):
+Configurable parts (set with macro commands, then `/update`):
 - **Compton camera** (`/tof/det/camera true`): CH2 and CH1 YSO 3 mm, CH0 LYSO 6 mm (7.2 g/cm3),
   all 47.04 mm square, 25 / 35 mm centre to centre. `/tof/camera/position` is the centre of CH2;
   `/tof/camera/rotateX` turns it (0 = looking up). Pixels, wrapping, electronics and the Al cover
   are not modelled.
-- **Target** (`/tof/target/...`, position = centre) and **degrader** (`/tof/degrader/...`): boxes
-  with NIST or custom (YSO, LYSO, CdZnTe) materials. `macro/geom_target_al.mac` puts the muonic X-ray
-  target, 20 x 20 x 1 cm Al, at z = 35.5 to 36.5 cm above the Compton detector (the target volume is
-  `Target`, so `end_vol == "Target"` marks muons stopped in it).
+- **Target** (`/tof/target/...`, position = centre), **on by default**: the muonic X-ray target above
+  (volume `Target`, so `end_vol == "Target"` marks muons stopped in it); `/tof/target/enable false`
+  removes it, `material`, `size` and `position` change it (`macro/geom_target_al.mac` sets the default
+  values explicitly). The stand-alone setups (camera alone, lead slab, trident validation, the
+  spectrum check) switch it off. **Degrader** (`/tof/degrader/...`), off by default. Both are boxes
+  with NIST or custom (YSO, LYSO, CdZnTe) materials.
 - **Blocks** (`/tof/blocks/add name material x y z dx dy dz cm`): any passive box, e.g. lead bricks.
 
 `macro/geom_tofmeter_example.mac` shows them in an illustrative (not optimised) layout: a

@@ -11,6 +11,7 @@
 /tof/det/stack false
 /tof/det/absorber false
 /tof/det/leadWalls false
+/tof/target/enable false
 /tof/det/camera false
 /update
 

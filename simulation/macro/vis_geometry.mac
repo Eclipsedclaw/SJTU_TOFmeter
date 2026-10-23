@@ -14,6 +14,8 @@
 ###                               (z = 0: the ground, under the middle of the setup)
 ###   geometry_top_xy.png         all edges, looking down: x right, y up (footprints, alignment)
 ###   geometry_oblique.png        solid view from a lower angle, without the Al and steel plates
+###                               and with the middle-TOF bars as outlines (the Al target orange,
+###                               above the Si/YSO stack)
 ###                               (lead walls drawn as outlines in the solid views)
 ###   geometry_front_xz.png       looking along +y, x right, z up
 ###   geometry_side_yz.png        looking along -x, y right, z up
@@ -59,10 +61,13 @@
 /vis/geometry/set/forceWireframe LeadWallYLogic 0 true
 /vis/geometry/set/visibility FrameworkAlLogic 0 false
 /vis/geometry/set/visibility FrameworkFeLogic 0 false
+# middle-TOF bars as outlines: the target lies just under them
+/vis/geometry/set/forceWireframe ScintillatorLogicY 0 true
 /vis/geometry/set/colour ScintillatorLogicX 0 0.1 0.75 0.1 1
 /vis/geometry/set/colour ScintillatorLogicY 0 0.1 0.5 0.1 1
 /vis/geometry/set/colour SiliconLayerLogic 0 0.9 0.2 0.2 1
 /vis/geometry/set/colour YSOLayerLogic 0 0.1 0.8 0.8 1
+/vis/geometry/set/colour TargetLogic 0 1 0.55 0 1
 /vis/viewer/set/viewpointThetaPhi 70 30 deg
 /vis/tsg/offscreen/set/file geometry_oblique.png
 /vis/viewer/rebuild

@@ -11,7 +11,7 @@ How to connect a digitizer card to the dbar server over fiber, give the link an 
 | Lab network | `eno4`, 192.168.35.100. Never change it. |
 | Card settings | One file per card in `/etc/network/interfaces.d/` |
 | Address rule | Tag `69.19` means the card is `192.168.69.19`; the server port gets `192.168.69.1/24` |
-| Already done | Card 1: `192.168.69.19` on `ens3f3`, server side `192.168.69.1/24` |
+| Already done | Cards 1–3; see the [record](#record) |
 
 ## Before you start
 
@@ -157,20 +157,38 @@ Add the card's row to the [record](#record) below, with the light level from ste
 | 1 | 192.168.63.19 | ens1f0 | 192.168.63.1/24 | 02:00:c0:a8:3f:13 | -6.86 | 1-a | 2026.10.22|
 | 2 | 192.168.59.19 | ens1f1 | 192.168.59.1/24 | 02:00:c0:a8:3b:13 | -7.12 | 1-b | 2026.10.22 |
 | 3 | 192.168.110.19  | ens1f2 | 192.168.110.1/24 | 02:00:c0:a8:6e:13 | -7.57 | 1-c | 2026.10.22 |
-| 4 | | | | | | | |
-| 5 | | | | | | | |
-| 6 | | | | | | | |
-| 7 | | | | | | | |
-| 8 | | | | | | | |
+| 4 | 192.168.109.19 | ens1f3 | 192.168.109.1/24 | 02:00:c0:a8:6d:13 | -7.12 | 1-d | 2026.10.28 |
+| 5 | 192.168.60.19 | ens3f0 | 192.168.60.1/24 | 02:00:c0:a8:3c:13 | -6.43 | 3-a | 2026.10.28 |
+| 6 | 192.168.92.19 | ens3f1 | 192.168.92.1/24 | 02:00:c0:a8:5c:13 | -6.75 | 3-b | 2026.10.28 |
+| 7 | 192.168.65.19 | ens3f2 | 192.168.65.1/24 | 02:00:c0:a8:41:13 | -9.69 | 3-c | 2026.10.28 |
+| 8 | 192.168.107.19 | ens3f3 | 192.168.107.1/24 | 02:00:c0:a8:6b:13 | -6.48 | 3-d | 2026.10.28 |
 <img width="374" height="261" alt="fiber_IO" src="https://github.com/user-attachments/assets/ea9696b1-be5b-4dd4-863c-a669c7b880aa" />
+
+## Show the record from the server
+
+Prints one row of the record table for every card that has a settings file, ready to paste above. It only reads what is already on dbar and sends nothing to the cards: the MAC comes from the server's ARP table and the light from the SFP module. A MAC shows `?` if the server hasn't talked to that card recently. The fiber port label is only on the physical label, so fill it in by hand.
+
+```bash
+sudo -v
+for f in /etc/network/interfaces.d/daq-card*; do
+  card=${f##*daq-card}
+  port=$(awk '/^auto/{print $2}' "$f")
+  srv=$(awk '/address/{print $2}' "$f")
+  ip=$(sed -n 's/^# DAQ card .*(\(.*\)) on.*/\1/p' "$f")
+  mac=$(ip neigh show "$ip" dev "$port" | awk '{for(i=1;i<NF;i++) if($i=="lladdr") print $(i+1)}')
+  light=$(sudo ethtool -m "$port" 2>/dev/null | grep -iE 'receiver signal|rcvr signal|rx power' | grep -oE -- '-?[0-9.]+ dBm' | head -1)
+  echo "| $card | $ip | $port | $srv | ${mac:-?} | ${light% dBm} | | |"
+done | sort -t'|' -k2 -n
+```
 
 
 ## Check all cards at once
 
-Run this after a reboot or before a data run. Put every finished card's IP in `CARDS`, separated by spaces. It prints OK or FAIL for each card, then lists the address on every fiber port.
+Run this after a reboot or before a data run. It finds every card from its settings file, so a new card is included as soon as step 5 is done. It prints OK or FAIL for each card, then lists the address on every fiber port.
 
 ```bash
-CARDS="192.168.69.19"
+CARDS=$(sed -n 's/^# DAQ card .*(\(.*\)) on.*/\1/p' /etc/network/interfaces.d/daq-card*)
+echo "cards:" $CARDS
 for ip in $CARDS; do
   if ping -c 2 -W 1 $ip > /dev/null; then echo "$ip  OK"; else echo "$ip  FAIL"; fi
 done

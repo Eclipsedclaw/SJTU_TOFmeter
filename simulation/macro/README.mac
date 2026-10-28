@@ -16,7 +16,9 @@
 #              energy in a TOF bar or a Compton-detector layer, 3 only events with a muon
 #              trident or a photon conversion to mu+mu-, 4 only events with energy in a
 #              top-TOF bar and in a middle-TOF bar, 5 only events with a photon of a mu-
-#              capture (muonic X-ray or nuclear-capture gamma; columns mux_*) (live time unaffected)
+#              capture (muonic X-ray or nuclear-capture gamma; columns mux_*), 6 only events with
+#              energy in the Si/YSO stack (columns stk_*) (live time unaffected)
+# /tof/stack/hitWindow 100 ns        one stack hit (stk_*): the deposits in one layer within this time
 # /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
 # /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
 

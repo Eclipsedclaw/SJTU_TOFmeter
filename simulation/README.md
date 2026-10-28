@@ -36,6 +36,8 @@ when CMake finds the Qt SVG module.
 | `vis_geometry.mac` | geometry check, no particles: position table, volume tree, 5 PNG views, VRML file |
 | `geom_target_al.mac` | the muonic X-ray target set explicitly (the default since 2026-10-23): Al panel 20 x 20 x 1 cm centred above the Si/YSO stack at z = 35.5 to 36.5 cm, 3.9 cm above the stack and 1 cm below the Al2 plate (the free space between them is 5.9 cm); copy it for another target; muons stopping in it end in `Target` (`end_vol`) |
 | `muonic_xray.mac` | muonic X-rays of cosmic mu- stopped in the target, as an ideal detector sees them (every photon of the capture, energy at creation and when leaving the volume): `sh scripts/muonic_xray.sh [--half cm] [--band "Emin Emax"] [--geometry macro] [--dir path] [processes] [muons per process] [at a time]` (default `geom_target_al.mac`, muons of 0.1-2 GeV from a 4 x 4 m plane at z = 112 cm, 30 x 5 x 10^6 muons = 50 h of exposure, ~1.5 h on 10 cores; a 2 x 2 m plane misses ~10% of the target's stops and 15-30% of the plates'; stop with `touch <dir>/STOP`, start again with more processes to add statistics), then `analysis/muonic_xray.C` for the target and for the Al plates |
+| `muonic_xray_stack.mac` | muonic X-rays as the Si/YSO stack sees them: sea-level cosmic mu+ and mu- of all energies (0-1000 GeV, 4 x 4 m plane at z = 112 cm) through the default setup with its Al target, only events with energy in the stack (`/EventFilter 6`, hits `stk_*`): `sh scripts/muonic_xray_stack.sh [--dir path] [processes] [muons per process] [at a time]` (default 385 x 10^7 muons = 3 weeks of exposure, at most 90% of the physical cores at a time (10 here), about 4 days and 12 GB; resumable like `muonic_xray.sh`, any finished part can be analysed; progress bar and time left: `sh scripts/muonic_xray_stack_status.sh [--watch 60]`) |
+| `muonic_xray_target.mac` | the same with a thicker Al target (20 x 20 x d cm, top at 36.5 cm growing down, at least 1 mm above the stack: 5 cm at 31.7-36.7 cm) and only the muons below 1 GeV, which hold nearly every stop in the target (the faster muons' background comes from the 3-week run): `sh scripts/muonic_xray_target.sh [--dir path] [--emax GeV] ["thicknesses"] [processes per thickness] [muons] [at a time]` (default "2 3 4 5", 29 x 10^7 muons = 7.0 days of exposure per thickness, the thicknesses taking turns, at most 90% of the physical cores, about 12 h; one folder per thickness, `output/muonic_xray_target/t<d>cm`, in the layout of the 3-week run, so `scripts/muonic_xray_stack_status.sh --dir`, the skim and the cuts work on each) |
 | `vis_target.mac` | geometry check of `geom_target_al.mac`, no particles: position table and 4 PNG views (whole setup, target region, two edge-on views with labels) in `output/geometry_target/` |
 | `vis_qt.mac` | in the Qt GUI: geometry and 10 cosmic muons, the Al plates as outlines so that the target and the stack show; the view turns slowly until you click, scroll or press a key in it (`/tof/vis/spin`) |
 | `acceptance.mac` | cosmic-muon rates and geometric acceptance A*Omega per layer and coincidence (~5 min) |
@@ -69,10 +71,19 @@ The ROOT macros in `analysis/` are copied to the build directory as well, e.g.
 | `compton_arrival.C` | the check runs of the 0-20 cm log and fine scans: energy of the muons reaching the Compton detector |
 | `lead_scan_status.C` | `scripts/lead_scan_status.sh` (runs it): chart of finished / running / pending points |
 | `lead_filter_spectrum.C` | `scripts/lead_filter.sh` (runs it): spectra before and after a plain lead slab |
+| `lead_target_stops.C` | the lead-slab runs (`output/lead_filter_below2GeV`): mu- stopping in the 20x20 cm Al target versus the top lead thickness (each muon leaving the slab carried through the steel plate, TOF stations and Al plates to the target with Bethe-Bloch CSDA ranges, checked against Geant4 in the lead; tracks through the top layer only, the share that would come through a wall printed), and for thicker targets the X-rays reaching the stack (Al self-absorption) |
+| `lead_target_stops_check.C` | the same lead-slab runs: why those stops hardly change with the lead. The sea-level mu- spectrum per MeV and per unit of ln E, the slice of it that stops in the target for each thickness (j x dE0, CSDA against Geant4), j, S and j x S (the range spectrum), Geant4 stopping depths in the lead, the directions of the slow muons against the top opening, all relative to 10 cm with the stops of `lead_target_stops.C` |
 | `trident_validation.C` | `trident_validation.mac` (runs it): Geant4 tridents against Russell et al. |
 | `trident_rate.C` | one folder of trident runs (the scripts run it): rates per day, where, and how many bars |
 | `trident_thickness.C` | a trident scan (`output/tridents_F1e3`): detectable tridents per year versus lead thickness |
 | `muonic_xray.C` | `scripts/muonic_xray.sh` (runs it): muonic X-ray and nuclear-capture gamma spectra of mu- stopped in a volume, emitted and leaving it, per day; the lines with their transitions and yields per stop; a range and bin width zoom in, e.g. `muonic_xray.C("output/muonic_xray", "Target", "mux_", 13, 27, 100, 0.25)` for 0-100 keV; a last argument `true` gives the yield (muonic X-rays / stopped mu-, per bin) instead of the rate per day (`_yield` files) |
+| `muonic_xray_stack.C` | `scripts/muonic_xray_stack.sh` (any finished part of it): the add-back spectrum of the Si/YSO stack with a detector response, per day of exposure: every hit smeared with sigma/E = 4% at 1 MeV scaling as 1/sqrt(E) (Si and YSO alike), hits above 10 keV, the hits within 100 ns of an event added up; split by what made them (target X-rays, muonic X-rays of other volumes, everything else), with S, B and S/sqrt(B) in +-2 sigma around the Al lines; no TOF selection |
+
+| `muonic_xray_stack_check.C` | the same run: health check of its finished processes (agreement between processes against Poisson, seeds, impossible hit values, the largest hit) with plots of the hit energies, times and positions and the rate per process |
+| `muonic_xray_stack_skim.C` | the same run: the stack response and add-back applied once, the 20-1000 keV candidates of events with a middle-TOF hit or a stopped muon kept with their TOF and truth columns (`xray_skim.root`); run in parts in parallel and merge with `hadd` |
+| `muonic_xray_stack_cuts.C` | the skim: prompt entries of stopped muons by stop volume (truth); cut variables of target X-rays against the rest; a cut flow (middle TOF in coincidence, no bottom TOF, middle bars 2-6, slow muon > 3 MeV in the middle TOF, highest hit in the top two layers, top-to-middle time > 1.3 ns) with S, B and S/sqrt(B) at the Al lines; a fit of the counts after the cuts (no truth). Assumed TOF response: 0.2 ns, 15% |
+| `muonic_xray_target_compare.C` | the skims of the 1 cm target (3-week run) and of `muonic_xray_target.sh`: the same cuts per thickness, with the fast-muon background (primaries above 1 GeV) of the 3-week run for all; mu- stops with a prompt entry and the share through a wall (`pbKe < 0`), S before and after the cuts, the backgrounds, S/sqrt(B) for 21 days and the days to 5 sigma at the Al lines, the cut efficiency versus the depth of the stop |
+| `muonic_xray_target_cuts.C` | the same skims: why the cuts of the 1 cm target lose the stops deep in a thick target, and what each thickness gives with its own slow-muon cuts. Each cut's efficiency for the target's L_alpha entries by the depth of the stop (thickest target); the middle-TOF energy and top-to-middle time against that depth, beside the fast-muon background; a scan of the two slow-muon cuts per thickness (best L_alpha S/sqrt(B) in 21 days, cross-validated on even and odd events); the background of the 0.5-1 GeV muons per thickness, a check of the fast-muon background taken from the 1 cm run |
 
 Files added to `macro/`, `analysis/`, `scripts/` or `data/` need a re-run of `cmake` to be copied.
 `scripts/lead_energy_scan.sh` marks every finished process with `<dir>/log/<name>.done` and skips
@@ -168,7 +179,7 @@ Check any setup with `macro/vis_geometry.mac` (run its geometry macro first).
 ## Outputs
 
 `/OutputFormat 0` (default) writes the original ASCII step file `<dir>/<file>.dat`: one line per step
-in an active volume (bars, stack YSO, Pb absorber, camera layers), tab-separated: event, track ID,
+in an active volume (bars, stack Si and YSO, Pb absorber, camera layers), tab-separated: event, track ID,
 parent ID, PDG code, `copyNb1`, `copyNb`, material, time (ns), kinetic energy at the start of the
 step (MeV), energy deposit (MeV), creator process (`N/A` for the primary), process of the step, momentum
 px py pz after the step (MeV), step length (cm), position x y z after the step (cm); `/OutputType 1`
@@ -185,7 +196,13 @@ copy number: station 0-2 for bars (`copyNb` = bar 0-8), 10 for the camera (`copy
   camera `e_ch0..2`, first-deposit times `t_ch0..2` (-1 if none), `cam_prim` (bit k: primary
   deposited in CHk) and every camera step `cam_layer cam_pdg cam_trk cam_e cam_t cam_x cam_y cam_z`;
   bars with energy `bar_st bar_id bar_e bar_t bar_x bar_y bar_z` (energy-weighted positions);
-  `e_stack0 e_stack1 e_absorber`; `cmp_ke`, the kinetic energy of the primary where it first enters a
+  `e_stack0 e_stack1` (the YSO layers of the Si/YSO stack, from the bottom), `e_si0 e_si1 e_si2` (its Si
+  layers, from the bottom), `e_absorber`; the hits of the stack, one per layer and time (the deposits in a
+  layer within `/tof/stack/hitWindow`, 100 ns, of the first one): `stk_layer` (0, 2, 4 Si and 1, 3 YSO, from
+  the bottom), `stk_src` (what made it, as bits of the tracks that deposited, each with its secondaries:
+  1 muonic X-ray of the target, 2 muonic X-ray of another volume, 4 nuclear-capture gamma, 8 anything else),
+  `stk_e`, `stk_t` (first deposit) and the energy-weighted `stk_x stk_y stk_z`; `/EventFilter 6` keeps only
+  events with energy in the stack. `cmp_ke`, the kinetic energy of the primary where it first enters a
   layer of the Compton detector (stack Si or YSO, camera), -1 if it never does; `top_ke` the same
   where it first enters a bar of the top TOF, and `pb_ke` where it first leaves the lead layer (-1
   if it stopped in it or went round it). Muon tridents, one

@@ -1,0 +1,29 @@
+### Muonic X-rays as the Si/YSO stack (the Compton detector) sees them, one job (scripts/muonic_xray_stack.sh runs
+### many): sea-level cosmic mu+ and mu- of all energies through the default setup with its Al target, so the stack
+### hits hold the X-rays of the muons stopped in the target together with everything else the stack sees.
+### Needs the aliases stkSeed, stkEvents, stkDir and stkFile.
+### EXPACS mu+ and mu- of 0 - 1000 GeV from a 4 x 4 m plane at z = 112 cm (11 cm above the lead layer), zenith
+### < 75 deg, as macro/muonic_xray.mac (which takes only the 0.1 - 2 GeV muons that can stop). Only events with
+### energy in the stack are written (/EventFilter 6): its hits stk_* (layer, source, energy, time, position) and
+### e_si0-2, e_stack0-1, with the TOF bars bar_*, the capture photons mux_* and where the primary ended (end_*).
+### The live time in the run tree is that of all the muons, written or not.
+
+/tof/det/worldSize 420 420 300 cm
+/update
+
+/OutputFormat 1
+/EventFilter 6
+/OutputDirectory {stkDir}
+/OutputFile {stkFile}
+/gun/seed {stkSeed}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 112 cm
+/tof/cosmic/halfX 200 cm
+/tof/cosmic/halfY 200 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV
+/run/beamOn {stkEvents}

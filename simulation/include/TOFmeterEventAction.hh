@@ -40,6 +40,7 @@
 #include "globals.hh"
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 class G4Event;
@@ -64,7 +65,13 @@ class TOFmeterEventAction : public G4UserEventAction
     void AddBarHit(G4int station, G4int bar, G4double edep, G4double time, const G4ThreeVector& pos);
     void AddCameraHit(G4int layer, G4double edep, G4double time, const G4ThreeVector& pos,
                       G4int pdg, G4int trackID);
-    void AddStackHit(G4int layer, G4double edep);
+    // energy in a layer of the Si/YSO stack: a Si layer (copy 0-2) or a YSO layer (copy 0-1), from the bottom
+    void AddStackHit(G4bool silicon, G4int copy, G4double edep, G4double time, const G4ThreeVector& pos,
+                     G4int trackID);
+    // where the energy of a track comes from, for the stack hits (stk_src): a muonic X-ray (source 0) or a
+    // nuclear-capture gamma (source 1) of a mu- capture, else what its parent came from (tracking action)
+    void SetTrackOrigin(const G4Track& track, G4int captureSource);
+    static constexpr G4int kTargetXray = 1, kOtherXray = 2, kCaptureGamma = 4, kOtherOrigin = 8;
     void AddAbsorberHit(G4double edep) { fAbsorberEdep += edep; }
     // first entry of the primary into the Compton detector (later entries are ignored)
     void SetComptonEntry(G4double kinE) { if (fComptonEntryKE < 0.) fComptonEntryKE = kinE; }
@@ -101,6 +108,12 @@ class TOFmeterEventAction : public G4UserEventAction
       G4ThreeVector position;
       G4int source = 0, parent = 0;
     };
+    struct StackDeposit {   // one step with energy in the stack; layer 0, 2, 4 Si and 1, 3 YSO, from the bottom
+      G4int layer = 0;
+      G4double edep = 0., time = 0.;
+      G4ThreeVector position;
+      G4int origin = kOtherOrigin;
+    };
 
     G4bool DetectableTrident() const;
     void KeepForVisualisation(const G4Event*);
@@ -110,7 +123,11 @@ class TOFmeterEventAction : public G4UserEventAction
     G4double fCamEdep[3];
     G4double fCamTime[3];
     G4int fCamPrimary;                // bit k set if the primary deposited energy in CHk
-    G4double fStackEdep[2];
+    G4double fStackEdep[2];           // YSO layers of the stack
+    G4double fSiEdep[3];              // Si layers of the stack
+    std::vector<StackDeposit> fStackDeposits;
+    std::unordered_map<G4int, G4int> fOrigin;   // kTargetXray ... kOtherOrigin, by track ID
+    G4double fStackHitWindow;         // /tof/stack/hitWindow
     G4double fAbsorberEdep;
     G4double fComptonEntryKE;         // -1 if the primary never entered the Compton detector
     G4double fTopEntryKE = -1.;       // -1 if it never entered a top-TOF bar
@@ -126,6 +143,8 @@ class TOFmeterEventAction : public G4UserEventAction
     std::vector<G4double> fBarEdep, fBarTime, fBarX, fBarY, fBarZ;
     std::vector<G4int> fCamLayer, fCamPdg, fCamTrack;
     std::vector<G4double> fCamE, fCamT, fCamX, fCamY, fCamZ;
+    std::vector<G4int> fStkLayer, fStkSrc;
+    std::vector<G4double> fStkE, fStkT, fStkX, fStkY, fStkZ;
     std::vector<G4double> fTriX, fTriY, fTriZ, fTriEin, fTriEout, fTriEpair, fTriMll, fTriW;
     std::vector<G4int> fTriPdg;
     std::vector<G4int> fTmuPdg, fTmuProc;
@@ -144,6 +163,7 @@ class TOFmeterEventAction : public G4UserEventAction
     G4int fSearchLimit = 1000000;
     G4int fSearchTarget = 0;          // events to keep in the running search, 0 if none
     std::unique_ptr<G4GenericMessenger> fMessenger;
+    std::unique_ptr<G4GenericMessenger> fStackMessenger;
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

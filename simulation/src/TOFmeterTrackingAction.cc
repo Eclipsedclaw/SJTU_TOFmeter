@@ -20,10 +20,15 @@ TOFmeterTrackingAction::TOFmeterTrackingAction(TOFmeterEventAction* eventAction)
 void TOFmeterTrackingAction::PreUserTrackingAction(const G4Track* track)
 {
   // photons of a mu- capture at rest, labelled by the model that made them
-  if (track->GetDefinition() != G4Gamma::Gamma()) return;
-  const G4int model = track->GetCreatorModelID();
-  if (model == fCascadeModelID) fEventAction->AddCapturePhoton(*track, 0);
-  else if (model == fCaptureModelID) fEventAction->AddCapturePhoton(*track, 1);
+  G4int source = -1;
+  if (track->GetDefinition() == G4Gamma::Gamma()) {
+    const G4int model = track->GetCreatorModelID();
+    if (model == fCascadeModelID) source = 0;
+    else if (model == fCaptureModelID) source = 1;
+  }
+  if (source >= 0) fEventAction->AddCapturePhoton(*track, source);
+  // every track: where its energy comes from, for the hits of the Si/YSO stack
+  fEventAction->SetTrackOrigin(*track, source);
 }
 
 void TOFmeterTrackingAction::PostUserTrackingAction(const G4Track* track)

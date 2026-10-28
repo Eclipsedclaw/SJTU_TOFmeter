@@ -1,0 +1,30 @@
+### Muonic X-rays in the Si/YSO stack with a thicker Al target, one job (scripts/muonic_xray_target.sh runs
+### many): as macro/muonic_xray_stack.mac, but with a 20 x 20 x tgtCm cm target centred at z = tgtZ cm and only the
+### cosmic muons of 0 - tgtEmax GeV. With the 10 cm lead layer nearly every muon that stops in the target is below
+### 1 GeV (3-week run, 1 cm target: 1 of the 1434 stack entries with a target X-ray came from above, median 225 MeV),
+### so this samples the signal and the backgrounds of the slow muons at a quarter of the cost of all energies; the
+### background of the faster muons is that of the 3-week run (its primaries above tgtEmax). The live time in the run
+### tree is that of the muons of 0 - tgtEmax GeV. Needs the aliases stkSeed, stkEvents, stkDir, stkFile, tgtCm, tgtZ
+### and tgtEmax.
+
+/tof/det/worldSize 420 420 300 cm
+/tof/target/size 20 20 {tgtCm} cm
+/tof/target/position 0 0 {tgtZ} cm
+/update
+
+/OutputFormat 1
+/EventFilter 6
+/OutputDirectory {stkDir}
+/OutputFile {stkFile}
+/gun/seed {stkSeed}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 112 cm
+/tof/cosmic/halfX 200 cm
+/tof/cosmic/halfY 200 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax {tgtEmax} GeV
+/run/beamOn {stkEvents}

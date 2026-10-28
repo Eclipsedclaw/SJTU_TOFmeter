@@ -71,8 +71,10 @@ void TOFmeterSteppingAction::UserSteppingAction(const G4Step* step)
                                  step->GetTrack()->GetDefinition()->GetPDGEncoding(),
                                  step->GetTrack()->GetTrackID());
       break;
+    case Pb::DetectorKind::StackSi:   // copy number = layer of its kind, from the bottom
     case Pb::DetectorKind::StackYSO:
-      fEventAction->AddStackHit(touchable->GetCopyNumber(0), edep);
+      fEventAction->AddStackHit(kind == Pb::DetectorKind::StackSi, touchable->GetCopyNumber(0), edep, time, pos,
+                                step->GetTrack()->GetTrackID());
       break;
     case Pb::DetectorKind::Absorber:
       fEventAction->AddAbsorberHit(edep);

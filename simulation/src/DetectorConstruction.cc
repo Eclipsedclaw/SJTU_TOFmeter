@@ -1038,6 +1038,7 @@ void DetectorConstruction::ConstructSDandField()
         if (lv && (lv == logic_Absorber ||
                    lv->GetName().find("Scintillator") != std::string::npos ||
                    lv == logic_YSO ||   // <--- 添加这一条件
+                   lv == logic_Silicon ||   // the Si layers of the stack measure energy too
                    lv == logic_CameraYSO || lv == logic_CameraLYSO)) {
             lv->SetSensitiveDetector(chamberSD);
         }

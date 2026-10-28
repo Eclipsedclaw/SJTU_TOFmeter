@@ -39,6 +39,14 @@
 *.out
 *.app
 
+# Python bytecode caches, written automatically when a script imports a module
+__pycache__/
+*.py[cod]
+
+# Python tool caches (Jupyter, pytest)
+.ipynb_checkpoints/
+.pytest_cache/
+
 # Build directories
 build/
 Build/

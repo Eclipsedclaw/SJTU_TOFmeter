@@ -103,10 +103,11 @@ TOFmeterDetectorMessenger::TOFmeterDetectorMessenger(Pb::DetectorConstruction* m
   EventFilterCmd->SetGuidance("3 only events with a muon trident or a photon conversion to mu+mu-,");
   EventFilterCmd->SetGuidance("4 only events with energy in a bar of the top TOF and in one of the middle TOF,");
   EventFilterCmd->SetGuidance("5 only events with a photon of a mu- capture (muonic X-ray or nuclear-capture gamma),");
-  EventFilterCmd->SetGuidance("6 only events with energy in the Si/YSO stack (columns stk_*)");
+  EventFilterCmd->SetGuidance("6 only events with energy in the Si/YSO stack (columns stk_*),");
+  EventFilterCmd->SetGuidance("7 only events with energy in the CZT plane (/tof/czt/..., columns czt_*)");
   EventFilterCmd->SetParameterName("flag",true);
   EventFilterCmd->SetDefaultValue(0);
-  EventFilterCmd->SetRange("flag>=0 && flag<=6");
+  EventFilterCmd->SetRange("flag>=0 && flag<=7");
 
 // Track Type, 0 for all particles, 1 for only primary particle (trackID = 1)
   TrackTypeCmd = new G4UIcmdWithAnInteger("/TrackType", this );

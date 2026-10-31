@@ -1,0 +1,96 @@
+### Pictures of the CZT setup for slides, no particles: the geometry of macro/muonic_xray_czt.mac with the defaults of
+### scripts/muonic_xray_czt.sh (keep the two in step): the Si/YSO stack out, the 4 cm Al target at z = 32.5 to 36.5 cm
+### and the CZT plane (4 x 4 pixels of 25 x 25 x 10 mm) at z = 31.5 to 32.5 cm, against the target's bottom face.
+### scripts/geometry_czt.sh runs it, finishes its pictures (smaller and smooth, with a legend) and draws the setup to
+### scale from the table of placed volumes printed here (analysis/geometry_schematic.C). By hand:
+###   ./TOFmeter macro/vis_czt.mac > output/geometry_czt/geometry.log
+### Writes to output/geometry_czt/raw/ (4000 x 3000 pixels: this driver draws without smoothing):
+###   setup.png    the whole setup cut open at y = 1.25 cm (the plane of the drawings), seen from the -y side: what
+###                is at smaller y is taken away, so the cut shows the TOF bars, the target and the CZT plane under it
+###   target.png   the target and the CZT plane from below, the middle TOF over them; the rest, including the Al
+###                plate between the target and the middle TOF, left out
+### Colours (those of the drawings too): lead grey, steel light grey, Al plates light blue, plastic green, target
+### orange, CZT purple, every other pixel lighter. All opaque: this driver does not draw what is behind a see-through
+### colour. The light is fixed to the setup (lightsMove object), from the side of each view's camera. Style wireframe
+### with hidden edges: this driver then draws the faces and their edges (the single bars show). Messages "Logical
+### volume ... not found" for parts not built are harmless.
+
+/control/verbose 0
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 4 cm
+/tof/target/position 0 0 34.5 cm
+/tof/czt/enable true
+/tof/czt/position 0 0 32 cm
+/update
+/tof/det/print
+/control/shell mkdir -p output/geometry_czt/raw
+
+/vis/open TSG_OFFSCREEN
+/vis/tsg/offscreen/set/size 4000 3000
+/vis/viewer/set/autoRefresh false
+/vis/viewer/set/culling global true
+/vis/viewer/set/culling invisible true
+/vis/drawVolume
+/vis/viewer/set/background white
+/vis/viewer/set/upVector 0 0 1
+/vis/geometry/set/visibility WorldLogic 0 false
+/vis/viewer/set/style wireframe
+/vis/viewer/set/hiddenEdge true
+/vis/viewer/set/globalLineWidthScale 2
+/vis/viewer/set/lightsMove object
+/vis/geometry/set/colour AbsorberLogic 0 0.353 0.373 0.400 1
+/vis/geometry/set/colour LeadWallXLogic 0 0.353 0.373 0.400 1
+/vis/geometry/set/colour LeadWallYLogic 0 0.353 0.373 0.400 1
+/vis/geometry/set/colour FrameworkFeLogic 0 0.710 0.729 0.761 1
+/vis/geometry/set/colour SupportBeamLogic 0 0.710 0.729 0.761 1
+/vis/geometry/set/colour FrameworkAlLogic 0 0.659 0.800 0.910 1
+/vis/geometry/set/colour ScintillatorLogicX 0 0.302 0.690 0.314 1
+/vis/geometry/set/colour ScintillatorLogicY 0 0.302 0.690 0.314 1
+/vis/geometry/set/colour TargetLogic 0 0.949 0.612 0.071 1
+/vis/geometry/set/colour CZTPixelLogic 0 0.478 0.251 0.631 1
+# every other pixel lighter, so that the 4 x 4 pixels show (copy number ix * 4 + iy, ix + iy odd)
+/vis/set/touchable WorldPhys 0 CZTPixel 1
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 3
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 4
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 6
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 9
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 11
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 12
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+/vis/set/touchable WorldPhys 0 CZTPixel 14
+/vis/touchable/set/colour 0.640 0.450 0.780 1
+
+# the whole setup, cut open at y = 1.25 cm (the part at larger y kept), from the -y side: x to the right
+/vis/viewer/set/cutawayMode intersection
+/vis/viewer/addCutawayPlane 0 1.25 0 cm 0 1 0
+/vis/viewer/set/viewpointThetaPhi 75 -62 deg
+/vis/viewer/set/lightsVector 0.45 -0.8 0.6
+/vis/viewer/set/targetPoint 0 25 50 cm
+/vis/viewer/zoomTo 1.3
+/vis/tsg/offscreen/set/file output/geometry_czt/raw/setup.png
+/vis/viewer/rebuild
+/vis/viewer/flush
+
+# the target and the CZT plane from below, with the middle TOF (bars along y) over them
+/vis/viewer/clearCutawayPlanes
+/vis/geometry/set/visibility AbsorberLogic 0 false
+/vis/geometry/set/visibility LeadWallXLogic 0 false
+/vis/geometry/set/visibility LeadWallYLogic 0 false
+/vis/geometry/set/visibility FrameworkFeLogic 0 false
+/vis/geometry/set/visibility SupportBeamLogic 0 false
+/vis/geometry/set/visibility FrameworkAlLogic 0 false
+/vis/geometry/set/visibility ScintillatorLogicX 0 false
+/vis/viewer/set/viewpointThetaPhi 120 -60 deg
+/vis/viewer/set/lightsVector 0.45 -0.7 -0.6
+/vis/viewer/set/targetPoint 0 0 35 cm
+/vis/viewer/zoomTo 1.25
+/vis/tsg/offscreen/set/file output/geometry_czt/raw/target.png
+/vis/viewer/rebuild
+/vis/viewer/flush

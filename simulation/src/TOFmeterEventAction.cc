@@ -164,6 +164,15 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleDColumn("mux_z", fMuxZ);
   analysisManager->CreateNtupleIColumn("mux_src", fMuxSrc);
   analysisManager->CreateNtupleIColumn("mux_parent", fMuxParent);
+  // hits of the CZT plane (/tof/czt/...), as the stack's: one per pixel and time, the deposits in a pixel within
+  // /tof/stack/hitWindow of the first one; pixel ix * pixels + iy, source bits as stk_src, energy, time, position
+  analysisManager->CreateNtupleIColumn("czt_pix", fCztPix);
+  analysisManager->CreateNtupleIColumn("czt_src", fCztSrc);
+  analysisManager->CreateNtupleDColumn("czt_e", fCztE);
+  analysisManager->CreateNtupleDColumn("czt_t", fCztT);
+  analysisManager->CreateNtupleDColumn("czt_x", fCztX);
+  analysisManager->CreateNtupleDColumn("czt_y", fCztY);
+  analysisManager->CreateNtupleDColumn("czt_z", fCztZ);
   analysisManager->FinishNtuple();
 
   fMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/tridents/", "Muon trident events");
@@ -200,6 +209,7 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   fStackEdep[0] = fStackEdep[1] = 0.;
   fSiEdep[0] = fSiEdep[1] = fSiEdep[2] = 0.;
   fStackDeposits.clear();
+  fCZTDeposits.clear();
   fOrigin.clear();
   fAbsorberEdep = 0.;
   fComptonEntryKE = -1.;
@@ -259,6 +269,43 @@ void TOFmeterEventAction::AddStackHit(G4bool silicon, G4int copy, G4double edep,
   const auto origin = fOrigin.find(trackID);
   fStackDeposits.push_back({silicon ? 2 * copy : 2 * copy + 1, edep, time, pos,
                             origin == fOrigin.end() ? kOtherOrigin : origin->second});
+}
+
+void TOFmeterEventAction::AddCZTHit(G4int pixel, G4double edep, G4double time, const G4ThreeVector& pos, G4int trackID)
+{
+  const auto origin = fOrigin.find(trackID);
+  fCZTDeposits.push_back({pixel, edep, time, pos, origin == fOrigin.end() ? kOtherOrigin : origin->second});
+}
+
+void TOFmeterEventAction::MakeHits(std::vector<StackDeposit>& deposits, std::vector<G4int>& layer, std::vector<G4int>& src,
+                                   std::vector<G4double>& e, std::vector<G4double>& t, std::vector<G4double>& x,
+                                   std::vector<G4double>& y, std::vector<G4double>& z) const
+{
+  // per layer, the deposits within fStackHitWindow of the first one (the steps of an event do not come in time order)
+  layer.clear(); src.clear(); e.clear(); t.clear(); x.clear(); y.clear(); z.clear();
+  std::sort(deposits.begin(), deposits.end(), [](const StackDeposit& a, const StackDeposit& b) {
+    return a.layer != b.layer ? a.layer < b.layer : a.time < b.time;
+  });
+  for (std::size_t i = 0; i < deposits.size();) {
+    const StackDeposit& first = deposits[i];
+    G4double edep = 0.;
+    G4ThreeVector weighted;
+    G4int source = 0;
+    std::size_t j = i;
+    for (; j < deposits.size() && deposits[j].layer == first.layer && deposits[j].time < first.time + fStackHitWindow; ++j) {
+      edep += deposits[j].edep;
+      weighted += deposits[j].edep * deposits[j].position;
+      source |= deposits[j].origin;
+    }
+    layer.push_back(first.layer);
+    src.push_back(source);
+    e.push_back(edep / MeV);
+    t.push_back(first.time / ns);
+    x.push_back(weighted.x() / edep / cm);
+    y.push_back(weighted.y() / edep / cm);
+    z.push_back(weighted.z() / edep / cm);
+    i = j;
+  }
 }
 
 void TOFmeterEventAction::SetTrackOrigin(const G4Track& track, G4int captureSource)
@@ -449,7 +496,7 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     if (global.OutputFormat == 0) return; // ASCII output only
 
     const G4bool detectorEnergy = !fBars.empty() || fCamEdep[0] > 0. || fCamEdep[1] > 0. || fCamEdep[2] > 0.
-                                  || !fStackDeposits.empty() || fComptonEntryKE >= 0.;
+                                  || !fStackDeposits.empty() || !fCZTDeposits.empty() || fComptonEntryKE >= 0.;
     if (global.EventFilter == 1) // skip muons that only crossed air
     {
       const G4bool stoppedInSetup = fEndVolume != "OutOfWorld" && fEndVolume != "WorldPhys";
@@ -469,34 +516,11 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     }
     if (global.EventFilter == 5 && fCapturePhotons.empty()) return; // keep only events with mu- capture photons
     if (global.EventFilter == 6 && fStackDeposits.empty()) return;  // keep only events with energy in the stack
+    if (global.EventFilter == 7 && fCZTDeposits.empty()) return;    // keep only events with energy in the CZT plane
 
-    // hits of the Si/YSO stack: per layer, the deposits within fStackHitWindow of the first one (the
-    // steps of an event do not come in time order)
-    fStkLayer.clear(); fStkSrc.clear(); fStkE.clear(); fStkT.clear(); fStkX.clear(); fStkY.clear(); fStkZ.clear();
-    std::sort(fStackDeposits.begin(), fStackDeposits.end(), [](const StackDeposit& a, const StackDeposit& b) {
-      return a.layer != b.layer ? a.layer < b.layer : a.time < b.time;
-    });
-    for (std::size_t i = 0; i < fStackDeposits.size();) {
-      const StackDeposit& first = fStackDeposits[i];
-      G4double edep = 0.;
-      G4ThreeVector weighted;
-      G4int source = 0;
-      std::size_t j = i;
-      for (; j < fStackDeposits.size() && fStackDeposits[j].layer == first.layer
-             && fStackDeposits[j].time < first.time + fStackHitWindow; ++j) {
-        edep += fStackDeposits[j].edep;
-        weighted += fStackDeposits[j].edep * fStackDeposits[j].position;
-        source |= fStackDeposits[j].origin;
-      }
-      fStkLayer.push_back(first.layer);
-      fStkSrc.push_back(source);
-      fStkE.push_back(edep / MeV);
-      fStkT.push_back(first.time / ns);
-      fStkX.push_back(weighted.x() / edep / cm);
-      fStkY.push_back(weighted.y() / edep / cm);
-      fStkZ.push_back(weighted.z() / edep / cm);
-      i = j;
-    }
+    // hits of the Si/YSO stack (per layer) and of the CZT plane (per pixel)
+    MakeHits(fStackDeposits, fStkLayer, fStkSrc, fStkE, fStkT, fStkX, fStkY, fStkZ);
+    MakeHits(fCZTDeposits, fCztPix, fCztSrc, fCztE, fCztT, fCztX, fCztY, fCztZ);
 
     fMuxE.clear(); fMuxExit.clear(); fMuxT.clear(); fMuxX.clear(); fMuxY.clear(); fMuxZ.clear();
     fMuxSrc.clear(); fMuxParent.clear();

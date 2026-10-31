@@ -145,7 +145,13 @@ DetectorConstruction::DetectorConstruction()
       fBuildDegrader(false),
       fDegraderMaterialName("G4_Pb"),
       fDegraderSize(40.0 * cm, 40.0 * cm, 5.0 * cm),
-      fDegraderPosition(0., 0., 0.)
+      fDegraderPosition(0., 0., 0.),
+      fBuildCZT(false),
+      fCZTPosition(0., 0., 32.0 * cm),   // 31.5-32.5 cm: right under a 4 cm target at 32.5-36.5 cm (with no stack)
+      fCZTPixels(4),
+      fCZTPixelSize(25.0 * mm),
+      fCZTThickness(10.0 * mm),
+      fCZTMaterial(nullptr)
 {
     // 在构造函数中调用DefineMaterials确保材料被创建
     DefineMaterials();
@@ -210,6 +216,14 @@ void DetectorConstruction::DefineMaterials()
 
     G4cout << "  CdZnTe material created: density = "
            << fdetector_mat->GetDensity()/(g/cm3) << " g/cm3" << G4endl;
+
+    // CZT of the CZT plane (/tof/czt/...), as compton_satellite_sim/compton_camera_DSSD defines it: Cd0.9Zn0.1Te by
+    // atoms (Cd 9, Zn 1, Te 10), 5.78 g/cm3
+    fCZTMaterial = new G4Material("CZT", 5.78 * g/cm3, 3);
+    fCZTMaterial->AddElement(Cd, 9);
+    fCZTMaterial->AddElement(Zn, 1);
+    fCZTMaterial->AddElement(Te, 10);
+    G4cout << "  CZT material created: density = " << fCZTMaterial->GetDensity()/(g/cm3) << " g/cm3" << G4endl;
 
 
     // Create YSO (Y2SiO5) scintillator material
@@ -747,6 +761,7 @@ for (const auto& station : scintStations) {
 
     if (fBuildCamera) ConstructComptonCamera();
     ConstructTargetAndDegrader();
+    if (fBuildCZT) ConstructCZT();
     ConstructBlocks();
 
     // 设置可视化属性
@@ -904,6 +919,26 @@ void DetectorConstruction::ConstructTargetAndDegrader()
     }
 }
 
+void DetectorConstruction::ConstructCZT()
+{
+    // CZT plane (/tof/czt/...): fCZTPixels x fCZTPixels CZT pixels side by side, each its own volume "CZTPixel" with
+    // copy number ix * fCZTPixels + iy, scored as DetectorKind::CZT (czt_* columns of the events ntuple)
+    auto solid_Pixel = new G4Box("CZTPixelSolid", 0.5 * fCZTPixelSize, 0.5 * fCZTPixelSize, 0.5 * fCZTThickness);
+    auto logic_Pixel = new G4LogicalVolume(solid_Pixel, fCZTMaterial, "CZTPixelLogic");
+    logic_Pixel->SetVisAttributes(G4VisAttributes(G4Colour(1.0, 0.8, 0.1)));
+    fKinds[logic_Pixel] = DetectorKind::CZT;
+    for (G4int ix = 0; ix < fCZTPixels; ++ix)
+        for (G4int iy = 0; iy < fCZTPixels; ++iy) {
+            const G4ThreeVector offset((ix - 0.5 * (fCZTPixels - 1)) * fCZTPixelSize, (iy - 0.5 * (fCZTPixels - 1)) * fCZTPixelSize, 0.);
+            new G4PVPlacement(nullptr, fCZTPosition + offset, logic_Pixel, "CZTPixel", logic_world, false,
+                              ix * fCZTPixels + iy, fCheckOverlaps);
+        }
+    G4cout << "\nCZT plane: " << fCZTPixels << " x " << fCZTPixels << " pixels of " << fCZTPixelSize/mm << " x "
+           << fCZTPixelSize/mm << " x " << fCZTThickness/mm << " mm, centre " << fCZTPosition/cm << " cm (z "
+           << (fCZTPosition.z() - 0.5 * fCZTThickness)/cm << " to " << (fCZTPosition.z() + 0.5 * fCZTThickness)/cm
+           << " cm)" << G4endl;
+}
+
 void DetectorConstruction::ConstructBlocks()
 {
     // 隔离铅砖 or any other passive box added with /tof/blocks/add
@@ -1054,7 +1089,8 @@ DetectorKind DetectorConstruction::GetKind(const G4LogicalVolume* lv) const
 G4bool DetectorConstruction::IsComptonDetector(const G4LogicalVolume* lv) const
 {
     const DetectorKind kind = GetKind(lv);
-    return kind == DetectorKind::StackYSO || kind == DetectorKind::StackSi || kind == DetectorKind::CameraLayer;
+    return kind == DetectorKind::StackYSO || kind == DetectorKind::StackSi || kind == DetectorKind::CameraLayer ||
+           kind == DetectorKind::CZT;
 }
 
 void DetectorConstruction::UpdateGeometry()
@@ -1110,6 +1146,17 @@ void DetectorConstruction::DefineCommands()
     degrader->DeclarePropertyWithUnit("size", "cm", fDegraderSize, "Full degrader size x y z");
     degrader->DeclarePropertyWithUnit("position", "cm", fDegraderPosition, "Degrader centre");
     fMessengers.push_back(std::move(degrader));
+
+    auto czt = std::make_unique<G4GenericMessenger>(this, "/tof/czt/",
+        "CZT plane (pixels of Cd0.9Zn0.1Te, scored per pixel: czt_* columns); changes take effect with /update");
+    czt->DeclareProperty("enable", fBuildCZT, "Build the CZT plane (default false)");
+    czt->DeclarePropertyWithUnit("position", "cm", fCZTPosition,
+        "Centre of the plane (default 0 0 32 cm: z 31.5-32.5 cm, right under a 4 cm target at 32.5-36.5 cm; "
+        "it overlaps the Si/YSO stack, /tof/det/stack false)");
+    czt->DeclareProperty("pixels", fCZTPixels, "Pixels per side (default 4)");
+    czt->DeclarePropertyWithUnit("pixelSize", "mm", fCZTPixelSize, "Pixel side (default 25 mm)");
+    czt->DeclarePropertyWithUnit("thickness", "mm", fCZTThickness, "Thickness (default 10 mm)");
+    fMessengers.push_back(std::move(czt));
 
     fBlockMessenger = std::make_unique<BlockMessenger>(this);
 }

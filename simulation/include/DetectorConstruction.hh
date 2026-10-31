@@ -52,8 +52,9 @@ class G4UImessenger;
 namespace Pb
 {
 
-// Role of a volume, used for event-level scoring (TOFmeterSteppingAction); StackSi is passive
-enum class DetectorKind { None, Bar, CameraLayer, StackYSO, StackSi, Absorber };
+// Role of a volume, used for event-level scoring (TOFmeterSteppingAction); StackSi is passive; CZT: a pixel of the
+// CZT plane (/tof/czt/...)
+enum class DetectorKind { None, Bar, CameraLayer, StackYSO, StackSi, Absorber, CZT };
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
@@ -95,6 +96,7 @@ private:
     void SetVisualAttributes();  // 声明可视化属性设置方法
     void ConstructComptonCamera();
     void ConstructTargetAndDegrader();
+    void ConstructCZT();
     void ConstructBlocks();
     G4Material* FindMaterial(const G4String& name) const;
 
@@ -155,6 +157,15 @@ private:
     G4String fDegraderMaterialName;
     G4ThreeVector fDegraderSize;
     G4ThreeVector fDegraderPosition;
+
+    // CZT plane (/tof/czt/...): pixels x pixels CdZnTe pixels of pixelSize x pixelSize x thickness, as the CZT layer of
+    // compton_satellite_sim/compton_camera_DSSD (4 x 4 of 25 x 25 x 10 mm, Cd9 Zn1 Te10 at 5.78 g/cm3); off by default
+    G4bool fBuildCZT;
+    G4ThreeVector fCZTPosition;     // centre of the plane
+    G4int fCZTPixels;               // per side
+    G4double fCZTPixelSize;
+    G4double fCZTThickness;
+    G4Material* fCZTMaterial;
 
     // Free-form boxes, e.g. lead shielding bricks (/tof/blocks/...)
     struct Block {

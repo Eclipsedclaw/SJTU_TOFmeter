@@ -68,6 +68,8 @@ class TOFmeterEventAction : public G4UserEventAction
     // energy in a layer of the Si/YSO stack: a Si layer (copy 0-2) or a YSO layer (copy 0-1), from the bottom
     void AddStackHit(G4bool silicon, G4int copy, G4double edep, G4double time, const G4ThreeVector& pos,
                      G4int trackID);
+    // energy in a pixel of the CZT plane (/tof/czt/...), pixel = ix * pixels + iy
+    void AddCZTHit(G4int pixel, G4double edep, G4double time, const G4ThreeVector& pos, G4int trackID);
     // where the energy of a track comes from, for the stack hits (stk_src): a muonic X-ray (source 0) or a
     // nuclear-capture gamma (source 1) of a mu- capture, else what its parent came from (tracking action)
     void SetTrackOrigin(const G4Track& track, G4int captureSource);
@@ -108,12 +110,16 @@ class TOFmeterEventAction : public G4UserEventAction
       G4ThreeVector position;
       G4int source = 0, parent = 0;
     };
-    struct StackDeposit {   // one step with energy in the stack; layer 0, 2, 4 Si and 1, 3 YSO, from the bottom
-      G4int layer = 0;
+    struct StackDeposit {   // one step with energy in the stack (layer 0, 2, 4 Si and 1, 3 YSO, from the bottom) or in
+      G4int layer = 0;      // the CZT plane (layer = pixel)
       G4double edep = 0., time = 0.;
       G4ThreeVector position;
       G4int origin = kOtherOrigin;
     };
+    // hits of the stack or the CZT plane: per layer (pixel), the deposits within fStackHitWindow of the first one
+    void MakeHits(std::vector<StackDeposit>& deposits, std::vector<G4int>& layer, std::vector<G4int>& src,
+                  std::vector<G4double>& e, std::vector<G4double>& t, std::vector<G4double>& x,
+                  std::vector<G4double>& y, std::vector<G4double>& z) const;
 
     G4bool DetectableTrident() const;
     void KeepForVisualisation(const G4Event*);
@@ -126,6 +132,7 @@ class TOFmeterEventAction : public G4UserEventAction
     G4double fStackEdep[2];           // YSO layers of the stack
     G4double fSiEdep[3];              // Si layers of the stack
     std::vector<StackDeposit> fStackDeposits;
+    std::vector<StackDeposit> fCZTDeposits;
     std::unordered_map<G4int, G4int> fOrigin;   // kTargetXray ... kOtherOrigin, by track ID
     G4double fStackHitWindow;         // /tof/stack/hitWindow
     G4double fAbsorberEdep;
@@ -145,6 +152,8 @@ class TOFmeterEventAction : public G4UserEventAction
     std::vector<G4double> fCamE, fCamT, fCamX, fCamY, fCamZ;
     std::vector<G4int> fStkLayer, fStkSrc;
     std::vector<G4double> fStkE, fStkT, fStkX, fStkY, fStkZ;
+    std::vector<G4int> fCztPix, fCztSrc;
+    std::vector<G4double> fCztE, fCztT, fCztX, fCztY, fCztZ;
     std::vector<G4double> fTriX, fTriY, fTriZ, fTriEin, fTriEout, fTriEpair, fTriMll, fTriW;
     std::vector<G4int> fTriPdg;
     std::vector<G4int> fTmuPdg, fTmuProc;

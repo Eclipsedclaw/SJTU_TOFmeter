@@ -9,7 +9,8 @@ so processes run in either place fit together process by process.
 |---|---|
 | `muonic_xray_czt_submit.sh` | Writes the macros of the processes not yet done and one HTCondor submit file, then submits it. |
 | `muonic_xray_czt_job.sh` | One job: `./TOFmeter <dir>/<band>/log/job<k>.mac`. It marks the process done only if the run reached its end, and writes host, time and speed to `job<k>.out`. |
-| `muonic_xray_czt_compare.C` | Compares two outputs of the same process (same seed) event by event. |
+| `muonic_xray_czt_compare.C` | Compares two outputs of the same process (same seed) event by event, or their distributions if the events differ. |
+| `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
 
 CMake copies this folder into the build directory (`<build>/condor/`); run `cmake` again after changing a file here.
 
@@ -101,12 +102,22 @@ and this keeps a process from running twice.
 ## Following the jobs
 
 ```sh
+sh condor/muonic_xray_czt_status.sh [--dir path] [--watch 60]   # progress bars, exposure, time left
 condor_q                                      # running, idle, held
 condor_q -hold                                # held jobs and why; see <dir>/<band>/log/job<k>.err and .log
 condor_release <id>                           # run a held job again after a fix
 condor_rm <id>                                # remove; then submit again to rerun what is not done
-ls output/muonic_xray_czt/*/log/*.done | wc -l   # processes done
 ```
+
+`muonic_xray_czt_status.sh` shows:
+
+- a bar over all the folder's processes, and one per band with the days of exposure done;
+- one bar per running job (from the last `>>> Event N` of its log, which is written in blocks and lags a little);
+- the failed jobs (`FAILED` in `.err`) and the stopped ones (log unchanged for 30 min without `.done`: held or
+  removed);
+- HTCondor's counts for the batch, and the time left (each band's job speed, shared by the jobs running now).
+
+It only reads files, so it also works on a copy of the folder.
 
 ## Outputs
 

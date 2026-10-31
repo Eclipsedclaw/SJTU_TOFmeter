@@ -213,5 +213,5 @@ if [ "$status" -ne 0 ]; then
   esac
   exit 1
 fi
-echo "follow: condor_q (batch $name); condor_q -hold (failed jobs, why); ls $dir/*/log/*.done | wc -l (processes done);"
-echo "        cat $dir/<band>/log/job<k>.out (a job's host, time and speed)"
+echo "follow: sh condor/muonic_xray_czt_status.sh --dir $dir [--watch 60] (progress, time left); condor_q (batch $name);"
+echo "        condor_q -hold (failed jobs, why); cat $dir/<band>/log/job<k>.out (a job's host, time and speed)"

@@ -18,11 +18,10 @@ CMake copies this folder into the build directory (`<build>/condor/`); run `cmak
 - Build TOFmeter on the cluster's shared filesystem. The jobs start in the build directory, read `./TOFmeter`,
   `macro/` and `data/` there, and write their output into it. Nothing is transferred (`should_transfer_files = NO`).
 - The jobs take the environment of the shell you submit from (`getenv = True`), so set up Geant4 there.
-- `condor_submit` may not start in a shell set up for Geant4, e.g. with `error while loading shared libraries:
-  libcrypto.so.3`: the setup hides libraries HTCondor needs, such as those of another system. Then submit from a
-  shell without that setup (a new login) and add `--setup <file>`. Each job runs under bash and sources that file
-  (the lines that set up Geant4) before TOFmeter starts. The script checks that `condor_submit` starts before it
-  writes anything.
+- `condor_submit` may not start in some shells, e.g. with `error while loading shared libraries:
+  libcrypto.so.3`, when the shell lacks libraries HTCondor needs. Submit from a shell where `condor_q` works; if
+  the jobs need more than that shell's environment, add `--setup <file>`. Each job runs under bash and sources that
+  file before TOFmeter starts. The script checks that `condor_submit` starts before it writes anything.
 
 ## Test
 
@@ -66,6 +65,7 @@ so the same command can be run again later.
 | `--muons n` | 5 x 10^6 | muons per process: ~35 min slow, ~50 min fast on the shared server |
 | `--max n` | 60 (the most) | jobs at a time (`max_materialize`; one core each) |
 | `--setup file` | | a file each job sources before TOFmeter starts (your Geant4 setup), on top of the submitting shell's environment |
+| `--os-major n` | any | run only on workers of that OS major version (`TARGET.OpSysMajorVer`, e.g. 9 for EL9): the one TOFmeter was built for; `condor_status -af Machine OpSysAndVer` lists the workers |
 | `--no-submit` | | write the macros and the submit file only |
 
 Bands: `slow` is 0-1 GeV, seed 9500000 + k; `fast` is 1-1000 GeV, seed 9600000 + k.

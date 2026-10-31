@@ -8,8 +8,8 @@
 # it. Their environment is that of this shell (getenv: set up Geant4 first); with --setup <file> each job also sources
 # that file before TOFmeter starts, for when condor_submit does not start in a shell set up for Geant4 (submit from one
 # without it). In the build directory:
-#   sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
-#   sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--no-submit]
+#   sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
+#   sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--os-major n] [--no-submit]
 # <band> is slow (0-1 GeV) or fast (1-1000 GeV); of its processes first-last, those without <dir>/<band>/log/job<k>.done
 # are submitted, e.g. slow 79 88 fast 47 168 (what the shared server's run had not finished on 2026-10-31). Defaults:
 # output/muonic_xray_czt, 5 x 10^6 muons per process (~35 min slow, ~50 min fast on the shared server; a job must end
@@ -19,12 +19,14 @@
 # only. Writes the macros as muonic_xray_czt.sh does (<dir>/<band>/log/job<k>.mac; beside them TOFmeter's log
 # job<k>.log and the job's output and errors job<k>.out, job<k>.err) and per submission <dir>/condor/submit_<date>.sub
 # with HTCondor's log of its jobs (submit_<date>.log). Follow them with condor_q; failed ones: condor_q -hold, then
-# condor_release after a fix.
+# condor_release after a fix. --os-major n: run only on workers of that OS major version (TARGET.OpSysMajorVer,
+# e.g. 9 for EL9, 7 for CentOS 7), the one TOFmeter was built on; condor_status -af Machine OpSysAndVer lists them.
 
 dir=output/muonic_xray_czt
 muons=5000000
 max=60
 setup=
+osmajor=
 submit=yes
 test=no
 while [ $# -gt 0 ]; do
@@ -33,6 +35,7 @@ while [ $# -gt 0 ]; do
     --muons) muons=$2; shift 2 ;;
     --max) max=$2; shift 2 ;;
     --setup) setup=$2; shift 2 ;;
+    --os-major) osmajor=$2; shift 2 ;;
     --no-submit) submit=no; shift ;;
     --test) test=yes; shift ;;
     *) break ;;
@@ -44,8 +47,8 @@ if [ "$test" = yes ]; then
   set -- slow 1 1 fast 1 1
 fi
 if [ $# -eq 0 ] || [ $(($# % 3)) -ne 0 ]; then
-  echo "usage: sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--no-submit] <band> <first> <last> ..." >&2
-  echo "       sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--no-submit]" >&2
+  echo "usage: sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> ..." >&2
+  echo "       sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--os-major n] [--no-submit]" >&2
   exit 1
 fi
 for v in "$muons" "$max"; do
@@ -61,6 +64,9 @@ if [ "$max" -lt 1 ] || [ "$max" -gt 60 ]; then
   echo "--max: 1-60 jobs at a time (one core each, 60 cores at most)" >&2
   exit 1
 fi
+case "$osmajor" in
+  *[!0-9]*) echo "--os-major: a whole number, e.g. 9" >&2; exit 1 ;;
+esac
 case "$dir$setup" in
   *[[:space:]]*) echo "--dir and --setup: paths without spaces" >&2; exit 1 ;;
 esac
@@ -91,8 +97,8 @@ if [ "$submit" = yes ]; then
     *"error while loading shared libraries"*|*"not found (required by"*)
       printf '%s\n' "$out" >&2
       echo "condor_submit cannot start in this shell's environment; nothing was written or submitted. Run this in a shell" >&2
-      echo "where it starts (e.g. a new login, before setting up Geant4) with --setup <file>: each job sources the file" >&2
-      echo "(your Geant4 setup) before TOFmeter starts" >&2
+      echo "where it starts (condor_q is a quick test); if the jobs need more than that shell's environment, add" >&2
+      echo "--setup <file>: each job sources the file before TOFmeter starts" >&2
       exit 1 ;;
   esac
   if condor_q -af JobBatchName 2> /dev/null | grep -qx "$name"; then
@@ -175,6 +181,7 @@ file="$dir/condor/submit_$stamp.sub"
   echo "should_transfer_files = NO"
   echo "initialdir            = $here"
   echo "getenv                = True"
+  [ -n "$osmajor" ] && echo "requirements          = (TARGET.OpSysMajorVer == $osmajor)"
   echo "request_cpus          = 1"
   echo "request_memory        = 1024"
   echo "notification          = Never"

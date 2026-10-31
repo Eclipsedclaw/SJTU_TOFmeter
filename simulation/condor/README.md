@@ -46,8 +46,29 @@ root -l -b -q 'condor/muonic_xray_czt_compare.C("output/muonic_xray_czt_condor_t
 ```
 
 `the same events, bit for bit` means the same physics as on the shared server. With another Geant4 version or
-compiler, single events can differ while the distributions still agree. On the shared server, a 5 x 10^4-muon run
-matched process 1's first events (54 of 54 slow, 53 of 53 fast).
+compiler, the events differ. The macro then compares the two files as independent samples and says whether they are
+`consistent within the statistics`:
+
+- the events written per muon (Poisson);
+- the muon's end processes (chi2);
+- the muon's energy and the event's CZT energy (Kolmogorov-Smirnov).
+
+On the shared server, a 5 x 10^4-muon run matched process 1's first events (54 of 54 slow, 53 of 53 fast).
+
+On the INPAC cluster (2026-10-31) the setup that works is:
+
+- the CentOS 7 workers (423 slots; the 97 EL9 slots refuse these jobs);
+- `LCG_105a/x86_64-centos7-gcc11-opt` (Geant4 11.2.0), built on the login node `bl-0` with `-DWITH_GEANT4_UIVIS=OFF`;
+- submitted with `--setup <file sourcing that view> --os-major 7`.
+
+Its test agreed with the shared server's process 1 (Geant4 11.2.2) within the statistics in both bands:
+
+| Band | Events per 10^6 muons, cluster | Shared server | p (end processes) | p (KS, muon energy) | p (KS, CZT energy) |
+|---|---|---|---|---|---|
+| slow | 760 +- 62 | 779 +- 12 | 0.13 | 0.68 | 0.92 |
+| fast | 1120 +- 75 | 1203 +- 16 | 0.50 | 0.56 | 0.51 |
+
+The live time per muon was the same as on the shared server.
 
 ## Production
 

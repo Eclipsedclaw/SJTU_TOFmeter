@@ -81,6 +81,8 @@ TOFmeterRunAction::TOFmeterRunAction(TOFmeterPrimaryGeneratorAction* primaryGene
   analysisManager->CreateNtupleDColumn("e_mono");      // cosmic: energy of every particle, MeV; 0 = spectrum
   analysisManager->CreateNtupleDColumn("lead_cm");     // lead layer on top, cm (0 = none)
   analysisManager->CreateNtupleIColumn("event_filter"); // /EventFilter: which events the events ntuple keeps
+  analysisManager->CreateNtupleDColumn("setup_bottom_z"); // z of the setup bottom (the ground), cm: 0;
+                                                          // files without it have the old frame, -70
   analysisManager->FinishNtuple();
 }
 
@@ -164,6 +166,7 @@ void TOFmeterRunAction::EndOfRunAction(const G4Run* aRun)
 			G4RunManager::GetRunManager()->GetUserDetectorConstruction());
 		analysisManager->FillNtupleDColumn(fRunNtupleId, col++, detector ? detector->GetLeadThickness()/cm : -1.);
 		analysisManager->FillNtupleIColumn(fRunNtupleId, col++, global.EventFilter);
+		analysisManager->FillNtupleDColumn(fRunNtupleId, col++, detector ? detector->GetSetupBottomZ()/cm : 0.);
 		analysisManager->AddNtupleRow(fRunNtupleId);
 		analysisManager->Write();
 		analysisManager->CloseFile();

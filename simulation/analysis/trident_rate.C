@@ -59,6 +59,8 @@ void trident_rate(const char* dir = "output/tridents_t10")
     run->SetBranchAddress("n_events", &n);
     run->SetBranchAddress("live_time", &lt);
     run->SetBranchAddress("lead_cm", &leadCm);
+    double ground = -70.;   // z of the ground (setup bottom); -70 cm in files made before it was put at 0
+    if (run->GetBranch("setup_bottom_z")) run->SetBranchAddress("setup_bottom_z", &ground);
     run->GetEntry(0);
     generated += n;
     liveTime += lt;
@@ -82,7 +84,8 @@ void trident_rate(const char* dir = "output/tridents_t10")
     events->SetBranchAddress("prim_st", &primSt);
     events->SetBranchAddress("prim_top", &primTop);
     events->SetBranchAddress("prim_mid", &primMid);
-    const double leadTop = 21. + lead;
+    // heights above the ground: steel plate 90 to 91 cm, lead layer from 91 cm, walls from 0
+    const double leadBottom = ground + 91., leadTop = leadBottom + lead;
     for (Long64_t i = 0; i < events->GetEntries(); ++i) {
       events->GetEntry(i);
       int primaryTrident = -1;
@@ -93,9 +96,9 @@ void trident_rate(const char* dir = "output/tridents_t10")
         hAll->Fill((*ein)[k] / 1000., wk);
         const double r = std::max(std::abs((*x)[k]), std::abs((*y)[k]));
         const double zk = (*z)[k];
-        if (r < 45. && zk > 21. && zk < leadTop) inLead.Add(wk);
-        else if (r >= 45. && r <= 55. && zk > -70. && zk < leadTop) inWalls.Add(wk);
-        else if (r < 40. && zk > 20. && zk < 21.) inSteel.Add(wk);
+        if (r < 45. && zk > leadBottom && zk < leadTop) inLead.Add(wk);
+        else if (r >= 45. && r <= 55. && zk > ground && zk < leadTop) inWalls.Add(wk);
+        else if (r < 40. && zk > leadBottom - 1. && zk < leadBottom) inSteel.Add(wk);
         else elsewhere.Add(wk);
         if ((*parent)[k] == 1 && primaryTrident < 0) primaryTrident = int(k);
       }

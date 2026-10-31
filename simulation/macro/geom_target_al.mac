@@ -1,0 +1,16 @@
+### The target in which muons stop and form muonic atoms, whose X-rays the Compton detector (the
+### Si/YSO stack) sees: a 20 x 20 x 1 cm aluminium panel centred above the stack (20 x 20 cm, top
+### face at z = 31.6 cm), at z = 35.5 to 36.5 cm: 3.9 cm above the stack and 1 cm below the Al2 plate
+### under the middle TOF (bottom face at z = 37.5 cm). Not supported by anything in the model.
+### Since 2026-10-23 this is also the default geometry (DetectorConstruction.cc); the macro sets the
+### same values explicitly - copy it for another material, size or position, or use
+### /tof/target/enable false to take the target out.
+### The free space between the stack top and Al2 is 5.9 cm. Another target: centre z = 31.6 cm +
+### gap + thickness / 2, with gap + thickness <= 5.9 cm.
+### Check it with macro/vis_target.mac; muons that stop in it end in the volume "Target" (end_vol).
+
+/tof/target/enable true
+/tof/target/material G4_Al
+/tof/target/size 20 20 1 cm
+/tof/target/position 0 0 36.0 cm
+/update

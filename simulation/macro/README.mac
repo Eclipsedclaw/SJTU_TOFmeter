@@ -15,7 +15,10 @@
 #              active volume or a primary stopped inside the setup, 2 only events with
 #              energy in a TOF bar or a Compton-detector layer, 3 only events with a muon
 #              trident or a photon conversion to mu+mu-, 4 only events with energy in a
-#              top-TOF bar and in a middle-TOF bar (live time unaffected)
+#              top-TOF bar and in a middle-TOF bar, 5 only events with a photon of a mu-
+#              capture (muonic X-ray or nuclear-capture gamma; columns mux_*), 6 only events with
+#              energy in the Si/YSO stack (columns stk_*) (live time unaffected)
+# /tof/stack/hitWindow 100 ns        one stack hit (stk_*): the deposits in one layer within this time
 # /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
 # /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
 
@@ -27,7 +30,7 @@
 #                                      (default mu+ mu-)
 # /tof/cosmic/angular pairs            expacs: <species|all> <n|guan>, I ~ cos^n(theta); guan = muon
 #                                      shape of Guan et al. (default all 2 mu+ guan mu- guan)
-# /tof/cosmic/planeCenter x y z unit   centre of the horizontal source plane (default 0 0 75 cm)
+# /tof/cosmic/planeCenter x y z unit   centre of the horizontal source plane (default 0 0 145 cm)
 # /tof/cosmic/halfX, halfY value unit  plane half sizes (default 150 cm)
 # /tof/cosmic/energyMin, energyMax     kinetic energy range, per nucleon for ions (default 0 - 1000 GeV)
 # /tof/cosmic/monoEnergy value unit    > 0: every particle gets this energy, zenith law of that
@@ -40,6 +43,9 @@
 # /physics_engine/neutron/timeLimit 10 ms   let slow neutrons live long enough to arrive
 
 # --- Geometry (apply with /update) ---
+# z = 0 is the ground (bottom of the setup), x = y = 0 its axis; heights in README.md
+# /tof/target/enable true|false      the muonic X-ray target, on by default: Al 20 x 20 x 1 cm at
+#                                      z = 35.5 to 36.5 cm (macro/geom_target_al.mac sets it explicitly)
 # /tof/det/stations | frame | stack | absorber | leadWalls  true|false   parts of DetectorConstruction.cc
 # /tof/det/leadThickness 10 cm         lead layer on the steel plate (bottom fixed, 0 = none);
 #                                      the lead walls end level with its top
@@ -64,6 +70,10 @@
 #                                      (commands accepted only before initialisation)
 # /tof/physics/crossSection muToMuonPairProd mu- G4_Pb 1 10 100   Geant4 cross section (GeV),
 #                                      after a /run/beamOn (0 events is enough)
+# /tof/physics/muonCascade firstPrinciples|geant4   atomic cascade of stopped mu- (muonic X-rays):
+#                                      TOFmeterEmCaptureCascade (default) or Geant4's G4EmCaptureCascade
+# /tof/physics/muonCascadeZmax 92    first-principles cascade only up to this Z, Geant4's above
+#                                      (its heavy-element K lines are far too high, e.g. Pb 14 MeV)
 # /tof/tridents/keepForVis 0|1|2     keep events (none, with a trident, with a detectable trident)
 #                                      for /vis/reviewKeptEvents; /tof/tridents/maxKept 20 stops the run
 # /tof/tridents/search true          /run/beamOn N (and the Qt Run button) runs until N events are

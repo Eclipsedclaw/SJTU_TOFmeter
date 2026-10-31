@@ -19,7 +19,7 @@
 /gps/ene/mono 1 GeV
 /gps/pos/type Plane
 /gps/pos/shape Rectangle
-/gps/pos/centre 0 0 75 cm
+/gps/pos/centre 0 0 145 cm
 /gps/pos/halfx 18 cm
 /gps/pos/halfy 18 cm
 /gps/direction 0 0 -1

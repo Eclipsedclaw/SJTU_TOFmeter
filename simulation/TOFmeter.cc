@@ -40,6 +40,7 @@
 #include "TOFmeterEventAction.hh"
 #include "TOFmeterSteppingAction.hh"
 #include "TOFmeterTrackingAction.hh"
+#include "TOFmeterMuonCascade.hh"
 #include "TOFmeterViewSpinner.hh"
 #include "TOFmeterAppIcon.hh"
 #include "TOFmeterPhysicsMessenger.hh"
@@ -148,6 +149,9 @@ int main(int argc,char** argv)
   // Initialize G4 kernel
   //
   runManager->Initialize();
+  // Atomic cascade of stopped mu- (muonic X-rays): the first-principles model by default
+  // (/tof/physics/muonCascade firstPrinciples|geant4, /tof/physics/muonCascadeZmax)
+  TOFmeterMuonCascade::Install();
       
   // Get the pointer to the User Interface manager
   //

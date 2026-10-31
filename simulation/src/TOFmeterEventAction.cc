@@ -50,6 +50,7 @@
 #include "G4SystemOfUnits.hh"
 #include "G4TrajectoryContainer.hh"
 #include "G4Trajectory.hh"
+#include "G4VPhysicalVolume.hh"
 #include "G4ios.hh"
 #include "global.h"
 #include <algorithm>
@@ -59,6 +60,8 @@
 
 TOFmeterEventAction::TOFmeterEventAction()
 {
+  fStackHitWindow = 100. * ns;
+
   // "events" ntuple: one row per event (MeV, ns, cm). Scalar columns come
   // first and are filled in this order in EndOfEventAction.
   auto analysisManager = G4AnalysisManager::Instance();
@@ -88,6 +91,9 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleIColumn("cam_prim");   // bit k: primary deposited in CHk
   analysisManager->CreateNtupleDColumn("e_stack0");   // YSO layers of the Si/YSO stack
   analysisManager->CreateNtupleDColumn("e_stack1");
+  analysisManager->CreateNtupleDColumn("e_si0");      // Si layers of the stack, from the bottom
+  analysisManager->CreateNtupleDColumn("e_si1");
+  analysisManager->CreateNtupleDColumn("e_si2");
   analysisManager->CreateNtupleDColumn("e_absorber");
   analysisManager->CreateNtupleDColumn("cmp_ke");     // primary kinetic energy entering the Compton detector, -1 if never
   analysisManager->CreateNtupleDColumn("top_ke");     // ... entering a top-TOF bar, -1 if never
@@ -112,6 +118,18 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleDColumn("cam_x", fCamX);
   analysisManager->CreateNtupleDColumn("cam_y", fCamY);
   analysisManager->CreateNtupleDColumn("cam_z", fCamZ);
+  // hits of the Si/YSO stack, one per layer and time: the deposits in a layer within /tof/stack/hitWindow
+  // (100 ns) of the first one. Layer 0, 2, 4 Si and 1, 3 YSO, from the bottom; what made it, as bits of
+  // the tracks that deposited (each with its secondaries): 1 muonic X-ray of the target, 2 muonic X-ray of
+  // another volume, 4 nuclear-capture gamma, 8 anything else; energy, time of the first deposit,
+  // energy-weighted position
+  analysisManager->CreateNtupleIColumn("stk_layer", fStkLayer);
+  analysisManager->CreateNtupleIColumn("stk_src", fStkSrc);
+  analysisManager->CreateNtupleDColumn("stk_e", fStkE);
+  analysisManager->CreateNtupleDColumn("stk_t", fStkT);
+  analysisManager->CreateNtupleDColumn("stk_x", fStkX);
+  analysisManager->CreateNtupleDColumn("stk_y", fStkY);
+  analysisManager->CreateNtupleDColumn("stk_z", fStkZ);
   // muon tridents, one entry per interaction: vertex, kinetic energy of the muon before and after,
   // total energy of the produced pair, invariant mass of the two like-sign muons (the muon after
   // the interaction and the produced one of its charge), weight (1 / biasing factor), PDG code
@@ -135,6 +153,26 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleIColumn("tmu_st", fTmuSt);           // TOF stations crossed, as prim_st
   analysisManager->CreateNtupleIColumn("tmu_top", fTmuTop);         // first top-TOF bar, -1 if none
   analysisManager->CreateNtupleIColumn("tmu_mid", fTmuMid);         // first middle-TOF bar, -1 if none
+  // photons of mu- captures at rest, one entry each: energy at creation, energy when it first left the
+  // volume it was born in (-1 if it never did, i.e. it was absorbed there), creation time and place,
+  // source (0 muonic X-ray of the atomic cascade, 1 gamma of the nuclear capture), track ID of the muon
+  analysisManager->CreateNtupleDColumn("mux_e", fMuxE);
+  analysisManager->CreateNtupleDColumn("mux_exit", fMuxExit);
+  analysisManager->CreateNtupleDColumn("mux_t", fMuxT);
+  analysisManager->CreateNtupleDColumn("mux_x", fMuxX);
+  analysisManager->CreateNtupleDColumn("mux_y", fMuxY);
+  analysisManager->CreateNtupleDColumn("mux_z", fMuxZ);
+  analysisManager->CreateNtupleIColumn("mux_src", fMuxSrc);
+  analysisManager->CreateNtupleIColumn("mux_parent", fMuxParent);
+  // hits of the CZT plane (/tof/czt/...), as the stack's: one per pixel and time, the deposits in a pixel within
+  // /tof/stack/hitWindow of the first one; pixel ix * pixels + iy, source bits as stk_src, energy, time, position
+  analysisManager->CreateNtupleIColumn("czt_pix", fCztPix);
+  analysisManager->CreateNtupleIColumn("czt_src", fCztSrc);
+  analysisManager->CreateNtupleDColumn("czt_e", fCztE);
+  analysisManager->CreateNtupleDColumn("czt_t", fCztT);
+  analysisManager->CreateNtupleDColumn("czt_x", fCztX);
+  analysisManager->CreateNtupleDColumn("czt_y", fCztY);
+  analysisManager->CreateNtupleDColumn("czt_z", fCztZ);
   analysisManager->FinishNtuple();
 
   fMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/tridents/", "Muon trident events");
@@ -146,6 +184,11 @@ TOFmeterEventAction::TOFmeterEventAction()
                               "true: /run/beamOn N (also the Run button of the Qt toolbar) runs until N events are kept "
                               "as keepForVis says (1 if it is 0), at most searchLimit muons; false: normal runs");
   fMessenger->DeclareProperty("searchLimit", fSearchLimit, "Most muons one search may take (default 1000000)");
+
+  fStackMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/stack/", "Hits of the Si/YSO stack");
+  fStackMessenger->DeclarePropertyWithUnit("hitWindow", "ns", fStackHitWindow,
+                                           "One stack hit (stk_*): the deposits in one layer within this time of "
+                                           "the first one (default 100 ns)");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -164,6 +207,10 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   for (G4int i = 0; i < 3; ++i) { fCamEdep[i] = 0.; fCamTime[i] = -1.; }
   fCamPrimary = 0;
   fStackEdep[0] = fStackEdep[1] = 0.;
+  fSiEdep[0] = fSiEdep[1] = fSiEdep[2] = 0.;
+  fStackDeposits.clear();
+  fCZTDeposits.clear();
+  fOrigin.clear();
   fAbsorberEdep = 0.;
   fComptonEntryKE = -1.;
   fTopEntryKE = -1.;
@@ -180,6 +227,7 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
   fTmuPdg.clear(); fTmuProc.clear(); fTmuE0.clear(); fTmuE1.clear();
   fTriParent.clear(); fTmuParent.clear(); fTmuSt.clear(); fTmuTop.clear(); fTmuMid.clear();
   fTofTracks.clear();
+  fCapturePhotons.clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -212,9 +260,64 @@ void TOFmeterEventAction::AddCameraHit(G4int layer, G4double edep, G4double time
   fCamZ.push_back(pos.z() / cm);
 }
 
-void TOFmeterEventAction::AddStackHit(G4int layer, G4double edep)
+void TOFmeterEventAction::AddStackHit(G4bool silicon, G4int copy, G4double edep, G4double time,
+                                      const G4ThreeVector& pos, G4int trackID)
 {
-  if (layer >= 0 && layer < 2) fStackEdep[layer] += edep;
+  if (copy < 0 || copy > (silicon ? 2 : 1)) return;
+  if (silicon) fSiEdep[copy] += edep;
+  else fStackEdep[copy] += edep;
+  const auto origin = fOrigin.find(trackID);
+  fStackDeposits.push_back({silicon ? 2 * copy : 2 * copy + 1, edep, time, pos,
+                            origin == fOrigin.end() ? kOtherOrigin : origin->second});
+}
+
+void TOFmeterEventAction::AddCZTHit(G4int pixel, G4double edep, G4double time, const G4ThreeVector& pos, G4int trackID)
+{
+  const auto origin = fOrigin.find(trackID);
+  fCZTDeposits.push_back({pixel, edep, time, pos, origin == fOrigin.end() ? kOtherOrigin : origin->second});
+}
+
+void TOFmeterEventAction::MakeHits(std::vector<StackDeposit>& deposits, std::vector<G4int>& layer, std::vector<G4int>& src,
+                                   std::vector<G4double>& e, std::vector<G4double>& t, std::vector<G4double>& x,
+                                   std::vector<G4double>& y, std::vector<G4double>& z) const
+{
+  // per layer, the deposits within fStackHitWindow of the first one (the steps of an event do not come in time order)
+  layer.clear(); src.clear(); e.clear(); t.clear(); x.clear(); y.clear(); z.clear();
+  std::sort(deposits.begin(), deposits.end(), [](const StackDeposit& a, const StackDeposit& b) {
+    return a.layer != b.layer ? a.layer < b.layer : a.time < b.time;
+  });
+  for (std::size_t i = 0; i < deposits.size();) {
+    const StackDeposit& first = deposits[i];
+    G4double edep = 0.;
+    G4ThreeVector weighted;
+    G4int source = 0;
+    std::size_t j = i;
+    for (; j < deposits.size() && deposits[j].layer == first.layer && deposits[j].time < first.time + fStackHitWindow; ++j) {
+      edep += deposits[j].edep;
+      weighted += deposits[j].edep * deposits[j].position;
+      source |= deposits[j].origin;
+    }
+    layer.push_back(first.layer);
+    src.push_back(source);
+    e.push_back(edep / MeV);
+    t.push_back(first.time / ns);
+    x.push_back(weighted.x() / edep / cm);
+    y.push_back(weighted.y() / edep / cm);
+    z.push_back(weighted.z() / edep / cm);
+    i = j;
+  }
+}
+
+void TOFmeterEventAction::SetTrackOrigin(const G4Track& track, G4int captureSource)
+{
+  G4int origin = kOtherOrigin;
+  if (captureSource == 0)
+    origin = track.GetVolume() && track.GetVolume()->GetName() == "Target" ? kTargetXray : kOtherXray;
+  else if (captureSource == 1)
+    origin = kCaptureGamma;
+  else if (const auto parent = fOrigin.find(track.GetParentID()); parent != fOrigin.end())
+    origin = parent->second;
+  fOrigin[track.GetTrackID()] = origin;
 }
 
 void TOFmeterEventAction::AddTrident(const G4Step& step, const std::vector<const G4Track*>& secondaries)
@@ -261,6 +364,22 @@ void TOFmeterEventAction::AddTridentMuon(G4int pdg, G4int creatorSubType, G4doub
   fTmuProc.push_back(creatorSubType);
   fTmuE0.push_back(kinE0 / MeV);
   fTmuE1.push_back(kinE1 / MeV);
+}
+
+void TOFmeterEventAction::AddCapturePhoton(const G4Track& track, G4int source)
+{
+  CapturePhoton& photon = fCapturePhotons[track.GetTrackID()];
+  photon.energy = track.GetKineticEnergy();
+  photon.time = track.GetGlobalTime();
+  photon.position = track.GetPosition();
+  photon.source = source;
+  photon.parent = track.GetParentID();
+}
+
+void TOFmeterEventAction::SetCapturePhotonExit(G4int trackID, G4double kinE)
+{
+  const auto it = fCapturePhotons.find(trackID);
+  if (it != fCapturePhotons.end() && it->second.exitEnergy < 0.) it->second.exitEnergy = kinE;
 }
 
 void TOFmeterEventAction::MarkTOFTrack(G4int trackID, G4int station, G4int bar)
@@ -377,7 +496,7 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     if (global.OutputFormat == 0) return; // ASCII output only
 
     const G4bool detectorEnergy = !fBars.empty() || fCamEdep[0] > 0. || fCamEdep[1] > 0. || fCamEdep[2] > 0.
-                                  || fStackEdep[0] > 0. || fStackEdep[1] > 0. || fComptonEntryKE >= 0.;
+                                  || !fStackDeposits.empty() || !fCZTDeposits.empty() || fComptonEntryKE >= 0.;
     if (global.EventFilter == 1) // skip muons that only crossed air
     {
       const G4bool stoppedInSetup = fEndVolume != "OutOfWorld" && fEndVolume != "WorldPhys";
@@ -394,6 +513,26 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
         middle = middle || key / 100 == 1;
       }
       if (!top || !middle) return;
+    }
+    if (global.EventFilter == 5 && fCapturePhotons.empty()) return; // keep only events with mu- capture photons
+    if (global.EventFilter == 6 && fStackDeposits.empty()) return;  // keep only events with energy in the stack
+    if (global.EventFilter == 7 && fCZTDeposits.empty()) return;    // keep only events with energy in the CZT plane
+
+    // hits of the Si/YSO stack (per layer) and of the CZT plane (per pixel)
+    MakeHits(fStackDeposits, fStkLayer, fStkSrc, fStkE, fStkT, fStkX, fStkY, fStkZ);
+    MakeHits(fCZTDeposits, fCztPix, fCztSrc, fCztE, fCztT, fCztX, fCztY, fCztZ);
+
+    fMuxE.clear(); fMuxExit.clear(); fMuxT.clear(); fMuxX.clear(); fMuxY.clear(); fMuxZ.clear();
+    fMuxSrc.clear(); fMuxParent.clear();
+    for (const auto& [trackID, photon] : fCapturePhotons) {
+      fMuxE.push_back(photon.energy / MeV);
+      fMuxExit.push_back(photon.exitEnergy < 0. ? -1. : photon.exitEnergy / MeV);
+      fMuxT.push_back(photon.time / ns);
+      fMuxX.push_back(photon.position.x() / cm);
+      fMuxY.push_back(photon.position.y() / cm);
+      fMuxZ.push_back(photon.position.z() / cm);
+      fMuxSrc.push_back(photon.source);
+      fMuxParent.push_back(photon.parent);
     }
 
     fBarStation.clear(); fBarIndex.clear(); fBarEdep.clear(); fBarTime.clear();
@@ -445,6 +584,7 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     analysisManager->FillNtupleIColumn(fNtupleId, col++, fCamPrimary);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fStackEdep[0] / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fStackEdep[1] / MeV);
+    for (G4int i = 0; i < 3; ++i) analysisManager->FillNtupleDColumn(fNtupleId, col++, fSiEdep[i] / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fAbsorberEdep / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fComptonEntryKE < 0. ? -1. : fComptonEntryKE / MeV);
     analysisManager->FillNtupleDColumn(fNtupleId, col++, fTopEntryKE < 0. ? -1. : fTopEntryKE / MeV);

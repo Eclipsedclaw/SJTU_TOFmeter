@@ -108,7 +108,7 @@ CosmicRaySource::CosmicRaySource()
     fExpacsFile("data/expacs_spectrum.txt"),
     fSpecies("mu+ mu-"),
     fAngular("all 2 mu+ guan mu- guan"),
-    fPlaneCenter(0., 0., 75. * cm),
+    fPlaneCenter(0., 0., 145. * cm),
     fHalfX(150. * cm),
     fHalfY(150. * cm),
     fEnergyMin(0.),

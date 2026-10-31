@@ -1,6 +1,6 @@
 ### Cosmic-ray muons (both charges, all energies) through the setup of
 ### DetectorConstruction.cc; ROOT output, events that only crossed air are skipped.
-### 1e6 muons on the 3 x 3 m plane at z = 75 cm ~ 14 min of live time.
+### 1e6 muons on the 3 x 3 m plane at z = 145 cm ~ 14 min of live time.
 
 /OutputFormat 1
 /EventFilter 1
@@ -9,7 +9,7 @@
 /gun/seed 1
 
 /GeneralParticleSource 2
-/tof/cosmic/planeCenter 0 0 75 cm
+/tof/cosmic/planeCenter 0 0 145 cm
 /tof/cosmic/halfX 150 cm
 /tof/cosmic/halfY 150 cm
 /tof/cosmic/thetaMax 75 deg

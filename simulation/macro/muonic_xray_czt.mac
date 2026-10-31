@@ -1,0 +1,32 @@
+### Muonic X-rays in a CZT plane right under the 4 cm Al target, one job (scripts/muonic_xray_czt.sh runs many): the
+### setup of macro/muonic_xray_target.mac with the Si/YSO stack taken out (/tof/det/stack false) and, in its place,
+### the CZT plane of compton_satellite_sim/compton_camera_DSSD (/tof/czt/...: 4 x 4 pixels of 25 x 25 x 10 mm,
+### Cd0.9Zn0.1Te at 5.78 g/cm3), its top face against the target's bottom face. Cosmic mu+ and mu- of czEmin - czEmax
+### GeV, from the plane of the stack runs; only events with energy in the CZT are written (/EventFilter 7, columns
+### czt_*, with the mux_* truth of the capture photons). The live time in the run tree is that of the band. Needs the
+### aliases czSeed, czEvents, czDir, czFile, czEmin, czEmax, tgtCm, tgtZ and cztZ (centres in cm).
+
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 {tgtCm} cm
+/tof/target/position 0 0 {tgtZ} cm
+/tof/czt/enable true
+/tof/czt/position 0 0 {cztZ} cm
+/update
+
+/OutputFormat 1
+/EventFilter 7
+/OutputDirectory {czDir}
+/OutputFile {czFile}
+/gun/seed {czSeed}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 112 cm
+/tof/cosmic/halfX 200 cm
+/tof/cosmic/halfY 200 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin {czEmin} GeV
+/tof/cosmic/energyMax {czEmax} GeV
+/run/beamOn {czEvents}

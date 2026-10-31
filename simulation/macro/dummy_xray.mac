@@ -1,0 +1,26 @@
+### Dummy muonic X-ray spectrum, to check the atomic cascade: mu- stopped directly in a target of one
+### material, one job (scripts/dummy_xray.sh runs one per material and cascade model). The target is
+### the 20 x 20 x 1 cm box of macro/geom_target_al.mac (centre at z = 36 cm) with its material
+### replaced. Needs the aliases dummyMaterial (NIST name, e.g. G4_Al, G4_Si), dummyModel
+### (firstPrinciples or geant4, /tof/physics/muonCascade), dummySeed, dummyEvents, dummyDir, dummyFile.
+### Every event is one mu- of 1 keV started at the centre of the target: that is the lowest kinetic
+### energy Geant4 tracks a muon at, so it stops where it starts and every event is a stop in the
+### target. A gun run has no live time: the analysis gives everything per stopped mu- (the yield).
+### Every event is written (/EventFilter 0), so the stops are counted exactly, also those without any photon.
+
+/control/execute macro/geom_target_al.mac
+/tof/target/material {dummyMaterial}
+/update
+/tof/physics/muonCascade {dummyModel}
+
+/OutputFormat 1
+/EventFilter 0
+/OutputDirectory {dummyDir}
+/OutputFile {dummyFile}
+/gun/seed {dummySeed}
+/GeneralParticleSource 0
+/gun/particle mu-
+/gun/energy 1 keV
+/gun/position 0 0 36 cm
+/gun/direction 0 0 -1
+/run/beamOn {dummyEvents}

@@ -20,7 +20,7 @@
 /tof/cosmic/model expacs
 /tof/cosmic/species all
 /tof/cosmic/angular all 2 mu+ guan mu- guan
-/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/planeCenter 0 0 105 cm
 /tof/cosmic/halfX 100 cm
 /tof/cosmic/halfY 100 cm
 /tof/cosmic/thetaMax 80 deg

@@ -18,8 +18,9 @@
 //          band range, which the spectrum check run of the same thickness measures directly.
 // A TOF counts as hit when one of its bars has more than barThr (MeV), the Compton detector
 // when a stack YSO or camera layer has more than comptonThr.
-// TMC+stop: TMC events whose muon stopped in the Compton region (-52.5 < z < -32.5 cm inside the
-// frame, |x|, |y| < 40 cm: the stack, its plate Al3 and the space above it up to Al2). For one
+// TMC+stop: TMC events whose muon stopped in the Compton region (17.5 < z < 37.5 cm above the
+// ground inside the frame, |x|, |y| < 40 cm: the stack, its plate Al3 and the space above it up to
+// Al2; files made before z = 0 was put at the ground have it at -52.5 < z < -32.5 cm). For one
 // energy the stopping window is narrow (~10 MeV for one zenith angle), so the sum over the points
 // gives its rate only if the grid is fine enough; the check run gives it in any case.
 // Flux calibration: every point is weighted with w = J_band / J_max, its band flux relative to
@@ -75,8 +76,14 @@ bool ReadCounts(const TString& path, const TString* cuts, Counts& c)
   c.generated = nEvents;
   int filter = 2;
   if (run->GetBranch("event_filter")) run->SetBranchAddress("event_filter", &filter);
+  double ground = -70.;   // z of the ground (setup bottom); -70 cm in files made before it was put at 0
+  if (run->GetBranch("setup_bottom_z")) run->SetBranchAddress("setup_bottom_z", &ground);
   run->GetEntry(0);
-  for (int s = 0; s < kNSel; ++s) c.n[s] = events->GetEntries(cuts[s]);
+  for (int s = 0; s < kNSel; ++s) {
+    TString cut = cuts[s];
+    cut.ReplaceAll("{ground}", Form("(%g)", ground));
+    c.n[s] = events->GetEntries(cut);
+  }
   if (filter == 4) c.n[kTop] = -1;  // only events with top and middle TOF energy were written
   c.filled = true;
   return true;
@@ -111,7 +118,10 @@ void lead_energy_scan(const char* dir = "output/leadscan", double barThr = 0.2, 
   const TString bottom = Form("Sum$(bar_st==2 && bar_e>%g)>0", barThr);
   const TString compton = Form("(e_stack0>%g || e_stack1>%g || e_ch0>%g || e_ch1>%g || e_ch2>%g)",
                                comptonThr, comptonThr, comptonThr, comptonThr, comptonThr);
-  const TString stopped = "(end_ke < 0.001 && end_z > -52.5 && end_z < -32.5 && abs(end_x) < 40 && abs(end_y) < 40)";
+  // stopped between the Al3 and Al2 plates, 17.5 to 37.5 cm above the ground ({ground}: z of the
+  // ground in the file, see ReadCounts)
+  const TString stopped =
+    "(end_ke < 0.001 && end_z > {ground} + 17.5 && end_z < {ground} + 37.5 && abs(end_x) < 40 && abs(end_y) < 40)";
   // the muon itself: crossed the top (bit 0) and middle (bit 1) TOF, entered the Compton detector
   const TString muonTop = muonOnly ? " && (prim_st & 1) != 0" : "";
   const TString muonTM = muonOnly ? " && (prim_st & 3) == 3" : "";

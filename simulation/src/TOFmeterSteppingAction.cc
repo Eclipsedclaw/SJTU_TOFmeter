@@ -4,6 +4,7 @@
 #include "TOFmeterEventAction.hh"
 
 #include "G4EmProcessSubType.hh"
+#include "G4Gamma.hh"
 #include "G4ParticleDefinition.hh"
 #include "G4VProcess.hh"
 #include "G4Step.hh"
@@ -30,6 +31,13 @@ void TOFmeterSteppingAction::UserSteppingAction(const G4Step* step)
     if (nextLV != thisLV && fDetector->GetKind(thisLV) == Pb::DetectorKind::Absorber)
       fEventAction->SetLeadExit(post->GetKineticEnergy());
   }
+
+  // Photons of mu- captures: energy when they first leave the volume they were born in (the event
+  // action keeps it only for the capture photons it knows)
+  if (post->GetStepStatus() == fGeomBoundary && step->GetTrack()->GetDefinition() == G4Gamma::Gamma()
+      && step->GetPreStepPoint()->GetPhysicalVolume()->GetLogicalVolume()
+           == step->GetTrack()->GetLogicalVolumeAtVertex())
+    fEventAction->SetCapturePhotonExit(step->GetTrack()->GetTrackID(), post->GetKineticEnergy());
 
   // Muon tridents: mu+mu- pair production by the muon of this step (muToMuonPairProd)
   if (const G4VProcess* proc = post->GetProcessDefinedStep()) {
@@ -63,8 +71,13 @@ void TOFmeterSteppingAction::UserSteppingAction(const G4Step* step)
                                  step->GetTrack()->GetDefinition()->GetPDGEncoding(),
                                  step->GetTrack()->GetTrackID());
       break;
+    case Pb::DetectorKind::StackSi:   // copy number = layer of its kind, from the bottom
     case Pb::DetectorKind::StackYSO:
-      fEventAction->AddStackHit(touchable->GetCopyNumber(0), edep);
+      fEventAction->AddStackHit(kind == Pb::DetectorKind::StackSi, touchable->GetCopyNumber(0), edep, time, pos,
+                                step->GetTrack()->GetTrackID());
+      break;
+    case Pb::DetectorKind::CZT:   // copy number = pixel, ix * pixels + iy
+      fEventAction->AddCZTHit(touchable->GetCopyNumber(0), edep, time, pos, step->GetTrack()->GetTrackID());
       break;
     case Pb::DetectorKind::Absorber:
       fEventAction->AddAbsorberHit(edep);

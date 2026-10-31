@@ -39,6 +39,14 @@
 *.out
 *.app
 
+# Python bytecode caches, written automatically when a script imports a module
+__pycache__/
+*.py[cod]
+
+# Python tool caches (Jupyter, pytest)
+.ipynb_checkpoints/
+.pytest_cache/
+
 # Build directories
 build/
 Build/
@@ -73,3 +81,9 @@ Testing/
 *.dat
 simulation/output/
 
+# unfinished x-ray patch
+simulation/src/G4EmCaptureCascade.cc
+simulation/include/G4EmCaptureCascade.hh
+
+# wired stuff
+.vscode/

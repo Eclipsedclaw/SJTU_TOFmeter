@@ -2,6 +2,8 @@
 
 How to connect a digitizer card to the dbar server over fiber, give the link an address, ping the card, and make the setting permanent. Do one card at a time; each takes about ten minutes.
 
+To check the data the cards record, see [Check the recorded data](#check-the-recorded-data) at the end.
+
 ## Setup at a glance
 
 | Item | Value |
@@ -11,7 +13,7 @@ How to connect a digitizer card to the dbar server over fiber, give the link an 
 | Lab network | `eno4`, 192.168.35.100. Never change it. |
 | Card settings | One file per card in `/etc/network/interfaces.d/` |
 | Address rule | Tag `69.19` means the card is `192.168.69.19`; the server port gets `192.168.69.1/24` |
-| Already done | Card 1: `192.168.69.19` on `ens3f3`, server side `192.168.69.1/24` |
+| Already done | Cards 1–3; see the [record](#record) |
 
 ## Before you start
 
@@ -152,23 +154,43 @@ Add the card's row to the [record](#record) below, with the light level from ste
 
 ## Record
 
-| Card | Card IP | Server port | Server IP | MAC | Light (dBm) | Ping | Settings file | Checked by, date |
-|---|---|---|---|---|---|---|---|---|
-| 1 | 192.168.69.19 | ens3f3 | 192.168.69.1/24 | 02:00:c0:a8:45:13 | −5.31 | 0% loss, 0.10 ms | | |
-| 2 | | | | | | | | |
-| 3 | | | | | | | | |
-| 4 | | | | | | | | |
-| 5 | | | | | | | | |
-| 6 | | | | | | | | |
-| 7 | | | | | | | | |
-| 8 | | | | | | | | |
+| Card | Card IP | Server port | Server IP | MAC | Light (dBm) | fiber port | Checked by, date |
+|---|---|---|---|---|---|---|---|
+| 1 | 192.168.63.19 | ens1f0 | 192.168.63.1/24 | 02:00:c0:a8:3f:13 | -6.86 | 1-a | 2026.10.22|
+| 2 | 192.168.59.19 | ens1f1 | 192.168.59.1/24 | 02:00:c0:a8:3b:13 | -7.12 | 1-b | 2026.10.22 |
+| 3 | 192.168.110.19  | ens1f2 | 192.168.110.1/24 | 02:00:c0:a8:6e:13 | -7.57 | 1-c | 2026.10.22 |
+| 4 | 192.168.109.19 | ens1f3 | 192.168.109.1/24 | 02:00:c0:a8:6d:13 | -7.12 | 1-d | 2026.10.28 |
+| 5 | 192.168.60.19 | ens3f0 | 192.168.60.1/24 | 02:00:c0:a8:3c:13 | -6.43 | 3-a | 2026.10.28 |
+| 6 | 192.168.92.19 | ens3f1 | 192.168.92.1/24 | 02:00:c0:a8:5c:13 | -6.75 | 3-b | 2026.10.28 |
+| 7 | 192.168.65.19 | ens3f2 | 192.168.65.1/24 | 02:00:c0:a8:41:13 | -9.69 | 3-c | 2026.10.28 |
+| 8 | 192.168.107.19 | ens3f3 | 192.168.107.1/24 | 02:00:c0:a8:6b:13 | -6.48 | 3-d | 2026.10.28 |
+<img width="374" height="261" alt="fiber_IO" src="https://github.com/user-attachments/assets/ea9696b1-be5b-4dd4-863c-a669c7b880aa" />
+
+## Show the record from the server
+
+Prints one row of the record table for every card that has a settings file, ready to paste above. It only reads what is already on dbar and sends nothing to the cards: the MAC comes from the server's ARP table and the light from the SFP module. A MAC shows `?` if the server hasn't talked to that card recently. The fiber port label is only on the physical label, so fill it in by hand.
+
+```bash
+sudo -v
+for f in /etc/network/interfaces.d/daq-card*; do
+  card=${f##*daq-card}
+  port=$(awk '/^auto/{print $2}' "$f")
+  srv=$(awk '/address/{print $2}' "$f")
+  ip=$(sed -n 's/^# DAQ card .*(\(.*\)) on.*/\1/p' "$f")
+  mac=$(ip neigh show "$ip" dev "$port" | awk '{for(i=1;i<NF;i++) if($i=="lladdr") print $(i+1)}')
+  light=$(sudo ethtool -m "$port" 2>/dev/null | grep -iE 'receiver signal|rcvr signal|rx power' | grep -oE -- '-?[0-9.]+ dBm' | head -1)
+  echo "| $card | $ip | $port | $srv | ${mac:-?} | ${light% dBm} | | |"
+done | sort -t'|' -k2 -n
+```
+
 
 ## Check all cards at once
 
-Run this after a reboot or before a data run. Put every finished card's IP in `CARDS`, separated by spaces. It prints OK or FAIL for each card, then lists the address on every fiber port.
+Run this after a reboot or before a data run. It finds every card from its settings file, so a new card is included as soon as step 5 is done. It prints OK or FAIL for each card, then lists the address on every fiber port.
 
 ```bash
-CARDS="192.168.69.19"
+CARDS=$(sed -n 's/^# DAQ card .*(\(.*\)) on.*/\1/p' /etc/network/interfaces.d/daq-card*)
+echo "cards:" $CARDS
 for ip in $CARDS; do
   if ping -c 2 -W 1 $ip > /dev/null; then echo "$ip  OK"; else echo "$ip  FAIL"; fi
 done
@@ -211,3 +233,137 @@ If `ifdown` says the interface isn't configured, that's fine; the last line stil
 ## If you get stuck
 
 Stop after a step fails twice. Don't try other commands or edit other files. Copy the full terminal output of the failing step, including the command you typed, and send it to your supervisor with the card number and port.
+
+## Check the recorded data
+
+The [`scripts/`](scripts/) folder has two Python scripts that check what the cards record. They read the ROOT file that `raw2root_new` (ad9694daqtrigchain repo) makes from a run's `.dat` file: one tree per channel, named `ch<id>` with id = 10000 + 10 × board + channel, so board 1 channel 0 is `ch10010`.
+
+| Script | Use it to |
+|---|---|
+| [`analyze_baseline.py`](scripts/analyze_baseline.py) | Check every channel of a pedestal run (no signal, software trigger): pedestal level and noise, stability between triggers, noise spectrum, correlated noise, missing and short waveforms |
+| [`plot_waveforms.py`](scripts/plot_waveforms.py) | Look at the raw waveforms of one channel, for example to see where short waveforms stop |
+| [`daqyy_common.py`](scripts/daqyy_common.py) | Code shared by the two scripts. Not run on its own; keep it in the same folder |
+
+Values stay in ADC counts and samples. Both scripts number the triggers of each board from 0, so trigger 2 means the same trigger in both.
+
+### Before you start
+
+The scripts run on dbar. Check that Python finds ROOT and the plotting packages:
+
+```bash
+python3 -c "import ROOT, numpy, scipy, matplotlib; print('OK')"
+```
+
+**Passes if** it prints `OK`. If it says `No module named 'ROOT'`, set up ROOT in this terminal and try again:
+
+```bash
+source /opt/root/root_install/bin/thisroot.sh
+```
+
+If a run has only its `.dat` file, convert it first, in the `build` folder of ad9694daqtrigchain (this also writes an `info.txt` there):
+
+```bash
+./raw2root_new /path/to/run.dat /path/to/run.root
+```
+
+### Check a pedestal run
+
+Run the script without arguments. It asks for the ROOT file and the output folder:
+
+```bash
+cd SJTU_TOFmeter/DAQ_YY/scripts     # where you cloned the repo
+python3 analyze_baseline.py
+```
+
+```text
+DAQ_YY baseline analysis. Enter keeps the value in [brackets]; Tab completes paths.
+ROOT file: /data/data/jiancheng/DAQ_yy_data/raw/run00001_file0000_20261028_172125.root
+Output folder [/data/data/jiancheng/DAQ_yy_data/raw/run00001_file0000_20261028_172125_baseline]:
+```
+
+Tab completes paths. Press Enter to keep the folder in brackets, a new folder named after the run next to the ROOT file, or type another path, for example to keep results out of the raw-data folder. A wrong answer, such as a file that doesn't exist, is explained and asked again. Ctrl-C stops the script.
+
+Progress bars show each step and the time left. A run with 64 channels and 5 triggers takes about 15 seconds, most of it drawing the plots. The script uses one CPU core.
+
+**Passes if** the last line reads `Saved tables and plots to <folder>`.
+
+To skip the questions, give the file and the folder on the command line:
+
+```bash
+python3 analyze_baseline.py /path/to/run.root --out /path/to/output
+```
+
+`python3 analyze_baseline.py --help` lists the other options, for example `--max-triggers 100` to analyze only the first 100 triggers of each board in a long run.
+
+### Read the results
+
+Open `baseline_summary.txt` first. It has one line per channel with its flags, one line per board, and at the end an explanation of every flag that appeared. The terminal shows the same tables.
+
+| File | What it shows |
+|---|---|
+| `summary.png` | Pedestal, noise, and the number of full, short and missing waveforms of every channel |
+| `pedestal_map.png` | Board × channel grid: pedestal level and σ in every cell, colored by σ |
+| `pedestal_hist_board<B>.png` | ADC histogram of every channel of board B with its Gaussian fit, on a log scale |
+| `pedestal_stability.png` | Pedestal shift and noise of every waveform, trigger by trigger |
+| `noise_spectra.png` | Noise power spectrum: the median of all channels, and every channel as a heatmap |
+| `noise_correlation.png` | Noise correlation between the channels of each board |
+| `baseline_channels.csv`, `baseline_events.csv`, `baseline_boards.csv`, `noise_correlation.csv`, `noise_psd.csv` | The numbers behind the plots, for your own analysis |
+
+| Flag | Meaning | What to do |
+|---|---|---|
+| `SHORT_WF` | A waveform is shorter than the full window | Plot the channel with `plot_waveforms.py` (below). If `tbusy` rises at the next waveform, the channel's readout was busy |
+| `MISSING` | No waveform for a trigger that the board's other channels recorded | As for `SHORT_WF`; it usually comes right after a short waveform |
+| `NOISY`, `QUIET` | σ more than 1.5 times above (NOISY) or below (QUIET) the median of all channels | Check the cable and connector and repeat the run. If it stays, report the card and channel |
+| `SPIKES` | More samples beyond 5σ than noise alone gives | Look at the channel's histogram and raw waveforms |
+| `SATURATED` | Samples at ADC code 0 or 16383 | The input is outside the ADC range |
+| `DEAD`, `LSB` | Every sample has the same code, or the lowest bit seems stuck | Report the card and channel |
+| `PSD_LINE` | A narrow line in the noise spectrum | Look at `noise_spectra.png`; the line's height over the noise is `psd_line_ratio` in `baseline_channels.csv` |
+| `FEWER_TRIGGERS` | A board recorded fewer triggers than the others | Check that board's link with steps 1–4 above |
+| `NO_DATA`, `FIT_FAILED`, `LONG_WF` | Rare; explained at the end of `baseline_summary.txt` when they appear | |
+
+### Reference: run00001 (2026-10-28, 8 boards)
+
+How a pedestal run looked when the system was set up, to compare new runs with:
+
+- Pedestal level 8490–8664 ADC. Each channel keeps its own level, which moved by about 1 ADC over the 6 days since run00000.
+- σ 2.14–2.29 ADC on every channel, with Gaussian histograms over 5 decades.
+- Correlated noise about 0.12 ADC per board.
+- `PSD_LINE` at 0.25 cycles/sample on channel 0 of every board and channel 4 of most. The line is about 0.15 ADC high, too small to matter.
+- `SHORT_WF` on every channel: 70 of 315 waveforms were cut and 5 were missing, all at triggers 1–2, each followed by a rise of `tbusy`. The recorded samples are normal up to the cut.
+
+### Look at raw waveforms
+
+```bash
+python3 plot_waveforms.py
+```
+
+It asks for the ROOT file, the output folder, a board, a channel, and which triggers to plot. Before plotting, it prints a table of that channel's triggers:
+
+```text
+ch10052 (board 5, channel 2): 5 triggers on the board, 2 without a full-length (32042-sample) waveform
+trigger entry           ttt nsamps  status        tbusy  tbusy rise
+      0     0      20065574  32042  ok                0           0
+      1     1     524952866    542  SHORT             0           0
+      2     -    1027315364      -  MISSING
+      3     2    1537489156  32042  ok        251181706   251181706
+      4     3    2043293300  32042  ok        251181706           0
+```
+
+For the triggers, answer `short` (the default: every short or missing waveform, plus one full-length one to compare with), `all`, or numbers such as `0,2,5-7`. After the plot, it asks for the next board; press Enter to quit.
+
+Each row of the plot is one trigger:
+
+- **Left:** the first 100 samples. The shaded samples 0–19 are the ones the DAQ uses for its `baseline` and `rms`.
+- **Middle:** the whole waveform. A gray area is the part that was not recorded.
+- **Right:** the last 100 samples before the waveform stops.
+
+The plots go to a folder named `<run name>_waveforms` next to the ROOT file, unless you type another one. To skip the questions:
+
+```bash
+python3 plot_waveforms.py /path/to/run.root --board 5 --channel 2 --triggers all --out /path/to/output
+```
+
+### Good to know
+
+- The scripts suit runs where every trigger records the same window (software or external trigger), not self-trigger runs.
+- Running a script creates `scripts/__pycache__/`, Python's compiled copy of `daqyy_common.py`. Git ignores it, and it is safe to delete.

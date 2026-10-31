@@ -130,6 +130,7 @@ DetectorConstruction::DetectorConstruction()
       fBuildAbsorber(true),
       fBuildLeadWalls(true),
       fLeadThickness(10.0 * cm),
+      fSetupBottomZ(0.),
       fWorldMaterialName("G4_AIR"),
       fWorldSize(4.0 * m, 4.0 * m, 3.0 * m),
       fBuildCamera(false),
@@ -137,14 +138,20 @@ DetectorConstruction::DetectorConstruction()
       fCameraRotationX(0.),
       fCameraSpacing21(25.0 * mm),
       fCameraSpacing10(35.0 * mm),
-      fBuildTarget(false),
-      fTargetMaterialName("G4_Fe"),
-      fTargetSize(10.0 * cm, 10.0 * cm, 2.0 * cm),
-      fTargetPosition(0., 0., 0.),
+      fBuildTarget(true),   // the muonic X-ray target is part of the default setup
+      fTargetMaterialName("G4_Al"),
+      fTargetSize(20.0 * cm, 20.0 * cm, 1.0 * cm),
+      fTargetPosition(0., 0., 36.0 * cm),   // z = 35.5 to 36.5 cm: 3.9 cm above the stack, 1 cm below Al2
       fBuildDegrader(false),
       fDegraderMaterialName("G4_Pb"),
       fDegraderSize(40.0 * cm, 40.0 * cm, 5.0 * cm),
-      fDegraderPosition(0., 0., 0.)
+      fDegraderPosition(0., 0., 0.),
+      fBuildCZT(false),
+      fCZTPosition(0., 0., 32.0 * cm),   // 31.5-32.5 cm: right under a 4 cm target at 32.5-36.5 cm (with no stack)
+      fCZTPixels(4),
+      fCZTPixelSize(25.0 * mm),
+      fCZTThickness(10.0 * mm),
+      fCZTMaterial(nullptr)
 {
     // 在构造函数中调用DefineMaterials确保材料被创建
     DefineMaterials();
@@ -209,6 +216,14 @@ void DetectorConstruction::DefineMaterials()
 
     G4cout << "  CdZnTe material created: density = "
            << fdetector_mat->GetDensity()/(g/cm3) << " g/cm3" << G4endl;
+
+    // CZT of the CZT plane (/tof/czt/...), as compton_satellite_sim/compton_camera_DSSD defines it: Cd0.9Zn0.1Te by
+    // atoms (Cd 9, Zn 1, Te 10), 5.78 g/cm3
+    fCZTMaterial = new G4Material("CZT", 5.78 * g/cm3, 3);
+    fCZTMaterial->AddElement(Cd, 9);
+    fCZTMaterial->AddElement(Zn, 1);
+    fCZTMaterial->AddElement(Te, 10);
+    G4cout << "  CZT material created: density = " << fCZTMaterial->GetDensity()/(g/cm3) << " g/cm3" << G4endl;
 
 
     // Create YSO (Y2SiO5) scintillator material
@@ -344,11 +359,12 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
     // z points up: muons come from +z. From the top: lead layer, steel plate,
     // top TOF on Al1, middle TOF on Al2, Si/YSO stack (Compton detector) on Al3,
-    // bottom TOF on Al4; four lead walls around everything.
+    // bottom TOF on Al4; four lead walls around everything. The setup stands on the
+    // ground at z = 0: the bottom of Al4, of the corner beams and of the lead walls.
 
     // Framework Fe: stainless-steel plate holding the lead layer
     G4double framework_Fe_sizeXY = 80 * cm, framework_Fe_sizeZ = 1 * cm;
-    G4double framework_Fe_z = 20.5 * cm;
+    G4double framework_Fe_z = 90.5 * cm;
     const G4double frameTopZ = framework_Fe_z + 0.5 * framework_Fe_sizeZ;     // top of the steel plate
 
     // Stainless-steel L beams on the four corners of the steel plate: 10 cm legs, 1 cm thick
@@ -407,11 +423,12 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     G4double framework_Al_sizeShort = framework_Fe_sizeXY + 2 * beamThick - 2 * beamLeg;
     G4double framework_Al_sizeZ     = 3.0 * mm;
 
+// plate centres; Al4 lies on the ground (z = 0 to 0.3 cm)
 std::vector<G4double> alPositions = {
-    -2.35 * cm,   // Al1: under the top TOF
-    -32.35 * cm,  // Al2: under the middle TOF
-    -52.35 * cm,  // Al3: under the Si/YSO stack
-    -69.85 * cm   // Al4: under the bottom TOF
+    67.65 * cm,   // Al1: under the top TOF
+    37.65 * cm,   // Al2: under the middle TOF
+    17.65 * cm,   // Al3: under the Si/YSO stack
+    0.15 * cm     // Al4: under the bottom TOF
 };
 
 // true:  long side along world X
@@ -425,6 +442,7 @@ std::vector<G4bool> alLongAlongX = {
 
 // Vertical extent of the frame and of the whole setup
 const G4double setupBottomZ = alPositions[3] - 0.5 * framework_Al_sizeZ;   // bottom of Al4
+fSetupBottomZ = setupBottomZ;
 const G4double leadTopZ = frameTopZ + leadLayerThick;                       // top of the lead layer
 
     if (fBuildFrame) {
@@ -684,7 +702,7 @@ for (const auto& station : scintStations) {
     fKinds[logic_YSO] = DetectorKind::StackYSO;
     fKinds[logic_Silicon] = DetectorKind::StackSi;
 
-    // 底部 Si 贴合在 Al3 铝框架 (z = -52.35 cm) 的上表面, 其余各层向上排列
+    // 底部 Si 贴合在 Al3 铝框架 (z = 17.65 cm) 的上表面, 其余各层向上排列
     G4double firstSiliconCenterZ = stackAlFrameZ + stackAlFrameHalfZ + siliconLayerHalfZ;
     std::vector<G4double> siliconLayerPositions = {
         firstSiliconCenterZ,
@@ -743,6 +761,7 @@ for (const auto& station : scintStations) {
 
     if (fBuildCamera) ConstructComptonCamera();
     ConstructTargetAndDegrader();
+    if (fBuildCZT) ConstructCZT();
     ConstructBlocks();
 
     // 设置可视化属性
@@ -880,7 +899,8 @@ void DetectorConstruction::ConstructComptonCamera()
 
 void DetectorConstruction::ConstructTargetAndDegrader()
 {
-    // 未知材料 (target) and 降速铅砖 (degrader); passive, off by default
+    // 未知材料 (target), on by default: 20 x 20 x 1 cm Al at z = 35.5 to 36.5 cm, above the Compton
+    // detector (/tof/target/...); 降速铅砖 (degrader), off by default. Both passive.
     if (fBuildTarget) {
         auto solid_Target = new G4Box("TargetSolid", 0.5 * fTargetSize.x(), 0.5 * fTargetSize.y(), 0.5 * fTargetSize.z());
         auto logic_Target = new G4LogicalVolume(solid_Target, FindMaterial(fTargetMaterialName), "TargetLogic");
@@ -897,6 +917,26 @@ void DetectorConstruction::ConstructTargetAndDegrader()
         G4cout << "\nDegrader: " << fDegraderMaterialName << ", size " << fDegraderSize/cm
                << " cm at " << fDegraderPosition/cm << " cm" << G4endl;
     }
+}
+
+void DetectorConstruction::ConstructCZT()
+{
+    // CZT plane (/tof/czt/...): fCZTPixels x fCZTPixels CZT pixels side by side, each its own volume "CZTPixel" with
+    // copy number ix * fCZTPixels + iy, scored as DetectorKind::CZT (czt_* columns of the events ntuple)
+    auto solid_Pixel = new G4Box("CZTPixelSolid", 0.5 * fCZTPixelSize, 0.5 * fCZTPixelSize, 0.5 * fCZTThickness);
+    auto logic_Pixel = new G4LogicalVolume(solid_Pixel, fCZTMaterial, "CZTPixelLogic");
+    logic_Pixel->SetVisAttributes(G4VisAttributes(G4Colour(1.0, 0.8, 0.1)));
+    fKinds[logic_Pixel] = DetectorKind::CZT;
+    for (G4int ix = 0; ix < fCZTPixels; ++ix)
+        for (G4int iy = 0; iy < fCZTPixels; ++iy) {
+            const G4ThreeVector offset((ix - 0.5 * (fCZTPixels - 1)) * fCZTPixelSize, (iy - 0.5 * (fCZTPixels - 1)) * fCZTPixelSize, 0.);
+            new G4PVPlacement(nullptr, fCZTPosition + offset, logic_Pixel, "CZTPixel", logic_world, false,
+                              ix * fCZTPixels + iy, fCheckOverlaps);
+        }
+    G4cout << "\nCZT plane: " << fCZTPixels << " x " << fCZTPixels << " pixels of " << fCZTPixelSize/mm << " x "
+           << fCZTPixelSize/mm << " x " << fCZTThickness/mm << " mm, centre " << fCZTPosition/cm << " cm (z "
+           << (fCZTPosition.z() - 0.5 * fCZTThickness)/cm << " to " << (fCZTPosition.z() + 0.5 * fCZTThickness)/cm
+           << " cm)" << G4endl;
 }
 
 void DetectorConstruction::ConstructBlocks()
@@ -1033,6 +1073,7 @@ void DetectorConstruction::ConstructSDandField()
         if (lv && (lv == logic_Absorber ||
                    lv->GetName().find("Scintillator") != std::string::npos ||
                    lv == logic_YSO ||   // <--- 添加这一条件
+                   lv == logic_Silicon ||   // the Si layers of the stack measure energy too
                    lv == logic_CameraYSO || lv == logic_CameraLYSO)) {
             lv->SetSensitiveDetector(chamberSD);
         }
@@ -1048,7 +1089,8 @@ DetectorKind DetectorConstruction::GetKind(const G4LogicalVolume* lv) const
 G4bool DetectorConstruction::IsComptonDetector(const G4LogicalVolume* lv) const
 {
     const DetectorKind kind = GetKind(lv);
-    return kind == DetectorKind::StackYSO || kind == DetectorKind::StackSi || kind == DetectorKind::CameraLayer;
+    return kind == DetectorKind::StackYSO || kind == DetectorKind::StackSi || kind == DetectorKind::CameraLayer ||
+           kind == DetectorKind::CZT;
 }
 
 void DetectorConstruction::UpdateGeometry()
@@ -1090,7 +1132,8 @@ void DetectorConstruction::DefineCommands()
 
     auto target = std::make_unique<G4GenericMessenger>(this, "/tof/target/",
         "Target (unknown material); changes take effect with /update");
-    target->DeclareProperty("enable", fBuildTarget, "Build the target box");
+    target->DeclareProperty("enable", fBuildTarget,
+        "Build the target box (default true: 20 x 20 x 1 cm G4_Al centred at z = 36 cm)");
     target->DeclareProperty("material", fTargetMaterialName, "Target material (NIST or YSO/LYSO/CdZnTe)");
     target->DeclarePropertyWithUnit("size", "cm", fTargetSize, "Full target size x y z");
     target->DeclarePropertyWithUnit("position", "cm", fTargetPosition, "Target centre");
@@ -1103,6 +1146,17 @@ void DetectorConstruction::DefineCommands()
     degrader->DeclarePropertyWithUnit("size", "cm", fDegraderSize, "Full degrader size x y z");
     degrader->DeclarePropertyWithUnit("position", "cm", fDegraderPosition, "Degrader centre");
     fMessengers.push_back(std::move(degrader));
+
+    auto czt = std::make_unique<G4GenericMessenger>(this, "/tof/czt/",
+        "CZT plane (pixels of Cd0.9Zn0.1Te, scored per pixel: czt_* columns); changes take effect with /update");
+    czt->DeclareProperty("enable", fBuildCZT, "Build the CZT plane (default false)");
+    czt->DeclarePropertyWithUnit("position", "cm", fCZTPosition,
+        "Centre of the plane (default 0 0 32 cm: z 31.5-32.5 cm, right under a 4 cm target at 32.5-36.5 cm; "
+        "it overlaps the Si/YSO stack, /tof/det/stack false)");
+    czt->DeclareProperty("pixels", fCZTPixels, "Pixels per side (default 4)");
+    czt->DeclarePropertyWithUnit("pixelSize", "mm", fCZTPixelSize, "Pixel side (default 25 mm)");
+    czt->DeclarePropertyWithUnit("thickness", "mm", fCZTThickness, "Thickness (default 10 mm)");
+    fMessengers.push_back(std::move(czt));
 
     fBlockMessenger = std::make_unique<BlockMessenger>(this);
 }

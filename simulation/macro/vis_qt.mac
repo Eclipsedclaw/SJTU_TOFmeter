@@ -4,7 +4,8 @@
 ### For another setup run its geometry macro first, e.g.
 ###   /control/execute macro/geom_tofmeter_example.mac
 ### More events: /run/beamOn 20 (tracks accumulate; /vis/viewer/rebuild clears them).
-### Trajectories: red negative, blue positive, green neutral.
+### Trajectories: red negative, blue positive, green neutral. The Al plates are outlines, so that
+### the target (orange, 1 cm under the Al2 plate) and the Si/YSO stack below it can be seen.
 ### The view turns slowly until the first click, scroll or key press in the viewer.
 ### Live control from the Qt command line:
 ###   /tof/vis/spin 20                              turn again, at 20 deg/s
@@ -30,6 +31,9 @@
 /vis/geometry/set/visibility WorldLogic 0 false
 /vis/geometry/set/forceWireframe LeadWallXLogic 0 true
 /vis/geometry/set/forceWireframe LeadWallYLogic 0 true
+# Al plates as outlines, so that the target (orange) and the Compton detector under them show
+/vis/geometry/set/forceWireframe FrameworkAlLogic 0 true
+/vis/geometry/set/colour TargetLogic 0 1 0.55 0 1
 /vis/viewer/set/style surface
 /vis/viewer/set/background white
 /vis/viewer/set/upVector 0 0 1
@@ -50,7 +54,7 @@
 /OutputDirectory output
 /OutputFile vis_qt
 /GeneralParticleSource 2
-/tof/cosmic/planeCenter 0 0 35 cm
+/tof/cosmic/planeCenter 0 0 105 cm
 /tof/cosmic/halfX 40 cm
 /tof/cosmic/halfY 40 cm
 /run/beamOn 10

@@ -3,7 +3,7 @@
 ### layer, cm), tridentBias (F) and tridentPlaneZ (cm), and TOFmeter started with
 ### --preinit macro/physics_tridents.mac.
 ### Cosmic muons above 0.85 GeV (no trident below) from a 2 x 2 m plane at z = tridentPlaneZ (above the
-### lead top, 21 cm + lead), zenith < 75 deg; tridents made F times more often (weight 1/F); only events
+### lead top, 91 cm + lead), zenith < 75 deg; tridents made F times more often (weight 1/F); only events
 ### with a trident are written.
 
 /tof/det/leadThickness {tridentLead} cm

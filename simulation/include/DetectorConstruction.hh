@@ -52,8 +52,9 @@ class G4UImessenger;
 namespace Pb
 {
 
-// Role of a volume, used for event-level scoring (TOFmeterSteppingAction); StackSi is passive
-enum class DetectorKind { None, Bar, CameraLayer, StackYSO, StackSi, Absorber };
+// Role of a volume, used for event-level scoring (TOFmeterSteppingAction); StackSi is passive; CZT: a pixel of the
+// CZT plane (/tof/czt/...)
+enum class DetectorKind { None, Bar, CameraLayer, StackYSO, StackSi, Absorber, CZT };
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
@@ -77,6 +78,8 @@ public:
 
     // Thickness of the lead layer on top, 0 when it is not built
     G4double GetLeadThickness() const { return fBuildAbsorber ? fLeadThickness : 0.; }
+    // z of the bottom of the setup (Al4, corner beams, lead walls), the ground: 0
+    G4double GetSetupBottomZ() const { return fSetupBottomZ; }
 
     // Passive boxes (/tof/blocks/add, /tof/blocks/clear); spec is
     // "name material x y z dx dy dz unit" with centre and full sizes
@@ -93,6 +96,7 @@ private:
     void SetVisualAttributes();  // 声明可视化属性设置方法
     void ConstructComptonCamera();
     void ConstructTargetAndDegrader();
+    void ConstructCZT();
     void ConstructBlocks();
     G4Material* FindMaterial(const G4String& name) const;
 
@@ -133,6 +137,7 @@ private:
     G4bool fBuildAbsorber;
     G4bool fBuildLeadWalls;
     G4double fLeadThickness;        // lead layer on the steel plate (/tof/det/leadThickness)
+    G4double fSetupBottomZ;         // bottom of Al4 (the ground), set by Construct()
     G4String fWorldMaterialName;
     G4ThreeVector fWorldSize;
 
@@ -152,6 +157,15 @@ private:
     G4String fDegraderMaterialName;
     G4ThreeVector fDegraderSize;
     G4ThreeVector fDegraderPosition;
+
+    // CZT plane (/tof/czt/...): pixels x pixels CdZnTe pixels of pixelSize x pixelSize x thickness, as the CZT layer of
+    // compton_satellite_sim/compton_camera_DSSD (4 x 4 of 25 x 25 x 10 mm, Cd9 Zn1 Te10 at 5.78 g/cm3); off by default
+    G4bool fBuildCZT;
+    G4ThreeVector fCZTPosition;     // centre of the plane
+    G4int fCZTPixels;               // per side
+    G4double fCZTPixelSize;
+    G4double fCZTThickness;
+    G4Material* fCZTMaterial;
 
     // Free-form boxes, e.g. lead shielding bricks (/tof/blocks/...)
     struct Block {

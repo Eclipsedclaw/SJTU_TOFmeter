@@ -17,13 +17,19 @@ CMake copies this folder into the build directory (`<build>/condor/`); run `cmak
 
 - Build TOFmeter on the cluster's shared filesystem. The jobs start in the build directory, read `./TOFmeter`,
   `macro/` and `data/` there, and write their output into it. Nothing is transferred (`should_transfer_files = NO`).
-- Set up Geant4 in the shell you submit from. The jobs take that shell's environment (`getenv = True`).
+- The jobs take the environment of the shell you submit from (`getenv = True`), so set up Geant4 there.
+- `condor_submit` may not start in a shell set up for Geant4, e.g. with `error while loading shared libraries:
+  libcrypto.so.3`: the setup hides libraries HTCondor needs, such as those of another system. Then submit from a
+  shell without that setup (a new login) and add `--setup <file>`. Each job runs under bash and sources that file
+  (the lines that set up Geant4) before TOFmeter starts. The script checks that `condor_submit` starts before it
+  writes anything.
 
 ## Test
 
 ```sh
 cd <build>
 sh condor/muonic_xray_czt_submit.sh --test      # 2 jobs: slow and fast process 1, 2 x 10^5 muons each
+                                                # (add --setup <file> as above if needed)
 condor_q                                        # batch tof_muonic_xray_czt_condor_test
 cat output/muonic_xray_czt_condor_test/*/log/job1.out
 ```
@@ -59,6 +65,7 @@ so the same command can be run again later.
 | `--dir path` | `output/muonic_xray_czt` | the run's folder, laid out as on the shared server |
 | `--muons n` | 5 x 10^6 | muons per process: ~35 min slow, ~50 min fast on the shared server |
 | `--max n` | 60 (the most) | jobs at a time (`max_materialize`; one core each) |
+| `--setup file` | | a file each job sources before TOFmeter starts (your Geant4 setup), on top of the submitting shell's environment |
 | `--no-submit` | | write the macros and the submit file only |
 
 Bands: `slow` is 0-1 GeV, seed 9500000 + k; `fast` is 1-1000 GeV, seed 9600000 + k.

@@ -4,10 +4,12 @@
 # (9500000 + k slow, 9600000 + k fast), outputs and .done markers of the shared server's run, so that processes run in
 # either place fit together process by process. At most 60 jobs at a time (max_materialize; 60 cores may be used), and
 # no submission while jobs of the same folder are still in the queue (the limit is per submission, and no process may
-# run twice). The jobs run muonic_xray_czt_job.sh, the one beside this script, in this build directory, with the
-# environment of this shell (getenv: set up Geant4 first), and write into it. In the build directory:
-#   sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
-#   sh condor/muonic_xray_czt_submit.sh --test [--no-submit]
+# run twice). The jobs run muonic_xray_czt_job.sh, the one beside this script, in this build directory, and write into
+# it. Their environment is that of this shell (getenv: set up Geant4 first); with --setup <file> each job also sources
+# that file before TOFmeter starts, for when condor_submit does not start in a shell set up for Geant4 (submit from one
+# without it). In the build directory:
+#   sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
+#   sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--no-submit]
 # <band> is slow (0-1 GeV) or fast (1-1000 GeV); of its processes first-last, those without <dir>/<band>/log/job<k>.done
 # are submitted, e.g. slow 79 88 fast 47 168 (what the shared server's run had not finished on 2026-10-31). Defaults:
 # output/muonic_xray_czt, 5 x 10^6 muons per process (~35 min slow, ~50 min fast on the shared server; a job must end
@@ -22,6 +24,7 @@
 dir=output/muonic_xray_czt
 muons=5000000
 max=60
+setup=
 submit=yes
 test=no
 while [ $# -gt 0 ]; do
@@ -29,6 +32,7 @@ while [ $# -gt 0 ]; do
     --dir) dir=$2; shift 2 ;;
     --muons) muons=$2; shift 2 ;;
     --max) max=$2; shift 2 ;;
+    --setup) setup=$2; shift 2 ;;
     --no-submit) submit=no; shift ;;
     --test) test=yes; shift ;;
     *) break ;;
@@ -40,8 +44,8 @@ if [ "$test" = yes ]; then
   set -- slow 1 1 fast 1 1
 fi
 if [ $# -eq 0 ] || [ $(($# % 3)) -ne 0 ]; then
-  echo "usage: sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--no-submit] <band> <first> <last> ..." >&2
-  echo "       sh condor/muonic_xray_czt_submit.sh --test [--no-submit]" >&2
+  echo "usage: sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--no-submit] <band> <first> <last> ..." >&2
+  echo "       sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--no-submit]" >&2
   exit 1
 fi
 for v in "$muons" "$max"; do
@@ -57,9 +61,16 @@ if [ "$max" -lt 1 ] || [ "$max" -gt 60 ]; then
   echo "--max: 1-60 jobs at a time (one core each, 60 cores at most)" >&2
   exit 1
 fi
-case "$dir" in
-  *[[:space:]]*) echo "--dir: a path without spaces" >&2; exit 1 ;;
+case "$dir$setup" in
+  *[[:space:]]*) echo "--dir and --setup: paths without spaces" >&2; exit 1 ;;
 esac
+if [ -n "$setup" ]; then
+  if [ ! -f "$setup" ] || [ ! -r "$setup" ]; then
+    echo "--setup: cannot read $setup" >&2
+    exit 1
+  fi
+  setup=$(cd "$(dirname "$setup")" && pwd -P)/$(basename "$setup")
+fi
 job=$(cd "$(dirname "$0")" && pwd -P)/muonic_xray_czt_job.sh
 for f in ./TOFmeter macro/muonic_xray_czt.mac data/expacs_spectrum.txt "$job"; do
   if [ ! -e "$f" ]; then
@@ -73,6 +84,17 @@ if [ "$submit" = yes ]; then
     echo "no condor_submit here: run this on the cluster's login node (or with --no-submit)" >&2
     exit 1
   fi
+  # HTCondor's programs must start in this shell; a shell set up for Geant4 (another system's libraries) can keep them
+  # from it
+  out=$(condor_submit -version 2>&1)
+  case "$out" in
+    *"error while loading shared libraries"*|*"not found (required by"*)
+      printf '%s\n' "$out" >&2
+      echo "condor_submit cannot start in this shell's environment; nothing was written or submitted. Run this in a shell" >&2
+      echo "where it starts (e.g. a new login, before setting up Geant4) with --setup <file>: each job sources the file" >&2
+      echo "(your Geant4 setup) before TOFmeter starts" >&2
+      exit 1 ;;
+  esac
   if condor_q -af JobBatchName 2> /dev/null | grep -qx "$name"; then
     echo "jobs of $dir (batch $name) are still in the queue (condor_q): submit when they are over, or condor_rm them" >&2
     exit 1
@@ -136,17 +158,19 @@ if [ "$n" -eq 0 ]; then
   exit 0
 fi
 
-# the submit file: the jobs start in this directory (initialdir) and see it, nothing is transferred
+# the submit file: the jobs start in this directory (initialdir) and see it, nothing is transferred; bash, as setup
+# files are mostly written for it
 mkdir -p "$dir/condor"
 here=$(pwd -P)
 stamp=$(date +%Y%m%d_%H%M%S)
 file="$dir/condor/submit_$stamp.sub"
 {
   echo "# HTCondor jobs of the CZT run (macro/muonic_xray_czt.mac), by condor/muonic_xray_czt_submit.sh on $(date '+%F %T')"
-  echo "# in $here: $ranges, $n processes of $muons muons ($finished done before), at most $max at a time"
+  echo "# in $here: $ranges, $n processes of $muons muons ($finished done before), at most $max at a time;"
+  echo "# environment: the submitting shell's${setup:+, then $setup sourced by each job}"
   echo "universe              = vanilla"
-  echo "executable            = /bin/sh"
-  echo "arguments             = \"$job $dir \$(band) \$(k)\""
+  echo "executable            = /bin/bash"
+  echo "arguments             = \"$job $dir \$(band) \$(k)${setup:+ $setup}\""
   echo "transfer_executable   = False"
   echo "should_transfer_files = NO"
   echo "initialdir            = $here"
@@ -172,8 +196,14 @@ if [ "$submit" = no ]; then
   echo "not submitted (--no-submit); to submit: condor_submit $file"
   exit 0
 fi
-if ! condor_submit "$file"; then
-  echo "condor_submit FAILED; if it does not take max_materialize, delete that line of $file and submit at most 60 processes at once" >&2
+out=$(condor_submit "$file" 2>&1)
+status=$?
+printf '%s\n' "$out"
+if [ "$status" -ne 0 ]; then
+  echo "condor_submit FAILED (its message above)" >&2
+  case "$out" in
+    *aterializ*) echo "this HTCondor does not take max_materialize: delete that line of $file and submit at most 60 processes at once" >&2 ;;
+  esac
   exit 1
 fi
 echo "follow: condor_q (batch $name); condor_q -hold (failed jobs, why); ls $dir/*/log/*.done | wc -l (processes done);"

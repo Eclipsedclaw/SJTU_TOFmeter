@@ -4,7 +4,7 @@
 #   sh scripts/lead_energy_scan.sh [--check-only] [definition] [jobs] [muons per point] [muons per check run]
 # definition: macro/lead_energy_scan_def.mac (default, 0.1-100 GeV log grid, lead 0-20 cm),
 # macro/lead_lowE_scan_def.mac (100-500 MeV in 20 MeV steps) or macro/lead_thick_scan_def.mac
-# (50 energies, lead 0-50 cm); jobs: default 8; the muon numbers default to those of the
+# (60 energies, lead 0-50 cm); jobs: default 8; the muon numbers default to those of the
 # definition. The definition gives the thicknesses (0 to leadScanTmax cm) and leadScanGroups: each
 # thickness runs as that many processes, each with a part of the energies (and its own seed when
 # there are several), plus one process for its spectrum check run. Writes
@@ -91,7 +91,7 @@ echo "$(date '+%F %T')  $def -> $dir: lead 0-$tmax cm, $nE energies in $groups g
      "$left of $total processes to run${events:+, $events muons per point}${spectrum:+, $spectrum per check run}"
 export TOF_SCAN_LOG="$logdir"
 echo $todo | tr ' ' '\n' | grep . | xargs -P "$jobs" -n 1 sh -c '
-  if pgrep -qf "[.]/TOFmeter $TOF_SCAN_LOG/$1[.]mac"; then
+  if pgrep -f "[.]/TOFmeter $TOF_SCAN_LOG/$1[.]mac" > /dev/null; then
     echo "$(date "+%F %T")  $1 is still running from an earlier start; not started again"
   elif ./TOFmeter "$TOF_SCAN_LOG/$1.mac" > "$TOF_SCAN_LOG/$1.log" 2>&1; then
     touch "$TOF_SCAN_LOG/$1.done"

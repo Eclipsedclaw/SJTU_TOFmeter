@@ -4,7 +4,7 @@
 ### Updated 2026-10 for the TOF-meter geometry (DetectorConstruction.cc)
 
 # --- Output ---
-# /OutputDirectory, default ./ (created if missing)
+# /OutputDirectory, default ./ (created if missing; the command without a value gives ./tmp)
 # /OutputFile, base name: <dir>/<file>.dat and/or <dir>/<file>.root
 # /InputDirectory
 # /InputFile
@@ -17,7 +17,9 @@
 #              trident or a photon conversion to mu+mu-, 4 only events with energy in a
 #              top-TOF bar and in a middle-TOF bar, 5 only events with a photon of a mu-
 #              capture (muonic X-ray or nuclear-capture gamma; columns mux_*), 6 only events with
-#              energy in the Si/YSO stack (columns stk_*) (live time unaffected)
+#              energy in the Si/YSO stack (columns stk_*), 7 only events with energy in the CZT
+#              plane (columns czt_*) (live time unaffected; with 2-4, 6 and 7 the events tree
+#              misses the other stops, so counts of stopped muons are lower limits)
 # /tof/stack/hitWindow 100 ns        one stack hit (stk_*): the deposits in one layer within this time
 # /TrackType: 0 for all, 1 for trackID = 1, 2 for parentID = 1 only   (ASCII only)
 # /TrackEdep: 0 for all, 1 for eDep > 0.0 keV                         (ASCII only)
@@ -58,6 +60,11 @@
 # /tof/camera/spacing21, spacing10    CH2-CH1 / CH1-CH0 centre-to-centre (25 / 35 mm)
 # /tof/target/enable, material, size, position      target box (未知材料)
 # /tof/degrader/enable, material, size, position    degrader box (降速铅砖)
+# /tof/czt/enable true|false         CZT plane of pixels (czt_* columns), off by default; it
+#                                      overlaps the Si/YSO stack: /tof/det/stack false
+# /tof/czt/position x y z unit       centre of the plane (default 0 0 32 cm: z 31.5-32.5 cm)
+# /tof/czt/pixels 4                  pixels per side
+# /tof/czt/pixelSize 25 mm, thickness 10 mm
 # /tof/blocks/add name material x y z dx dy dz unit  passive box, e.g. lead brick (centre, full sizes)
 # /tof/blocks/clear
 # /CheckOverlap: 0 for off, 1 for on (default on)

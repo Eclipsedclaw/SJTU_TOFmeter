@@ -77,7 +77,8 @@ if(Geant4_qt_FOUND)
 endif()
 
 #----------------------------------------------------------------------------
-# Copy all macros, analysis scripts, the HTCondor job scripts (condor/) and data tables to the build directory, i.e.
+# Copy all macros, analysis scripts, shell and Python scripts, the HTCondor job scripts (condor/) and data tables to
+# the build directory, i.e.
 # the directory in which we build TOFmeter. This is so that we can run the executable directly because it
 # relies on these scripts being in the current working directory.
 #
@@ -85,6 +86,7 @@ file(GLOB TOFmeter_SCRIPTS RELATIVE ${PROJECT_SOURCE_DIR}
      ${PROJECT_SOURCE_DIR}/macro/*.mac
      ${PROJECT_SOURCE_DIR}/analysis/*.C
      ${PROJECT_SOURCE_DIR}/scripts/*.sh
+     ${PROJECT_SOURCE_DIR}/scripts/*.py
      ${PROJECT_SOURCE_DIR}/condor/*.sh
      ${PROJECT_SOURCE_DIR}/condor/*.C
      ${PROJECT_SOURCE_DIR}/data/*.txt)

@@ -137,6 +137,7 @@ void muon_spectrum(const char* spectrumFile = "output/muon_spectrum.root", const
   const double iVert = nVert / (run.liveTime * run.area * vertCone) * 1e4;  // /m2/s/sr
   const double nPlus = events->GetEntries("pdg == -13 && " + p + " > 1000");
   const double nMinus = events->GetEntries("pdg == 13 && " + p + " > 1000");
+  events->SetEstimate(events->GetEntries() + 1);   // GetV1 holds every selected row (default: the first 10^6)
   auto meanOf = [&](const char* cut) {
     const Long64_t n = events->Draw("ekin/1000.", cut, "goff");
     double sum = 0.;

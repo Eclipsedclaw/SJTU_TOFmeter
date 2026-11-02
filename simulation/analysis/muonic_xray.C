@@ -93,6 +93,7 @@ void muonic_xray(const char* dir = "output/muonic_xray", const char* volume = "T
   double liveTime = 0.;
   Long64_t generated = 0;
   long stops = 0, xrays = 0, xraysAbove10 = 0, gammas = 0;
+  int partialFilter = 0;   // a run whose events tree misses events (its /EventFilter), 0 if none
   for (const auto& path : files) {
     TFile file(path.c_str());
     auto run = dynamic_cast<TTree*>(file.Get("run"));
@@ -101,13 +102,16 @@ void muonic_xray(const char* dir = "output/muonic_xray", const char* volume = "T
       printf("skipping %s: incomplete or without the mux_* columns\n", path.c_str());
       continue;
     }
-    int n = 0;
+    int n = 0, eventFilter = 0;
     double lt = 0.;
     run->SetBranchAddress("n_events", &n);
     run->SetBranchAddress("live_time", &lt);
+    if (run->GetBranch("event_filter")) run->SetBranchAddress("event_filter", &eventFilter);
     run->GetEntry(0);
     generated += n;
     liveTime += lt;
+    // /EventFilter 2-4, 6, 7 keep only events with energy in some detector: the other stops are missing
+    if (eventFilter != 0 && eventFilter != 1 && eventFilter != 5) partialFilter = eventFilter;
     int pdg = 0;
     double endT = 0.;
     char endProc[128] = "", endVol[128] = "";
@@ -181,6 +185,10 @@ void muonic_xray(const char* dir = "output/muonic_xray", const char* volume = "T
            generated, liveTime / 3600., stops, stops / (liveTime / 3600.), stops * dayScale);
   else
     printf("%lld particles (no live time: rates per stopped mu-); mu- stopped and captured: %ld\n", generated, stops);
+  if (partialFilter)
+    printf("WARNING: /EventFilter %d kept only the events with energy in a detector: the stops without it are missing, "
+           "so the stops and every rate per day are lower limits, and the yields per stop those of the stops kept "
+           "(use a run with /EventFilter 0, 1 or 5 for the whole truth)\n", partialFilter);
   if (stopsByVolume.size() > 1)
     for (const auto& [v, k] : stopsByVolume) {
       if (cosmic) printf("   %-20s %6ld = %.1f per day\n", v.c_str(), k, k * dayScale);

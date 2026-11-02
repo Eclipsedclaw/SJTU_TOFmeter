@@ -55,7 +55,7 @@ void muonic_xray_stack_cuts(const char* skim = "output/muonic_xray_stack/xray_sk
   const int nBins = 250;   // 2 keV, 0-500 keV
   // 1. stopped mu- by volume: 0 target, 1 Al plates, 2 stack, 3 TOF bars, 4 lead, 5 steel and the rest
   const char* stopNames[] = {"in the Al target", "in the Al plates", "in the stack (Si, YSO)", "in the TOF bars",
-                             "in the lead", "elsewhere (steel, air)"};
+                             "in the lead", "elsewhere (steel, air, CZT)"};
   auto stopGroup = [](int volume) { return volume == 0 ? 0 : volume == 1 ? 1 : (volume == 2 || volume == 3) ? 2 : volume == 4 ? 3
                                                    : volume == 5 ? 4 : 5; };
   TH1D* hStop[6];
@@ -139,11 +139,13 @@ void muonic_xray_stack_cuts(const char* skim = "output/muonic_xray_stack/xray_sk
       hFit->Fill(e);
       if (!signal && InWindow(e, kWindows[0])) {
         // muonic X-rays of another volume (bit 2), by where the primary stopped; else what the primary did
-        const char* volumes[] = {"target", "Al plates", "stack Si", "stack YSO", "TOF bars", "lead", "steel", "air"};
-        if (src & 2) composition[std::string("muonic X-rays, muon stopped in the ") + volumes[endVol]] += 1.;
+        // the skim's codes 0-8 (8: the CZT plane of the CZT run)
+        const char* volumes[] = {"target", "Al plates", "stack Si", "stack YSO", "TOF bars", "lead", "steel", "air", "CZT plane"};
+        const char* stopVolume = volumes[std::min(std::max(endVol, 0), 8)];
+        if (src & 2) composition[std::string("muonic X-rays, muon stopped in the ") + stopVolume] += 1.;
         else if (src & 4) composition["nuclear-capture gammas"] += 1.;
-        else if (endProc == 1) composition[std::string("other energy, mu- stopped in the ") + volumes[endVol]] += 1.;
-        else if (endProc == 2) composition[std::string("other energy, mu+ stopped in the ") + volumes[endVol]] += 1.;
+        else if (endProc == 1) composition[std::string("other energy, mu- stopped in the ") + stopVolume] += 1.;
+        else if (endProc == 2) composition[std::string("other energy, mu+ stopped in the ") + stopVolume] += 1.;
         else composition["other energy, muon passed through"] += 1.;
       }
     }

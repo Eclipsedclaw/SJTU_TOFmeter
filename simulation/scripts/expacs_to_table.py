@@ -40,9 +40,10 @@ def conditions(ws):
         location = f"latitude {ws['B8'].value} deg, longitude {ws['B9'].value} deg"
     else:
         location = f"cut-off rigidity {ws['B8'].value} GV given"
-    solar = {1: f"W value {ws['B10'].value} given",
-             2: f"date {ws['B10'].value}-{ws['B11'].value:02d}-{ws['B12'].value:02d}",
-             3: f"Oulu neutron monitor {ws['B10'].value} counts/min"}.get(ws["C10"].value, "?")
+    # only the mode's own text: B11 and B12 (month, day) are integers in the date mode only
+    solar = {1: lambda: f"W value {ws['B10'].value} given",
+             2: lambda: f"date {ws['B10'].value}-{ws['B11'].value:02d}-{ws['B12'].value:02d}",
+             3: lambda: f"Oulu neutron monitor {ws['B10'].value} counts/min"}.get(ws["C10"].value, lambda: "?")()
     environment = {1: "ground", 2: "aircraft (pilot)", 3: "aircraft (cabin)", 4: "none"}.get(
         ws["B13"].value, "?")
     return [

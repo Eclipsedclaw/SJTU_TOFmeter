@@ -10,8 +10,10 @@
 #   sh condor/muonic_xray_czt_check.sh <output folder | HTCondor cluster id> [--all]
 # e.g. output/muonic_xray_czt_si, or the cluster id condor_submit printed. The jobs of each state are listed as ranges of
 # process numbers per band; --all lists every job on its own line. A process run outside HTCondor
-# (scripts/muonic_xray_czt.sh on the shared server) counts as finished OK by its .done marker (written only after exit
-# code 0) with the same output and log checks; a job macro never submitted shows as not submitted.
+# (scripts/muonic_xray_czt.sh on the shared server) counts as finished OK by its .done marker with the same output and
+# log checks (that script wrote the marker after exit code 0 alone before 2026-11-02); one with a marker that fails them
+# counts as failed, with the rm of its marker printed before the submit command; a job macro never run shows as not
+# submitted.
 
 all=no
 arg=
@@ -180,6 +182,7 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
           }
         }
       } else if (done[j] && files == "") { st = "ok"; why = "run outside HTCondor: exit code 0 by its .done marker" }
+      else if (done[j]) { st = "failed"; why = "run outside HTCondor with a .done marker, but " files }
       else st = "notsub"
       state[j] = st; reason[j] = why; htid[j] = hid
       count[st]++
@@ -217,7 +220,7 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
       }
     }
     # the failed and held ones, and the commands that would run them again (printed only)
-    nbad = 0; held = ""; again = ""
+    nbad = 0; held = ""; again = ""; stale = ""
     for (bi = 1; bi <= 2; ++bi) {
       b = bi == 1 ? "slow" : "fast"
       start = -1
@@ -228,6 +231,7 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
           printf "  %-5s %4d  job %-12s %s: %s\n         logs: %s/%s/log/job%d.err, .log, .out\n", b, k, htid[j], label[state[j]],
                  reason[j] == "" ? "(no reason given)" : reason[j], dir, b, k
           if (state[j] == "held") held = held " " htid[j]
+          if (state[j] == "failed" && done[j]) stale = stale " " dir "/" b "/log/job" k ".done"
         }
         hit = (j in state) && state[j] == "failed"
         if (hit && start < 0) start = k
@@ -240,6 +244,8 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
         printf "  held, after fixing the cause:   condor_release%s\n", held
         printf "  or take them out of the queue:  condor_rm%s   (then submit them again as below)\n", held
       }
+      if (stale != "")
+        printf "  first remove the .done markers of these failed jobs (the submit script skips a process that has one):\n    rm%s\n", stale
       if (again != "")
         printf "  failed, once batch %s has left the queue (condor_q):\n    %s%s\n", name,
                resub != "" ? resub : "sh condor/muonic_xray_czt_submit.sh --dir " dir, again

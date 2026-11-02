@@ -13,7 +13,7 @@ To check the data the cards record, see [Check the recorded data](#check-the-rec
 | Lab network | `eno4`, 192.168.35.100. Never change it. |
 | Card settings | One file per card in `/etc/network/interfaces.d/` |
 | Address rule | Tag `69.19` means the card is `192.168.69.19`; the server port gets `192.168.69.1/24` |
-| Already done | Cards 1–3; see the [record](#record) |
+| Already done | Cards 1–8; see the [record](#record) |
 
 ## Before you start
 
@@ -244,7 +244,7 @@ The [`scripts/`](scripts/) folder has two Python scripts that check what the car
 | [`plot_waveforms.py`](scripts/plot_waveforms.py) | Look at the raw waveforms of one channel, for example to see where short waveforms stop |
 | [`daqyy_common.py`](scripts/daqyy_common.py) | Code shared by the two scripts. Not run on its own; keep it in the same folder |
 
-Values stay in ADC counts and samples. Both scripts number the triggers of each board from 0, so trigger 2 means the same trigger in both.
+Values stay in ADC counts and samples (only `t2prev`, as the converter stores it, is in seconds). Both scripts number the triggers of each board from 0, so trigger 2 means the same trigger in both.
 
 ### Before you start
 

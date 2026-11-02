@@ -3,7 +3,7 @@
 // the spectrum check runs leadspec_t<cm>.root. The energies, their bands and the thicknesses are
 // read from the files, so the same macro serves the log scan (lead_energy_scan.mac, 0.1-100 GeV)
 // the fine low-energy scan (lead_lowE_scan.mac, 100-500 MeV in 20 MeV steps) and the thick-lead
-// scan (lead_thick_scan.mac, 50 energies, 0-50 cm).
+// scan (lead_thick_scan.mac, 60 energies, 0-50 cm).
 //   root -l -b -q analysis/lead_energy_scan.C
 //   root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_lowE")'
 //   root -l -b -q 'analysis/lead_energy_scan.C("output/leadscan_thick")'

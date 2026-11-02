@@ -35,7 +35,8 @@
 // The CZT plane under the 4 cm target (scripts/muonic_xray_czt.sh, its bands skimmed with detector "czt"): detector
 // "czt" and the CZT's resolution, the slow band's skim as the target's run, the fast band's as the faster muons; the
 // entry's variables are then the pixel hits, the largest hit / entry and whether it lies in the 4 central pixels:
-//   root -l -b -q 'analysis/muonic_xray_target_select.C("output/muonic_xray_czt/slow/xray_skim.root", "output/muonic_xray_czt/fast/xray_skim.root", "output/muonic_xray_czt", "4 cm target, CZT", "czt", 6.37)'
+//   root -l -b -q 'analysis/muonic_xray_target_select.C("output/muonic_xray_czt/pixel_tof/full_run/xray_skim_slow.root", "output/muonic_xray_czt/pixel_tof/full_run/xray_skim_fast.root", "output/muonic_xray_czt/pixel_tof/full_run", "4 cm target, CZT", "czt", 6.36991)'
+// (as the work folder's output/muonic_xray_czt/pixel_tof/run_analysis.sh runs it, after the skims of both bands).
 // Skims with the measured TOF (branch trig, analysis/muonic_xray_stack_skim.C since 2026-10-30) are used as measured,
 // sigmaT and sigmaE are then not used: the dataset is what the TOF trigger takes (top and middle station hit), a fixed
 // step after the middle-TOF coincidence in the cut flow, so that it shows what the trigger costs; the muon's variables 1
@@ -774,7 +775,8 @@ void muonic_xray_target_select(const char* slowSkim = "output/muonic_xray_target
   const LineFit fitShown = fit[1];
   const double chi2Fit = chi2Of(expect);
   // what the simulation's own fluctuations add to it: their variance over that of measureDays days, bin by bin (a
-  // simulated entry of the fast band counts 21 / 5.92 entries of a measurement, so its noise exceeds a measurement's)
+  // simulated entry counts measureDays / its band's days entries of a measurement, so a band of fewer simulated days
+  // than measureDays is noisier than the measurement)
   double chi2Mc = 0.;
   for (int b = expect->FindBin(fitLow + 1e-6); b <= expect->FindBin(fitHigh - 1e-6); ++b) {
     double var = 0.;

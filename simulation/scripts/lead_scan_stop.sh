@@ -4,7 +4,7 @@
 # its .done marker. scripts/lead_scan_resume.sh later goes on exactly from there. Run it in the
 # build directory:
 #   sh scripts/lead_scan_stop.sh [definition]     (default macro/lead_thick_scan_def.mac)
-# The computer is kept awake (on power) until the running processes have finished.
+# On macOS the computer is kept awake (caffeinate, on power) until the running processes have finished.
 
 def=${1:-macro/lead_thick_scan_def.mac}
 if [ ! -f "$def" ]; then
@@ -34,7 +34,9 @@ if [ -n "$running" ]; then
     j=$(ps -o command= -p "$p" | sed 's|.*/log/||; s|\.mac$||')
     echo "  $j: $(grep -c 'Run end' "$dir/log/$j.log") points finished, $(grep '^/tof/cosmic/monoEnergy' "$dir/log/$j.log" | tail -1 | sed 's|/tof/cosmic/monoEnergy|now at|')"
   done
-  nohup caffeinate -is sh -c "while pgrep -qf '[.]/TOFmeter $dir/log/'; do sleep 60; done" > /dev/null 2>&1 &
+  # keep the computer awake until they are done: macOS (caffeinate) only
+  command -v caffeinate > /dev/null &&
+    nohup caffeinate -is sh -c "while pgrep -f '[.]/TOFmeter $dir/log/' > /dev/null; do sleep 60; done" > /dev/null 2>&1 &
 fi
 ndone=$(ls "$dir"/log/ 2>/dev/null | grep -c '\.done$')
 total=$(cat "$dir/log/jobs.txt" 2>/dev/null | wc -l | tr -d ' ')

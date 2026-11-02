@@ -10,8 +10,8 @@
 // or whose primary muon stopped (truth). Writes tree "cand" (one row per entry) and tree "info" (live time).
 // detector "czt": the hits of the CZT plane (czt_*, scripts/muonic_xray_czt.sh) instead of the stack's, a pixel in place
 // of a layer (layers: bit k a hit in pixel k; topLayer: the pixel number), e.g. for one band of that run, with a CZT's
-// FWHM/E of 1.5% at 1 MeV (sigma 15 keV / 2.3548 = 6.37 keV at 1 MeV):
-//   root -l -b -q 'analysis/muonic_xray_stack_skim.C("output/muonic_xray_czt/slow", 1, 8, "xray_skim.root", 4357, "czt", 6.37)'
+// FWHM/E of 1.5% at 1 MeV (sigma 15 keV / 2.35482 = 6.36991 keV at 1 MeV); out is relative to dir:
+//   root -l -b -q 'analysis/muonic_xray_stack_skim.C("output/muonic_xray_czt/slow", 1, 10000, "../../../output/muonic_xray_czt/pixel_tof/full_run/xray_skim_slow.root", 4357, "czt", 6.36991)'
 // Each of the 16 pixels is read out alone: an entry per pixel hit (n = 1), no sum over pixels (a stopped muon's cascade
 // sends several X-rays at once, e.g. Al L_alpha and K_alpha, which a sum would merge); pix is the pixel, npix the pixels
 // with a hit within 100 ns of it (itself included) and eOther their energy without it. A CZT hit's x and y are its

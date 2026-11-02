@@ -4,7 +4,7 @@
 //   geometry_side_zoom   the same section around the target, with its dimensions
 //   geometry_top         the setup seen from above, without the lead layer, the steel plate and the Al plates
 // A volume is drawn as its extent in the table (axis-aligned: exact for the boxes of the setup); the corner beams,
-// L profiles with 1 cm legs (DetectorConstruction.cc), are L shapes in the view from above and miss the section.
+// L profiles with 10 cm legs, 1 cm thick (DetectorConstruction.cc), are L shapes in the view from above and miss the section.
 // The PNG files are the PDF ones rasterised by pdftoppm (smooth lines, 300 dpi), ROOT's own if pdftoppm is missing.
 // Texts are plain Helvetica with the signs x and mu as the WinAnsi bytes \327 and \265: TLatex's #times and #mu, set
 // in a symbol font, come out with uneven spaces in the PDF.

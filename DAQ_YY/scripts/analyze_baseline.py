@@ -23,7 +23,8 @@ Each entry is one trigger: chdata[nsamps] holds the ADC samples and ttt the
 trigger time tag, which all channels of a board share. raw2root_new also
 stores baseline and rms (mean and sample standard deviation of the first 20
 samples), area (sum of baseline - chdata over samples 35..100), xmin and xmax
-(positions of the lowest and highest sample), tbusy and t2prev.
+(positions of the lowest and highest sample among samples 10..nsamps-10), tbusy
+and t2prev (time since the channel's previous trigger, in seconds).
 
 Checks:
     pedestal and noise    Gaussian fit to the histogram of all samples of a channel
@@ -350,7 +351,8 @@ def summarize_board(info, most_triggers):
         "flags": "FEWER_TRIGGERS" if info["n_triggers"] < most_triggers else "OK",
     }
     iu = np.triu_indices(CHANNELS_PER_BOARD, 1)
-    have = corr.triggers[iu] > 0
+    # a constant (DEAD) channel has no correlation (0/0 = nan): leave its pairs out
+    have = (corr.triggers[iu] > 0) & np.isfinite(r[iu])
     if have.any():
         rr, cc = r[iu][have], cov[iu][have]
         k = int(np.argmax(np.abs(rr)))

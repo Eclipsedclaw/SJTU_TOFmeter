@@ -8,8 +8,9 @@
 # Defaults: output/muonic_xray_czt, 8 slow and 28 fast processes of 5 x 10^6 muons: about 1 day of exposure each
 # (5 x 10^6 muons of 0-1 GeV stand for 2.9 h, of 1-1000 GeV for 0.85 h), a test run of about 2.7 h on 10 cores
 # (estimated from the stack runs: ~31 and ~48 min per process). Writes <dir>/slow/stk_<k>.root and <dir>/fast/stk_<k>.root
-# with a macro and log per process in <dir>/slow/log/ and <dir>/fast/log/. A finished process leaves log/job<k>.done
-# and is skipped when the script is started again (so more processes can be added later); touch <dir>/STOP: no new
+# with a macro and log per process in <dir>/slow/log/ and <dir>/fast/log/. A finished process (exit code 0, the run's
+# end in its log, its output not empty, as condor/muonic_xray_czt_job.sh) leaves log/job<k>.done and is skipped when
+# the script is started again (so more processes can be added later); touch <dir>/STOP: no new
 # process starts. In the background:
 #   nohup nice -n 10 sh scripts/muonic_xray_czt.sh >> output/muonic_xray_czt.log 2>&1 &
 
@@ -35,6 +36,16 @@ fi
 for f in ./TOFmeter macro/muonic_xray_czt.mac; do
   if [ ! -e "$f" ]; then
     echo "Run this in the build directory ($f is missing)" >&2
+    exit 1
+  fi
+done
+# a folder holds the jobs of one target; these macros are G4_Al's (the default material), so a folder of another
+# target (condor/muonic_xray_czt_submit.sh --target) is refused before its macros could be rewritten
+for mac in "$dir"/slow/log/job*.mac "$dir"/fast/log/job*.mac; do
+  [ -e "$mac" ] || continue
+  m=$(sed -n 's/^\/tof\/target\/material //p' "$mac")
+  if [ "${m:-G4_Al}" != G4_Al ]; then
+    echo "$dir holds jobs with the target $m ($mac): this script runs G4_Al only (condor/muonic_xray_czt_submit.sh --target)" >&2
     exit 1
   fi
 done
@@ -89,7 +100,10 @@ printf '%s\n' "$todo" | grep . | xargs -P "$parallel" -n 2 sh -c '
   pid=$!
   sleep 2   # so that the next start counts this one
   rmdir "$TOF_CZT_DIR/start.lock"
-  if wait $pid; then
+  # done only if the run reached its end and wrote its output (TOFmeter exits with 0 even after a macro command it
+  # does not know), as condor/muonic_xray_czt_job.sh
+  muons=$(sed -n "s/^\/control\/alias czEvents //p" "$job.mac")
+  if wait $pid && grep -q "^Cosmic rays: $muons events" "$job.log" && [ -s "$TOF_CZT_DIR/$1/stk_$2.root" ]; then
     touch "$job.done"
     echo "$(date "+%F %T")  $1 job $2 done ($(ls "$TOF_CZT_DIR"/*/log | grep -c "\.done$") finished)"
   else

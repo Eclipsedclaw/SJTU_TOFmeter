@@ -2,8 +2,9 @@
 
 The CZT run (`macro/muonic_xray_czt.mac`, run on the shared server by `scripts/muonic_xray_czt.sh`) as HTCondor
 jobs, for a cluster with a shared filesystem such as SJTU's INPAC cluster. Each job is one process on one core
-(TOFmeter runs sequentially). The macros, seeds, outputs and `.done` markers are those of the shared server's run,
-so processes run in either place fit together process by process.
+(TOFmeter runs sequentially). The macros, seeds, outputs and `.done` markers are those of the shared server's run
+(each job macro also names its target material, `/tof/target/material G4_Al` by default), so processes run in either
+place fit together process by process.
 
 | File | What it does |
 |---|---|
@@ -13,7 +14,8 @@ so processes run in either place fit together process by process.
 | `muonic_xray_czt_check.sh` | The state of each job of a folder, checked (exit code 0, output not empty, log without error): queued, running, held, finished OK, failed, the progress; for failed and held jobs the HTCondor ID, the reason and the log paths, and the commands to run them again. Read-only. |
 | `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
 
-CMake copies this folder into the build directory (`<build>/condor/`); run `cmake` again after changing a file here.
+CMake copies this folder's scripts (`*.sh`, `*.C`) into the build directory (`<build>/condor/`); run `cmake` again
+after changing a file here.
 
 ## Before submitting
 
@@ -105,14 +107,14 @@ and this keeps a process from running twice.
 ## Another target material
 
 The same setup with a silicon target (the same 20 x 20 x 4 cm box, the same CZT plane and TOF), as large as the
-aluminium run (200 slow and 168 fast processes of 5 x 10^6 muons; raise the fast range to the aluminium run's final
-size):
+aluminium run (200 slow and 684 fast processes of 5 x 10^6 muons, 24.1 days of exposure in each band; about 560
+core-hours on the cluster, the aluminium jobs' mean of 0.47 h per slow and 0.68 h per fast process):
 
 ```sh
 cd <build>
 sh condor/muonic_xray_czt_submit.sh --test --target G4_Si --setup <file> --os-major 7    # 2 short jobs first
 sh condor/muonic_xray_czt_check.sh output/muonic_xray_czt_si_condor_test
-sh condor/muonic_xray_czt_submit.sh --target G4_Si --setup <file> --os-major 7 slow 1 200 fast 1 168
+sh condor/muonic_xray_czt_submit.sh --target G4_Si --setup <file> --os-major 7 slow 1 200 fast 1 684
 sh condor/muonic_xray_czt_check.sh output/muonic_xray_czt_si
 ```
 

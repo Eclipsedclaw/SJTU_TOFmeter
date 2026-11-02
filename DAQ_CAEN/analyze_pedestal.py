@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-pedestal_analysis.py
+analyze_pedestal.py
 
 Reusable pedestal statistics + histogram + Gaussian-fit tool for CAEN
 digitizer WaveDump output (wave0.txt ... waveN.txt, one sample per line).
 
 Usage:
-    python3 pedestal_analysis.py /path/to/folder
-    python3 pedestal_analysis.py /path/to/folder --channels 16 --label "Slot 3"
-    python3 pedestal_analysis.py /path/to/folder --out /path/to/outdir
+    python3 analyze_pedestal.py /path/to/folder
+    python3 analyze_pedestal.py /path/to/folder --channels 16 --label "Slot 3"
+    python3 analyze_pedestal.py /path/to/folder --out /path/to/outdir
 
 Outputs (written into --out, default: same as input folder):
-    pedestal_histograms.png   - 4x4 (or NxN) grid of histograms + Gaussian fits
+    pedestal_histograms.png   - grid of histograms + Gaussian fits, 4 channels per row
     pedestal_summary.csv      - per-channel raw stats + fit parameters
 """
 
@@ -84,15 +84,22 @@ def main():
     n = args.channels
     data = {}
     missing = []
+    empty = []
     for ch in range(n):
         path = os.path.join(in_dir, f"{args.prefix}{ch}.txt")
         if not os.path.isfile(path):
             missing.append(ch)
             continue
-        data[ch] = analyze_channel(path)
+        vals = analyze_channel(path)
+        if vals.size == 0:  # an empty file: no samples to show or fit
+            empty.append(ch)
+            continue
+        data[ch] = vals
 
     if missing:
         print(f"WARNING: missing channel files, skipped: {missing}", file=sys.stderr)
+    if empty:
+        print(f"WARNING: empty channel files, skipped: {empty}", file=sys.stderr)
 
     present_channels = sorted(data.keys())
     if not present_channels:
@@ -118,7 +125,7 @@ def main():
         else:
             lo = int(math.floor(vals.min())) - 1
             hi = int(math.ceil(vals.max())) + 2
-            bins = np.arange(lo, hi, 1)
+            bins = np.arange(lo, hi, 1) - 0.5  # edges between the integer ADC codes: each code at its bin centre
             fit = fit_gaussian(vals, bins)
             status = "OK" if fit else "FIT_FAILED"
 
@@ -172,7 +179,7 @@ def main():
         else:
             lo = int(math.floor(vals.min())) - 1
             hi = int(math.ceil(vals.max())) + 2
-            bins = np.arange(lo, hi, 1)
+            bins = np.arange(lo, hi, 1) - 0.5  # edges between the integer ADC codes: each code at its bin centre
             ax.hist(vals, bins=bins, color="#3b6fa0", alpha=0.8,
                     edgecolor="white", linewidth=0.3, label="data")
 

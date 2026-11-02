@@ -28,12 +28,16 @@
 // 34.5 cm for the 4 cm target); the bottom station's largest bar and its point (barBotM, xBot, yBot). The TOF response
 // has a random generator of its own, seeded per event, so the stack's and the CZT's hits are smeared as before. Every
 // condition goes into the file: TNamed "conditions" (text, also printed), TNamed "detector" and TParameter<double>
-// sigma1MeV, tofFwhmT, tofFwhmE, vEff and targetZ. Skims made in parts: merge them with analysis/skim_merge.C, which
-// merges their conditions too (hadd keeps only the first part's text).
+// sigma1MeV, tofFwhmT, tofFwhmE, vEff and targetZ; also the Geant4 version of every process (the banner of its
+// log/job<k>.log), as runs can combine processes of several machines (condor/). Skims made in parts: merge them with
+// analysis/skim_merge.C, which merges their conditions too (hadd keeps only the first part's text).
 
 #include <TParameter.h>
 
+#include <fstream>
+#include <map>
 #include <sstream>
+#include <vector>
 
 namespace {
 // where the primary ended: 0 target, 1 Al plates, 2 stack Si, 3 stack YSO, 4 TOF bars, 5 lead, 6 steel, 7 air or out,
@@ -57,6 +61,34 @@ const double kBarHalfLength = 20.;
 double BarCentre(int bar) { return -16. + 4. * bar; }
 const double kMuonMass = 105.6584;   // MeV
 const double kLightSpeed = 29.9792458;   // cm/ns
+// the Geant4 version a process ran with: the banner of its log ("Geant4 version Name: geant4-11-02-patch-02 [MT] ...")
+std::string Geant4Version(const char* dir, int k)
+{
+  std::ifstream log(Form("%s/log/job%d.log", dir, k));
+  std::string line;
+  for (int i = 0; i < 200 && std::getline(log, line); ++i) {
+    const auto at = line.find("Geant4 version Name:");
+    if (at == std::string::npos) continue;
+    std::istringstream words(line.substr(at + 20));
+    std::string version;
+    words >> version;
+    return version;
+  }
+  return "unknown (no log)";
+}
+// processes in ascending order as ranges, e.g. "1-78, 80"
+std::string Ranges(const std::vector<int>& k)
+{
+  std::ostringstream s;
+  for (std::size_t i = 0; i < k.size();) {
+    std::size_t j = i;
+    while (j + 1 < k.size() && k[j + 1] == k[j] + 1) ++j;
+    s << (i ? ", " : "") << k[i];
+    if (j > i) s << "-" << k[j];
+    i = j + 1;
+  }
+  return s.str();
+}
 }  // namespace
 
 void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int first = 1, int last = 385,
@@ -117,6 +149,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
   double liveTime = 0.;
   long long muons = 0;
   int files = 0;
+  std::map<std::string, std::vector<int>> versions;   // the processes of every Geant4 version
   info->Branch("live_time", &liveTime); info->Branch("muons", &muons); info->Branch("files", &files);
 
   TRandom3 random(seed + first);   // reproducible, different for every part
@@ -135,6 +168,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
     liveTime += lt;
     muons += nEvents;
     ++files;
+    versions[Geant4Version(dir, k)].push_back(k);
     int eventID = 0, primary = 0, primStations = 0;
     double kin = 0., tEnd = 0., xEnd = 0., yEnd = 0., zEnd = 0., keEnd = 0., kePb = -1., keTopBar = -1.;
     char vol[128] = "", process[128] = "";
@@ -262,6 +296,13 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
   std::ostringstream c;
   c << "skim: analysis/muonic_xray_stack_skim.C of " << dir << ", processes " << first << "-" << last << ": " << files
     << " finished, " << muons << " muons, live time " << liveTime / 86400. << " days; written " << TDatime().AsSQLString() << "\n";
+  c << "Geant4 (the banner of each process's log):";
+  const char* separator = " ";
+  for (const auto& [version, k] : versions) {
+    c << separator << version << " for processes " << Ranges(k);
+    separator = "; ";
+  }
+  c << "\n";
   if (czt)
     c << "detector: the CZT plane (czt_* hits), each of its pixels read out alone: an entry per pixel hit, no sum over pixels; "
          "its x and y the pixel's centre (2.5 cm pitch); npix and eOther: the pixels with a hit within 100 ns\n";

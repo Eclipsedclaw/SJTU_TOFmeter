@@ -2,27 +2,32 @@
 # The CZT run of scripts/muonic_xray_czt.sh as HTCondor jobs, on a cluster with a shared filesystem such as SJTU's INPAC
 # cluster (condor/README.md): one job of one core per process (TOFmeter runs sequentially), with the macros, seeds
 # (9500000 + k slow, 9600000 + k fast), outputs and .done markers of the shared server's run, so that processes run in
-# either place fit together process by process. At most 60 jobs at a time (max_materialize; 60 cores may be used), and
+# either place fit together process by process. --target <NIST material> runs the same setup with another target
+# material (/tof/target/material in every job macro; default G4_Al), into its own folder (output/muonic_xray_czt_<name>,
+# e.g. output/muonic_xray_czt_si for G4_Si) with its own seeds (--seed-base b: slow b + k, fast b + 100000 + k;
+# G4_Al 9500000, G4_Si 9700000, any other target needs one); a folder holds the jobs of one target only. At most 60 jobs at a time (max_materialize; 60 cores may be used), and
 # no submission while jobs of the same folder are still in the queue (the limit is per submission, and no process may
 # run twice). The jobs run muonic_xray_czt_job.sh, the one beside this script, in this build directory, and write into
 # it. Their environment is that of this shell (getenv: set up Geant4 first); with --setup <file> each job also sources
 # that file before TOFmeter starts, for when condor_submit does not start in a shell set up for Geant4 (submit from one
 # without it). In the build directory:
-#   sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
-#   sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--os-major n] [--no-submit]
+#   sh condor/muonic_xray_czt_submit.sh [--target G4_Si] [--seed-base b] [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
+#   sh condor/muonic_xray_czt_submit.sh --test [--target G4_Si] [--setup file] [--os-major n] [--no-submit]
 # <band> is slow (0-1 GeV) or fast (1-1000 GeV); of its processes first-last, those without <dir>/<band>/log/job<k>.done
 # are submitted, e.g. slow 79 88 fast 47 168 (what the shared server's run had not finished on 2026-10-31). Defaults:
 # output/muonic_xray_czt, 5 x 10^6 muons per process (~35 min slow, ~50 min fast on the shared server; a job must end
 # within 24 h, one still running after 23 h is put on hold), 60 jobs at a time. --test: process 1 of each band with
-# 2 x 10^5 muons into output/muonic_xray_czt_condor_test, a few minutes (the seeds of the shared server's process 1, so these
-# are its first 2 x 10^5 muons: condor/muonic_xray_czt_compare.C). --no-submit: write the macros and the submit file
+# 2 x 10^5 muons into <the target's folder>_condor_test (output/muonic_xray_czt_condor_test for G4_Al), a few minutes (with
+# G4_Al the seeds of the shared server's process 1, so these are its first 2 x 10^5 muons: condor/muonic_xray_czt_compare.C). --no-submit: write the macros and the submit file
 # only. Writes the macros as muonic_xray_czt.sh does (<dir>/<band>/log/job<k>.mac; beside them TOFmeter's log
 # job<k>.log and the job's output and errors job<k>.out, job<k>.err) and per submission <dir>/condor/submit_<date>.sub
-# with HTCondor's log of its jobs (submit_<date>.log). Follow them with condor_q; failed ones: condor_q -hold, then
-# condor_release after a fix. --os-major n: run only on workers of that OS major version (TARGET.OpSysMajorVer,
+# with HTCondor's log of its jobs (submit_<date>.log). Check them with condor/muonic_xray_czt_check.sh <dir> (each job's
+# state, verified: finished OK, failed, held, ...); failed ones: condor_q -hold, then condor_release after a fix. --os-major n: run only on workers of that OS major version (TARGET.OpSysMajorVer,
 # e.g. 9 for EL9, 7 for CentOS 7), the one TOFmeter was built on; condor_status -af Machine OpSysAndVer lists them.
 
-dir=output/muonic_xray_czt
+dir=
+target=G4_Al
+seedbase=
 muons=5000000
 max=60
 setup=
@@ -32,6 +37,8 @@ test=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) dir=$2; shift 2 ;;
+    --target) target=$2; shift 2 ;;
+    --seed-base) seedbase=$2; shift 2 ;;
     --muons) muons=$2; shift 2 ;;
     --max) max=$2; shift 2 ;;
     --setup) setup=$2; shift 2 ;;
@@ -41,14 +48,40 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+# the target: its folder and seeds
+case "$target" in
+  G4_[A-Za-z]*) ;;
+  *) echo "--target: a NIST material name such as G4_Si" >&2; exit 1 ;;
+esac
+case "$target" in
+  *[!A-Za-z0-9_]*) echo "--target: a NIST material name such as G4_Si" >&2; exit 1 ;;
+esac
+if [ "$target" = G4_Al ]; then
+  home=output/muonic_xray_czt
+else
+  home=output/muonic_xray_czt_$(printf '%s' "${target#G4_}" | tr 'A-Z' 'a-z')
+fi
+if [ -z "$seedbase" ]; then
+  case "$target" in
+    G4_Al) seedbase=9500000 ;;
+    G4_Si) seedbase=9700000 ;;
+    *) echo "--seed-base: give one for $target (slow seeds base + k, fast base + 100000 + k; 9500000 is G4_Al's," >&2
+       echo "9700000 G4_Si's, 8000000-9300000 other runs')" >&2
+       exit 1 ;;
+  esac
+fi
+case "$seedbase" in
+  ''|*[!0-9]*) echo "--seed-base takes a whole number" >&2; exit 1 ;;
+esac
+[ -n "$dir" ] || dir=$home
 if [ "$test" = yes ]; then
-  dir=output/muonic_xray_czt_condor_test
+  dir=${home}_condor_test
   muons=200000
   set -- slow 1 1 fast 1 1
 fi
 if [ $# -eq 0 ] || [ $(($# % 3)) -ne 0 ]; then
-  echo "usage: sh condor/muonic_xray_czt_submit.sh [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> ..." >&2
-  echo "       sh condor/muonic_xray_czt_submit.sh --test [--setup file] [--os-major n] [--no-submit]" >&2
+  echo "usage: sh condor/muonic_xray_czt_submit.sh [--target G4_Si] [--seed-base b] [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> ..." >&2
+  echo "       sh condor/muonic_xray_czt_submit.sh --test [--target G4_Si] [--setup file] [--os-major n] [--no-submit]" >&2
   exit 1
 fi
 for v in "$muons" "$max"; do
@@ -107,6 +140,16 @@ if [ "$submit" = yes ]; then
   fi
 fi
 
+# a folder holds the jobs of one target: its macros so far must all name this one (none: G4_Al, the default)
+for mac in "$dir"/slow/log/job*.mac "$dir"/fast/log/job*.mac; do
+  [ -e "$mac" ] || continue
+  m=$(sed -n 's/^\/tof\/target\/material //p' "$mac")
+  if [ "${m:-G4_Al}" != "$target" ]; then
+    echo "$dir holds jobs with the target ${m:-G4_Al} ($mac): give another --dir for $target" >&2
+    exit 1
+  fi
+done
+
 # the macros of the processes to run, as scripts/muonic_xray_czt.sh writes them
 items=
 ranges=
@@ -118,8 +161,8 @@ while [ $# -gt 0 ]; do
   last=$3
   shift 3
   case "$band" in
-    slow) emin=0; emax=1; base=9500000 ;;
-    fast) emin=1; emax=1000; base=9600000 ;;
+    slow) emin=0; emax=1; base=$seedbase ;;
+    fast) emin=1; emax=1000; base=$((seedbase + 100000)) ;;
     *) echo "band $band: slow or fast" >&2; exit 1 ;;
   esac
   for v in "$first" "$last"; do
@@ -150,6 +193,7 @@ while [ $# -gt 0 ]; do
       echo "/control/alias tgtCm 4"
       echo "/control/alias tgtZ 34.5"
       echo "/control/alias cztZ 32"
+      echo "/tof/target/material $target"
       echo "/control/execute macro/muonic_xray_czt.mac"
     } > "$sub/log/job$k.mac"
     items="$items$band $k
@@ -173,7 +217,9 @@ file="$dir/condor/submit_$stamp.sub"
 {
   echo "# HTCondor jobs of the CZT run (macro/muonic_xray_czt.mac), by condor/muonic_xray_czt_submit.sh on $(date '+%F %T')"
   echo "# in $here: $ranges, $n processes of $muons muons ($finished done before), at most $max at a time;"
+  echo "# target $target, seeds $seedbase + k (slow) and $((seedbase + 100000)) + k (fast);"
   echo "# environment: the submitting shell's${setup:+, then $setup sourced by each job}"
+  echo "# resubmit: sh condor/muonic_xray_czt_submit.sh --target $target --seed-base $seedbase --dir $dir --muons $muons --max $max${setup:+ --setup $setup}${osmajor:+ --os-major $osmajor}"
   echo "universe              = vanilla"
   echo "executable            = /bin/bash"
   echo "arguments             = \"$job $dir \$(band) \$(k)${setup:+ $setup}\""
@@ -198,7 +244,7 @@ file="$dir/condor/submit_$stamp.sub"
   printf '%s' "$items"
   echo ")"
 } > "$file"
-echo "$(date '+%F %T')  $n processes ($ranges; $finished done before) of $muons muons, at most $max at a time: $file"
+echo "$(date '+%F %T')  $target: $n processes ($ranges; $finished done before) of $muons muons, at most $max at a time: $file"
 if [ "$submit" = no ]; then
   echo "not submitted (--no-submit); to submit: condor_submit $file"
   exit 0
@@ -213,5 +259,5 @@ if [ "$status" -ne 0 ]; then
   esac
   exit 1
 fi
-echo "follow: sh condor/muonic_xray_czt_status.sh --dir $dir [--watch 60] (progress, time left); condor_q (batch $name);"
-echo "        condor_q -hold (failed jobs, why); cat $dir/<band>/log/job<k>.out (a job's host, time and speed)"
+echo "check:  sh condor/muonic_xray_czt_check.sh $dir   (each job: queued, running, held, finished OK, failed; read-only)"
+echo "follow: sh condor/muonic_xray_czt_status.sh --dir $dir [--watch 60] (progress bars, time left); condor_q (batch $name)"

@@ -10,6 +10,7 @@ so processes run in either place fit together process by process.
 | `muonic_xray_czt_submit.sh` | Writes the macros of the processes not yet done and one HTCondor submit file, then submits it. |
 | `muonic_xray_czt_job.sh` | One job: `./TOFmeter <dir>/<band>/log/job<k>.mac`. It marks the process done only if the run reached its end, and writes host, time and speed to `job<k>.out`. |
 | `muonic_xray_czt_compare.C` | Compares two outputs of the same process (same seed) event by event, or their distributions if the events differ. |
+| `muonic_xray_czt_check.sh` | The state of each job of a folder, checked (exit code 0, output not empty, log without error): queued, running, held, finished OK, failed, the progress; for failed and held jobs the HTCondor ID, the reason and the log paths, and the commands to run them again. Read-only. |
 | `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
 
 CMake copies this folder into the build directory (`<build>/condor/`); run `cmake` again after changing a file here.
@@ -83,14 +84,16 @@ so the same command can be run again later.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--dir path` | `output/muonic_xray_czt` | the run's folder, laid out as on the shared server |
+| `--target name` | `G4_Al` | the target's NIST material (`/tof/target/material` in each job macro), e.g. `G4_Si`; see Another target material |
+| `--seed-base b` | by target | slow seeds b + k, fast b + 100000 + k: G4_Al 9500000, G4_Si 9700000; any other target needs one |
+| `--dir path` | `output/muonic_xray_czt` (G4_Al), `output/muonic_xray_czt_<name>` (others) | the run's folder, laid out as on the shared server |
 | `--muons n` | 5 x 10^6 | muons per process: ~35 min slow, ~50 min fast on the shared server |
 | `--max n` | 60 (the most) | jobs at a time (`max_materialize`; one core each) |
 | `--setup file` | | a file each job sources before TOFmeter starts (your Geant4 setup), on top of the submitting shell's environment |
 | `--os-major n` | any | run only on workers of that OS major version (`TARGET.OpSysMajorVer`, e.g. 9 for EL9): the one TOFmeter was built for; `condor_status -af Machine OpSysAndVer` lists the workers |
 | `--no-submit` | | write the macros and the submit file only |
 
-Bands: `slow` is 0-1 GeV, seed 9500000 + k; `fast` is 1-1000 GeV, seed 9600000 + k.
+Bands: `slow` is 0-1 GeV, seed 9500000 + k; `fast` is 1-1000 GeV, seed 9600000 + k (with G4_Al).
 
 Each job asks for 1 core and 1 GB of memory (TOFmeter uses ~120 MB). A job that fails, or ends without the run's
 last line `Cosmic rays: <muons> events` (e.g. a macro command not found, after which TOFmeter still exits with 0), is
@@ -99,15 +102,49 @@ put on hold. So is a job still running after 23 h (the limit is 24 h).
 The script refuses to submit while jobs of the same folder are in the queue. The 60-job limit holds per submission,
 and this keeps a process from running twice.
 
+## Another target material
+
+The same setup with a silicon target (the same 20 x 20 x 4 cm box, the same CZT plane and TOF), as large as the
+aluminium run (200 slow and 168 fast processes of 5 x 10^6 muons; raise the fast range to the aluminium run's final
+size):
+
+```sh
+cd <build>
+sh condor/muonic_xray_czt_submit.sh --test --target G4_Si --setup <file> --os-major 7    # 2 short jobs first
+sh condor/muonic_xray_czt_check.sh output/muonic_xray_czt_si_condor_test
+sh condor/muonic_xray_czt_submit.sh --target G4_Si --setup <file> --os-major 7 slow 1 200 fast 1 168
+sh condor/muonic_xray_czt_check.sh output/muonic_xray_czt_si
+```
+
+- Each job macro sets `/tof/target/material G4_Si` before `macro/muonic_xray_czt.mac` rebuilds the geometry
+  (`/update`); TOFmeter's log then says `Target: G4_Si, size (20,20,4) cm at (0,0,34.5) cm` (the `G4_Al ... 1 cm`
+  line before it is the default geometry at start-up).
+- The run goes into `output/muonic_xray_czt_si` (batch `tof_muonic_xray_czt_si`) with its own seeds: slow 9700000 + k,
+  fast 9800000 + k, used by no other run. A folder holds the jobs of one target: the script refuses to add G4_Si jobs to
+  a folder of G4_Al jobs, or the other way round.
+- Tested on the shared server (2026-11-02): a slow job of 2 x 10^5 muons ran in 203 s; its one mu- captured in the
+  target emitted silicon's cascade at the model's point-nucleus energies (M 26.7, L_alpha 76.2, K_alpha 411.7 keV; the
+  measured K_alpha is 400.2 keV), and its CZT hits were tagged as the target's X-rays, so the skim and the analysis
+  take the run as they take the aluminium one. The analysis' line energies are aluminium's so far (L_alpha 65.73 keV).
+
 ## Following the jobs
 
 ```sh
+sh condor/muonic_xray_czt_check.sh <dir | cluster id> [--all]  # each job's state, checked; failed and held jobs
 sh condor/muonic_xray_czt_status.sh [--dir path] [--watch 60]   # progress bars, exposure, time left
 condor_q                                      # running, idle, held
 condor_q -hold                                # held jobs and why; see <dir>/<band>/log/job<k>.err and .log
 condor_release <id>                           # run a held job again after a fix
 condor_rm <id>                                # remove; then submit again to rerun what is not done
 ```
+
+`muonic_xray_czt_check.sh` checks rather than assumes. A job finished OK when HTCondor's log of its submission says
+it ended with exit code 0, its `stk_<k>.root` exists and is not empty, and TOFmeter's log reached `Cosmic rays:
+<muons> events` without an error (Geant4's `EEEE` errors, crashes, aborts; its warnings do not count). It prints the
+states per job (as ranges of process numbers; `--all` one line each) and in total, the progress (e.g. `37/50 finished
+OK`), each failed or held job with its HTCondor ID, the reason and its logs, and the commands that would run them again
+(`condor_release`, or the submit command with the failed processes), which it only prints. Run it where you submitted:
+`condor_q` there tells queued, running and held.
 
 `muonic_xray_czt_status.sh` shows:
 

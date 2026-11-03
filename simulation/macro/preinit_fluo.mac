@@ -1,0 +1,11 @@
+### Fluorescence on, for a CZT run with the K X-rays (2026-11-04):
+###   ./TOFmeter --preinit macro/preinit_fluo.mac <macro>
+### The CZT runs before it had them off, the default of QGSP_BERT. /process/em/fluo true makes the atomic de-excitation
+### emit the X-rays of an inner-shell vacancy after a photo-absorption or a Compton scattering, e.g. the Cd and Te K
+### X-rays of the CZT (23-31 keV, the escape peaks 23 and 27.5 keV below each line) and the Pb K X-rays of the shield
+### (72.8-87.3 keV). /process/em/deexcitationIgnoreCut true makes it emit them below the production cut too: with the
+### 1 mm cut the photon thresholds lie above these energies in Pb and CZT (/run/dumpCouples prints them), and the
+### X-rays would be dropped again. No Auger electrons and no PIXE (their default, off).
+
+/process/em/fluo true
+/process/em/deexcitationIgnoreCut true

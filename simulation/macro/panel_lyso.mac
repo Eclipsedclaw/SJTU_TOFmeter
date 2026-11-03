@@ -1,0 +1,14 @@
+### The LYSO panel as the pixel panel (/tof/czt/...), for the macros that use it (muonic_xray_lyso.mac,
+### lyso_decay_only.mac, vis_lyso.mac, panel_xray_gun.mac): a 200 x 200 x 6 mm LYSO panel read out as 30 x 30 pixels of
+### 6 x 6 x 6 mm on a 6.667 mm pitch (coded readout, trusted as such), BaSO4 between them as a placeholder for the cells'
+### dead volume; LYSO = Lu1.8Y0.2SiO5 at 7.2 g/cm3 (DetectorConstruction.cc). Its place: /tof/czt/position, set by the
+### macro that executes this one. Another detector: a panel_<name>.mac of its own with the same commands.
+
+/tof/czt/enable true
+/tof/czt/name LYSO
+/tof/czt/material LYSO
+/tof/czt/pixels 30
+/tof/czt/pixelSize 6 mm
+/tof/czt/pitch 6.666667 mm
+/tof/czt/thickness 6 mm
+/tof/czt/gapMaterial G4_BARIUM_SULFATE

@@ -15,7 +15,11 @@
 // Each of the 16 pixels is read out alone: an entry per pixel hit (n = 1), no sum over pixels (a stopped muon's cascade
 // sends several X-rays at once, e.g. Al L_alpha and K_alpha, which a sum would merge); pix is the pixel, npix the pixels
 // with a hit within 100 ns of it (itself included) and eOther their energy without it. A CZT hit's x and y are its
-// pixel's centre (2.5 cm pitch), not the smeared position of a stack hit.
+// pixel's centre (2.5 cm pitch), not the smeared position of a stack hit. "czt" reads any pixel panel (/tof/czt/...):
+// pixelPitch (cm) its pitch, for an even number of pixels per side centred on x = y = 0, e.g. the LYSO panel of
+// macro/muonic_xray_lyso.mac (30 x 30 on 0.6666667 cm) with sigma/E 3.3% at 662 keV (the user's measurement; sigma 26.85 keV at 1 MeV):
+//   root -l -b -q 'analysis/muonic_xray_stack_skim.C("output/muonic_xray_lyso/slow", 1, 10000, "skim_slow.root", 4357, "czt", 26.85, 0.3, 0.10, 15., 34.5, 0.6666667)'
+// (src bit 16: energy of the panel's own Lu-176, /tof/intrinsic/; layers is 0 for pixels from 31 on).
 // sigma1MeV: the energy sigma at 1 MeV (keV), 40 for the stack. etrue: the entry's energy before the response (keV).
 // The TOF as measured, for both detectors, in branches of their own (the true values above stay for the cut studies):
 // every bar's energy with tofFwhmE (FWHM / E, 10% by default), a bar hit above 0.2 MeV of it; a station's time that of
@@ -34,6 +38,7 @@
 
 #include <TParameter.h>
 
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -41,11 +46,13 @@
 
 namespace {
 // where the primary ended: 0 target, 1 Al plates, 2 stack Si, 3 stack YSO, 4 TOF bars, 5 lead, 6 steel, 7 air or out,
-// 8 CZT plane
+// 8 CZT plane (the pixel panel: <name>Pixel, or <name>Panel between its pixels)
 int VolumeCode(const std::string& v)
 {
   if (v.rfind("Target", 0) == 0) return 0;
-  if (v.rfind("CZTPixel", 0) == 0) return 8;
+  const auto ends = [&](const char* s) { const std::size_t n = std::strlen(s);
+                                         return v.size() > n && v.compare(v.size() - n, n, s) == 0; };
+  if (ends("Pixel") || ends("Panel")) return 8;
   if (v.rfind("FrameworkAl", 0) == 0) return 1;
   if (v.rfind("SiliconLayer", 0) == 0) return 2;
   if (v.rfind("YSOLayer", 0) == 0) return 3;
@@ -94,7 +101,7 @@ std::string Ranges(const std::vector<int>& k)
 void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int first = 1, int last = 385,
                             const char* out = "skim.root", unsigned seed = 4357, const char* detector = "stack",
                             double sigma1MeV = 40., double tofFwhmT = 0.3, double tofFwhmE = 0.10, double vEff = 15.,
-                            double targetZ = 34.5)
+                            double targetZ = 34.5, double pixelPitch = 2.5)
 {
   const bool czt = std::string(detector) == "czt";
   const std::string hit = czt ? "czt_" : "stk_";   // the hit columns read
@@ -254,9 +261,9 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
       for (std::size_t h = 0; h < he->size(); ++h) {
         const double measured = (*he)[h] + random.Gaus(0., sigma1MeV / 1000. * std::sqrt((*he)[h]));   // MeV
         if (measured * 1000. < 10.) continue;
-        // a CZT pixel tells only which pixel it is: its centre (pitch 2.5 cm, the plane centred on x = y = 0)
-        const double x = czt ? (std::floor((*hx)[h] / 2.5) + 0.5) * 2.5 : (*hx)[h] + random.Gaus(0., 0.2);
-        const double y = czt ? (std::floor((*hy)[h] / 2.5) + 0.5) * 2.5 : (*hy)[h] + random.Gaus(0., 0.2);
+        // a CZT pixel tells only which pixel it is: its centre (pitch pixelPitch, the plane centred on x = y = 0)
+        const double x = czt ? (std::floor((*hx)[h] / pixelPitch) + 0.5) * pixelPitch : (*hx)[h] + random.Gaus(0., 0.2);
+        const double y = czt ? (std::floor((*hy)[h] / pixelPitch) + 0.5) * pixelPitch : (*hy)[h] + random.Gaus(0., 0.2);
         hits.push_back({(*ht)[h], measured * 1000., x, y, (*layer)[h], (*hitSrc)[h], (*he)[h] * 1000.});
       }
       std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.t < b.t; });
@@ -266,7 +273,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
       if (czt) {   // each pixel read out alone: an entry per pixel hit
         for (const auto& h : hits) {
           t = h.t; e = h.e; etrue = h.etrue; n = 1; src = h.src;
-          pix = h.layer; layers = 1 << pix; topLayer = pix; emax = e; rmax = std::max(std::abs(h.x), std::abs(h.y));
+          pix = h.layer; layers = pix < 31 ? 1 << pix : 0; topLayer = pix; emax = e; rmax = std::max(std::abs(h.x), std::abs(h.y));
           npix = 0; eOther = -e;
           for (const auto& other : hits)
             if (std::abs(other.t - h.t) < 100.) { ++npix; eOther += other.e; }
@@ -305,7 +312,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
   c << "\n";
   if (czt)
     c << "detector: the CZT plane (czt_* hits), each of its pixels read out alone: an entry per pixel hit, no sum over pixels; "
-         "its x and y the pixel's centre (2.5 cm pitch); npix and eOther: the pixels with a hit within 100 ns\n";
+         "its x and y the pixel's centre (" << pixelPitch << " cm pitch); npix and eOther: the pixels with a hit within 100 ns\n";
   else
     c << "detector: the Si/YSO stack (stk_* hits): add-back of its hits within 100 ns of the first; x and y smeared by 2 mm\n";
   c << "energy response: sigma " << sigma1MeV << " keV x sqrt(E / MeV) per hit (FWHM/E " << fwhm * sigma1MeV / 10.
@@ -332,6 +339,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
   TParameter<double>("tofFwhmE", tofFwhmE, 'f').Write();
   TParameter<double>("vEff", vEff, 'f').Write();
   TParameter<double>("targetZ", targetZ, 'f').Write();
+  TParameter<double>("pixelPitch", pixelPitch, 'f').Write();
   output.Write();
   printf("%s", c.str().c_str());
   printf("%s: %d processes, %.2f days, %lld candidates\n", out, files, liveTime / 86400., cand->GetEntries());

@@ -1,0 +1,35 @@
+### Photons of one energy into the pixel panel from above, the target out, to see what the panel itself does to an X-ray
+### line (analysis/panel_xray_gun_check.C): how often a photon leaves its full energy in one pixel, how often it is
+### shared by pixels, and how often a K X-ray of the crystal escapes (LYSO: Lu K edge 63.3 keV, just below the Al and Si
+### L-alpha lines; CZT: Cd and Te K edges 26.7 and 31.8 keV). GPS photons from a square of half side gunHalf 1 mm over the
+### panel, cosine-law directions downward (as from a broad source on it), every event with energy in the panel written.
+### Fluorescence needs TOFmeter --preinit macro/preinit_lyso.mac (or /process/em/fluo true there); without it Geant4
+### drops the K X-rays and puts their energy where the photon was absorbed. In the work folder, e.g.:
+###   ./TOFmeter --preinit macro/preinit_lyso.mac <job.mac>
+### with job.mac setting the aliases panelMac (macro/panel_lyso.mac or macro/panel_czt.mac), cztZ (the panel's
+### centre, cm), gunZ (1 mm over its top face, cm), gunHalf (cm; inside the panel), gunE (keV), gunN, gunDir, gunFile and
+### gunSeed, then executing this.
+
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/enable false
+/control/execute {panelMac}
+/tof/czt/position 0 0 {cztZ} cm
+/update
+
+/OutputFormat 1
+/EventFilter 7
+/OutputDirectory {gunDir}
+/OutputFile {gunFile}
+/gun/seed {gunSeed}
+/GeneralParticleSource 1
+/gps/particle gamma
+/gps/pos/type Plane
+/gps/pos/shape Square
+/gps/pos/centre 0 0 {gunZ} cm
+/gps/pos/halfx {gunHalf} cm
+/gps/pos/halfy {gunHalf} cm
+/gps/ang/type cos
+/gps/ene/type Mono
+/gps/ene/mono {gunE} keV
+/run/beamOn {gunN}

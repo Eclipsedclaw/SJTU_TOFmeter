@@ -33,6 +33,7 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
  
 #include "TOFmeterEventAction.hh"
+#include "IntrinsicSource.hh"
 
 #include "G4AnalysisManager.hh"
 #include "G4EmProcessSubType.hh"
@@ -121,8 +122,8 @@ TOFmeterEventAction::TOFmeterEventAction()
   // hits of the Si/YSO stack, one per layer and time: the deposits in a layer within /tof/stack/hitWindow
   // (100 ns) of the first one. Layer 0, 2, 4 Si and 1, 3 YSO, from the bottom; what made it, as bits of
   // the tracks that deposited (each with its secondaries): 1 muonic X-ray of the target, 2 muonic X-ray of
-  // another volume, 4 nuclear-capture gamma, 8 anything else; energy, time of the first deposit,
-  // energy-weighted position
+  // another volume, 4 nuclear-capture gamma, 8 anything else, 16 a decay of the pixel panel's own
+  // radioactivity (/tof/intrinsic/); energy, time of the first deposit, energy-weighted position
   analysisManager->CreateNtupleIColumn("stk_layer", fStkLayer);
   analysisManager->CreateNtupleIColumn("stk_src", fStkSrc);
   analysisManager->CreateNtupleDColumn("stk_e", fStkE);
@@ -317,6 +318,9 @@ void TOFmeterEventAction::SetTrackOrigin(const G4Track& track, G4int captureSour
     origin = kCaptureGamma;
   else if (const auto parent = fOrigin.find(track.GetParentID()); parent != fOrigin.end())
     origin = parent->second;
+  else if (const G4PrimaryParticle* primary = track.GetDynamicParticle()->GetPrimaryParticle();
+           primary && dynamic_cast<const IntrinsicDecayTag*>(primary->GetUserInformation()))
+    origin = kIntrinsic;   // a decay of the pixel panel's own radioactivity (/tof/intrinsic/), and all it makes
   fOrigin[track.GetTrackID()] = origin;
 }
 
@@ -517,6 +521,12 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     if (global.EventFilter == 5 && fCapturePhotons.empty()) return; // keep only events with mu- capture photons
     if (global.EventFilter == 6 && fStackDeposits.empty()) return;  // keep only events with energy in the stack
     if (global.EventFilter == 7 && fCZTDeposits.empty()) return;    // keep only events with energy in the CZT plane
+    if (global.EventFilter == 8) // energy in the pixel panel, and a middle-TOF hit or a primary that ended in the target:
+    {                            // filter 7 without the panel's own decays far from any muon (/tof/intrinsic/)
+      G4bool middle = false;
+      for (const auto& [key, sum] : fBars) middle = middle || (sum.edep > 0. && key / 100 == 1);
+      if (fCZTDeposits.empty() || (!middle && fEndVolume.rfind("Target", 0) != 0)) return;
+    }
 
     // hits of the Si/YSO stack (per layer) and of the CZT plane (per pixel)
     MakeHits(fStackDeposits, fStkLayer, fStkSrc, fStkE, fStkT, fStkX, fStkY, fStkZ);

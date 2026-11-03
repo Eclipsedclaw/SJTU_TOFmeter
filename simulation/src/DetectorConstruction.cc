@@ -151,7 +151,11 @@ DetectorConstruction::DetectorConstruction()
       fCZTPixels(4),
       fCZTPixelSize(25.0 * mm),
       fCZTThickness(10.0 * mm),
-      fCZTMaterial(nullptr)
+      fCZTMaterial(nullptr),
+      fCZTName("CZT"),
+      fCZTMaterialName("CZT"),
+      fCZTPitch(0.),
+      fCZTGapMaterialName("G4_BARIUM_SULFATE")
 {
     // 在构造函数中调用DefineMaterials确保材料被创建
     DefineMaterials();
@@ -921,22 +925,47 @@ void DetectorConstruction::ConstructTargetAndDegrader()
 
 void DetectorConstruction::ConstructCZT()
 {
-    // CZT plane (/tof/czt/...): fCZTPixels x fCZTPixels CZT pixels side by side, each its own volume "CZTPixel" with
-    // copy number ix * fCZTPixels + iy, scored as DetectorKind::CZT (czt_* columns of the events ntuple)
-    auto solid_Pixel = new G4Box("CZTPixelSolid", 0.5 * fCZTPixelSize, 0.5 * fCZTPixelSize, 0.5 * fCZTThickness);
-    auto logic_Pixel = new G4LogicalVolume(solid_Pixel, fCZTMaterial, "CZTPixelLogic");
+    // the pixel panel (/tof/czt/..., the CZT plane by default): fCZTPixels x fCZTPixels pixels of fCZTMaterialName, each
+    // its own volume "<name>Pixel" with copy number ix * fCZTPixels + iy, scored as DetectorKind::CZT (czt_* columns of
+    // the events ntuple). With a pitch larger than the pixels (2026-11-03, e.g. LYSO cells in a reflector) the pixels sit
+    // in a mother volume "<name>Panel" of fCZTGapMaterialName, which fills the gaps; else side by side in the world
+    fCZTMaterial = FindMaterial(fCZTMaterialName);
+    const G4double pitch = std::max(fCZTPitch, fCZTPixelSize);
+    const G4bool gaps = pitch > fCZTPixelSize;
+    auto solid_Pixel = new G4Box(fCZTName + "PixelSolid", 0.5 * fCZTPixelSize, 0.5 * fCZTPixelSize, 0.5 * fCZTThickness);
+    auto logic_Pixel = new G4LogicalVolume(solid_Pixel, fCZTMaterial, fCZTName + "PixelLogic");
     logic_Pixel->SetVisAttributes(G4VisAttributes(G4Colour(1.0, 0.8, 0.1)));
     fKinds[logic_Pixel] = DetectorKind::CZT;
+    G4LogicalVolume* mother = logic_world;
+    G4ThreeVector centre = fCZTPosition;
+    if (gaps) {
+        const G4double half = 0.5 * fCZTPixels * pitch;
+        auto solid_Panel = new G4Box(fCZTName + "PanelSolid", half, half, 0.5 * fCZTThickness);
+        mother = new G4LogicalVolume(solid_Panel, FindMaterial(fCZTGapMaterialName), fCZTName + "PanelLogic");
+        mother->SetVisAttributes(G4VisAttributes(G4Colour(0.92, 0.92, 0.92)));
+        new G4PVPlacement(nullptr, fCZTPosition, mother, fCZTName + "Panel", logic_world, false, 0, fCheckOverlaps);
+        centre = G4ThreeVector();
+    }
     for (G4int ix = 0; ix < fCZTPixels; ++ix)
         for (G4int iy = 0; iy < fCZTPixels; ++iy) {
-            const G4ThreeVector offset((ix - 0.5 * (fCZTPixels - 1)) * fCZTPixelSize, (iy - 0.5 * (fCZTPixels - 1)) * fCZTPixelSize, 0.);
-            new G4PVPlacement(nullptr, fCZTPosition + offset, logic_Pixel, "CZTPixel", logic_world, false,
-                              ix * fCZTPixels + iy, fCheckOverlaps);
+            const G4ThreeVector offset((ix - 0.5 * (fCZTPixels - 1)) * pitch, (iy - 0.5 * (fCZTPixels - 1)) * pitch, 0.);
+            // overlaps checked for all of a small plane, else for the outer ring (the inner pixels repeat it)
+            const G4bool check = fCheckOverlaps && (fCZTPixels <= 8 || ix == 0 || iy == 0 || ix == fCZTPixels - 1 ||
+                                                     iy == fCZTPixels - 1);
+            new G4PVPlacement(nullptr, centre + offset, logic_Pixel, fCZTName + "Pixel", mother, false,
+                              ix * fCZTPixels + iy, check);
         }
-    G4cout << "\nCZT plane: " << fCZTPixels << " x " << fCZTPixels << " pixels of " << fCZTPixelSize/mm << " x "
-           << fCZTPixelSize/mm << " x " << fCZTThickness/mm << " mm, centre " << fCZTPosition/cm << " cm (z "
-           << (fCZTPosition.z() - 0.5 * fCZTThickness)/cm << " to " << (fCZTPosition.z() + 0.5 * fCZTThickness)/cm
-           << " cm)" << G4endl;
+    G4cout << "\n" << fCZTName << " plane: " << fCZTPixels << " x " << fCZTPixels << " pixels of " << fCZTMaterial->GetName()
+           << ", " << fCZTPixelSize/mm << " x " << fCZTPixelSize/mm << " x " << fCZTThickness/mm << " mm";
+    if (gaps) G4cout << " on a " << pitch/mm << " mm pitch (" << fCZTGapMaterialName << " between them)";
+    G4cout << ", centre " << fCZTPosition/cm << " cm (z " << (fCZTPosition.z() - 0.5 * fCZTThickness)/cm << " to "
+           << (fCZTPosition.z() + 0.5 * fCZTThickness)/cm << " cm)" << G4endl;
+}
+
+DetectorConstruction::PixelPanel DetectorConstruction::GetPixelPanel() const
+{
+    return {fBuildCZT, fCZTName, fCZTMaterial, fCZTPixels, fCZTPixelSize, std::max(fCZTPitch, fCZTPixelSize), fCZTThickness,
+            fCZTPosition};
 }
 
 void DetectorConstruction::ConstructBlocks()
@@ -1148,7 +1177,8 @@ void DetectorConstruction::DefineCommands()
     fMessengers.push_back(std::move(degrader));
 
     auto czt = std::make_unique<G4GenericMessenger>(this, "/tof/czt/",
-        "CZT plane (pixels of Cd0.9Zn0.1Te, scored per pixel: czt_* columns); changes take effect with /update");
+        "Pixel panel, the CZT plane by default (pixels of Cd0.9Zn0.1Te, scored per pixel: czt_* columns); changes take "
+        "effect with /update");
     czt->DeclareProperty("enable", fBuildCZT, "Build the CZT plane (default false)");
     czt->DeclarePropertyWithUnit("position", "cm", fCZTPosition,
         "Centre of the plane (default 0 0 32 cm: z 31.5-32.5 cm, right under a 4 cm target at 32.5-36.5 cm; "
@@ -1156,6 +1186,12 @@ void DetectorConstruction::DefineCommands()
     czt->DeclareProperty("pixels", fCZTPixels, "Pixels per side (default 4)");
     czt->DeclarePropertyWithUnit("pixelSize", "mm", fCZTPixelSize, "Pixel side (default 25 mm)");
     czt->DeclarePropertyWithUnit("thickness", "mm", fCZTThickness, "Thickness (default 10 mm)");
+    czt->DeclareProperty("name", fCZTName, "Name of the panel's volumes, <name>Pixel and <name>Panel (default CZT)");
+    czt->DeclareProperty("material", fCZTMaterialName, "Material of the pixels: CZT (default), LYSO, YSO or a NIST name");
+    czt->DeclarePropertyWithUnit("pitch", "mm", fCZTPitch,
+        "Centre-to-centre distance of the pixels; up to the pixel size they touch (default 0)");
+    czt->DeclareProperty("gapMaterial", fCZTGapMaterialName,
+        "Between the pixels when the pitch is larger than they are (default G4_BARIUM_SULFATE, a reflector)");
     fMessengers.push_back(std::move(czt));
 
     fBlockMessenger = std::make_unique<BlockMessenger>(this);

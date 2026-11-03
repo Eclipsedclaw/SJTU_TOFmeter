@@ -104,10 +104,12 @@ TOFmeterDetectorMessenger::TOFmeterDetectorMessenger(Pb::DetectorConstruction* m
   EventFilterCmd->SetGuidance("4 only events with energy in a bar of the top TOF and in one of the middle TOF,");
   EventFilterCmd->SetGuidance("5 only events with a photon of a mu- capture (muonic X-ray or nuclear-capture gamma),");
   EventFilterCmd->SetGuidance("6 only events with energy in the Si/YSO stack (columns stk_*),");
-  EventFilterCmd->SetGuidance("7 only events with energy in the CZT plane (/tof/czt/..., columns czt_*)");
+  EventFilterCmd->SetGuidance("7 only events with energy in the CZT plane (/tof/czt/..., columns czt_*),");
+  EventFilterCmd->SetGuidance("8 as 7, and a hit in the middle TOF or a primary that stopped in the target (for the pixel");
+  EventFilterCmd->SetGuidance("  panel's own radioactivity, /tof/intrinsic/: drops its decays in events without a muon)");
   EventFilterCmd->SetParameterName("flag",true);
   EventFilterCmd->SetDefaultValue(0);
-  EventFilterCmd->SetRange("flag>=0 && flag<=7");
+  EventFilterCmd->SetRange("flag>=0 && flag<=8");
 
 // Track Type, 0 for all particles, 1 for only primary particle (trackID = 1)
   TrackTypeCmd = new G4UIcmdWithAnInteger("/TrackType", this );
@@ -123,7 +125,8 @@ TOFmeterDetectorMessenger::TOFmeterDetectorMessenger(Pb::DetectorConstruction* m
 	
 // General Particle Source, 0 for off (particle gun), 1 for on (GPS), 2 for cosmic muons (/tof/cosmic/)
   GPSCmd = new G4UIcmdWithAnInteger("/GeneralParticleSource", this );
-  GPSCmd->SetGuidance("GeneralParticleSource: 0 particle gun, 1 GPS, 2 cosmic-ray muons (/tof/cosmic/)");
+  GPSCmd->SetGuidance("GeneralParticleSource: 0 particle gun, 1 GPS, 2 cosmic-ray muons (/tof/cosmic/),");
+  GPSCmd->SetGuidance("3 one decay of the pixel panel's own radioactivity per event (/tof/intrinsic/)");
   GPSCmd->SetParameterName("flag",true);
   GPSCmd->SetDefaultValue(0);
 	

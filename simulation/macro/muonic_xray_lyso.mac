@@ -1,0 +1,50 @@
+### Muonic X-rays in a LYSO panel right under the 20 x 20 x 4 cm target, with the LYSO's own Lu-176 radioactivity, one
+### job (condor/muonic_xray_czt_submit.sh --detector lyso writes and runs many). The setup of macro/muonic_xray_czt.mac with
+### the CZT plane replaced by the panel (/tof/czt/...: a 200 x 200 x 6 mm LYSO panel read out as 30 x 30 pixels of
+### 6 x 6 x 6 mm on a 6.667 mm pitch, BaSO4 reflector in the gaps as a placeholder for the cells' dead volume; Lu1.8Y0.2SiO5
+### at 7.2 g/cm3), its top face against the target's bottom face. Cosmic mu+ and mu- of czEmin - czEmax GeV from the plane
+### of the CZT runs; every cosmic-ray event also gets the panel's Lu-176 decays that fall within -1 to +1 us of it
+### (/tof/intrinsic/: about 52 kBq from the LYSO's mass, 0.1 decays per event on average, at random times and places), so
+### random coincidences with the TOF trigger come out at the true rate; hit source bit 16 (czt_src) marks their energy.
+### Only events with energy in the panel and a middle-TOF hit or a muon stopped in the target are written (/EventFilter 8;
+### filter 7 would keep the decays of every event). The live time in the run tree is that of the cosmic-ray band.
+### Needs TOFmeter --preinit macro/preinit_lyso.mac (radioactive decay) and the aliases czSeed, czEvents, czDir, czFile,
+### czEmin, czEmax, tgtCm, tgtZ and cztZ (centres in cm; cztZ 32.2: the panel at z = 31.9 to 32.5 cm under the target's
+### bottom face at 32.5 cm).
+
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 {tgtCm} cm
+/tof/target/position 0 0 {tgtZ} cm
+/control/execute macro/panel_lyso.mac
+/tof/czt/position 0 0 {cztZ} cm
+/update
+# only Lu-176 and its daughter Hf-176 decay (A 176, Z 71-72): the nuclei that muon captures leave behind stay as in
+# the CZT runs (their decays, minutes later, are no coincidences anyway)
+/process/had/rdm/nucleusLimits 176 176 71 72
+
+/tof/intrinsic/enable true
+/tof/intrinsic/windowStart -1000 ns
+/tof/intrinsic/windowEnd 1000 ns
+
+/OutputFormat 1
+/EventFilter 8
+/OutputDirectory {czDir}
+/OutputFile {czFile}
+/gun/seed {czSeed}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 112 cm
+/tof/cosmic/halfX 200 cm
+/tof/cosmic/halfY 200 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin {czEmin} GeV
+/tof/cosmic/energyMax {czEmax} GeV
+# Auger electrons off (the radioactive decay turned them on): their few keV are deposited where they start, in the same
+# pixel, as they would have been anyway; with them the run takes 1.5 times as long (2026-11-03 test: 273 s against 185 s
+# for 2 x 10^5 slow muons, the CZT run 187 s). Fluorescence, the K X-rays that can leave a pixel, stays on.
+/process/em/auger false
+/process/em/augerCascade false
+/run/beamOn {czEvents}

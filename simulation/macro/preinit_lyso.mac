@@ -1,0 +1,10 @@
+### Before the kernel is initialised, for the LYSO panel's own radioactivity (macro/muonic_xray_lyso.mac):
+###   ./TOFmeter --preinit macro/preinit_lyso.mac <macro>
+### Geant4's radioactive decay, for the Lu-176 of the LYSO (/tof/intrinsic/). It also turns on fluorescence and Auger
+### electrons (and deexcitation below the production cuts) in every volume, so that X-rays such as Lu's K X-rays come out
+### (the K-escape of photons above the Lu K edge, 63.3 keV: Al L-alpha 65.7 keV, Si 76.2 keV). The CZT runs have them off.
+### macro/muonic_xray_lyso.mac and lyso_decay_only.mac turn the Auger electrons off again after the initialisation
+### (/process/em/auger false: their energy stays in the pixel anyway, and the run is 1.5 times as fast).
+
+/tof/physics/radioactiveDecay
+/process/em/fluo true

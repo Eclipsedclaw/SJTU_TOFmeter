@@ -9,7 +9,7 @@ place fit together process by process.
 | File | What it does |
 |---|---|
 | `muonic_xray_czt_submit.sh` | Writes the macros of the processes not yet done and one HTCondor submit file, then submits it. |
-| `muonic_xray_czt_job.sh` | One job: `./TOFmeter <dir>/<band>/log/job<k>.mac`. It marks the process done only if the run reached its end, and writes host, time and speed to `job<k>.out`. |
+| `muonic_xray_czt_job.sh` | One job: `./TOFmeter <dir>/<band>/log/job<k>.mac` (with `--preinit <file>` when the macro's first line is `# preinit <file>`, as for `--detector lyso`). It marks the process done only if the run reached its end, and writes host, time and speed to `job<k>.out`. |
 | `muonic_xray_czt_compare.C` | Compares two outputs of the same process (same seed) event by event, or their distributions if the events differ. |
 | `muonic_xray_czt_check.sh` | The state of each job of a folder, checked (exit code 0, output not empty, log without error): queued, running, held, finished OK, failed, the progress; for failed and held jobs the HTCondor ID, the reason and the log paths, and the commands to run them again. Read-only. |
 | `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
@@ -128,6 +128,67 @@ sh condor/muonic_xray_czt_check.sh output/muonic_xray_czt_si
   target emitted silicon's cascade at the model's point-nucleus energies (M 26.7, L_alpha 76.2, K_alpha 411.7 keV; the
   measured K_alpha is 400.2 keV), and its CZT hits were tagged as the target's X-rays, so the skim and the analysis
   take the run as they take the aluminium one. The analysis' line energies are aluminium's so far (L_alpha 65.73 keV).
+
+## The LYSO panel (`--detector lyso`)
+
+The same setup and bands with the CZT plane replaced by the LYSO panel and its own Lu-176 (2026-11-03,
+`macro/muonic_xray_lyso.mac`: 30 x 30 pixels of 6 x 6 x 6 mm on a 6.667 mm pitch, its centre at cztZ 32.2 cm; 52 kBq
+of Lu-176 decays within +-1 us of every cosmic-ray event). Each job runs `./TOFmeter --preinit macro/preinit_lyso.mac
+<job.mac>`: the job macro's first line, `# preinit macro/preinit_lyso.mac`, tells `muonic_xray_czt_job.sh`. Two months
+for each target, as the CZT run's 60 days (499 slow and 1704 fast processes of 5 x 10^6 muons). Rebuild TOFmeter on
+the cluster first (`cmake` again, then `make`: there is a new source file, `src/IntrinsicSource.cc`, and new macros):
+
+```sh
+cd <build>
+S=/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work     # --storage: the run folders go to $S/output/
+sh condor/muonic_xray_czt_submit.sh --test --detector lyso --storage $S --setup <file> --os-major 7    # 2 short jobs first
+sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_lyso_condor_test
+sh condor/muonic_xray_czt_submit.sh --detector lyso --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_lyso
+sh condor/muonic_xray_czt_submit.sh --detector lyso --target G4_Si --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_lyso_si
+```
+
+`--storage <path>` (2026-11-04) puts the run folder under `<path>/output/` (any run, any option) in place of the build
+directory's `output/`: the job macros, TOFmeter's logs, the `.done` markers, the outputs and HTCondor's files. TOFmeter
+itself still runs in the build directory. The path must be absolute and an existing folder you can write to. The
+check and status scripts take the run folder as it is printed, e.g. `$S/output/muonic_xray_lyso`. A LYSO job writes
+about 10-11 MB (5 x 10^6 muons; the CZT's 1.6-2.4 MB), so 60 days take about 24 GB per target.
+
+- Folders `output/muonic_xray_lyso` (G4_Al) and `output/muonic_xray_lyso_si` (G4_Si), batches `tof_muonic_xray_lyso`
+  and `tof_muonic_xray_lyso_si`; seeds slow 9900000 + k and fast 10000000 + k (Al), slow 10100000 + k and fast
+  10200000 + k (Si), used by no other run. A folder holds one detector and one target: the script refuses to mix them.
+  The two targets are separate folders and batches, so both may be in the queue at once; the 60-job limit holds per
+  submission, so then give each `--max 30` to stay within 60 cores together.
+- The test's seeds are those of production process 1, so its muons are that process's first 2 x 10^5.
+- Speed (shared server, 2026-11-03): a slow job of 2 x 10^5 muons in 185 s, as the CZT run's (187 s; with the Auger
+  electrons that the radioactive decay turns on it took 273 s, so the macro turns them off). On the cluster, as the CZT
+  jobs, about 0.5 h per slow and 0.7 h per fast process: ~1400 core-hours per target, about a day at 60 cores.
+  TOFmeter uses ~135 MB.
+- The check script names the detector in its first line (`detector lyso, target G4_Al`).
+
+## The CZT run with fluorescence (`--fluo`)
+
+The CZT runs so far had fluorescence off (QGSP_BERT's default): no Cd/Te K X-rays, so no escape peaks (23.2 and 27.5 keV
+below each line; 9% of the Al L_alpha photons in the CZT, 7% of Si's) and no Pb K X-rays of the shield (72.8-87.3 keV,
+Pb K_alpha 75.0 keV 1.3 keV below Si's L_alpha). `--fluo` (2026-11-04) runs the same CZT setup with
+`./TOFmeter --preinit macro/preinit_fluo.mac` (`/process/em/fluo true` and `/process/em/deexcitationIgnoreCut true`:
+without the second, the 1 mm production cut would drop these X-rays again), into `output/muonic_xray_czt_fluo` (G4_Al)
+and `output/muonic_xray_czt_fluo_si` (G4_Si), seeds slow 10300000 + k and fast 10400000 + k (Al), 10500000 + k and
+10600000 + k (Si):
+
+```sh
+cd <build>
+S=/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work
+sh condor/muonic_xray_czt_submit.sh --test --fluo --storage $S --setup <file> --os-major 7
+sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo_condor_test
+sh condor/muonic_xray_czt_submit.sh --fluo --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo
+sh condor/muonic_xray_czt_submit.sh --fluo --target G4_Si --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo_si
+```
+
+The 60-core limit holds for all your jobs together: two runs at a time with `--max 30` each, or four with `--max 15`.
 
 ## Following the jobs
 

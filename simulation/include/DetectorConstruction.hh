@@ -90,6 +90,17 @@ public:
     // z range (/tof/det/print)
     void PrintGeometry();
 
+    // The pixel panel (/tof/czt/...: the CZT plane by default), for a source inside its pixels (/tof/intrinsic/)
+    struct PixelPanel {
+        G4bool built;
+        G4String name;                // volumes <name>Pixel (and <name>Panel, the gaps)
+        const G4Material* material;   // of the pixels
+        G4int pixels;                 // per side
+        G4double pixelSize, pitch, thickness;
+        G4ThreeVector centre;
+    };
+    PixelPanel GetPixelPanel() const;
+
 private:
     void DefineMaterials();
     void DefineCommands();
@@ -166,6 +177,12 @@ private:
     G4double fCZTPixelSize;
     G4double fCZTThickness;
     G4Material* fCZTMaterial;
+    // the panel as another detector (2026-11-03, e.g. a LYSO panel of cells in a reflector): its name, the pixels'
+    // material, a pitch larger than the pixels (the gaps of gapMaterial, in a mother volume); the defaults give the CZT
+    G4String fCZTName;
+    G4String fCZTMaterialName;
+    G4double fCZTPitch;
+    G4String fCZTGapMaterialName;
 
     // Free-form boxes, e.g. lead shielding bricks (/tof/blocks/...)
     struct Block {

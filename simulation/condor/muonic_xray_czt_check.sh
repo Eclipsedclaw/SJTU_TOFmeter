@@ -48,6 +48,10 @@ fi
 name=tof_$(basename "$dir")
 target=$(cat "$dir"/slow/log/job*.mac "$dir"/fast/log/job*.mac 2> /dev/null | sed -n 's/^\/tof\/target\/material //p' | sort -u | head -n 1)
 target=${target:-G4_Al}
+detector=czt   # or lyso (submit --detector lyso): the main macro its job macros execute
+cat "$dir"/slow/log/job*.mac "$dir"/fast/log/job*.mac 2> /dev/null | grep -qx "/control/execute macro/muonic_xray_lyso.mac" && detector=lyso
+# the CZT with fluorescence (submit --fluo): its job macros' pre-initialisation line
+cat "$dir"/slow/log/job*.mac "$dir"/fast/log/job*.mac 2> /dev/null | grep -qx "# preinit macro/preinit_fluo.mac" && detector="czt with fluorescence"
 
 # HTCondor's view of the jobs still in the queue (and of submissions whose jobs are not all created yet)
 qok=no
@@ -71,6 +75,8 @@ if [ -n "$latest" ]; then
     muonsused=$(sed -n 's/.* processes of \([0-9]*\) muons.*/\1/p' "$latest" | head -n 1)
     tgtopt=
     [ "$target" != G4_Al ] && tgtopt=" --target $target"
+    [ "$detector" = lyso ] && tgtopt=" --detector lyso$tgtopt"
+    [ "$detector" = "czt with fluorescence" ] && tgtopt=" --fluo$tgtopt"
     resub="sh condor/muonic_xray_czt_submit.sh$tgtopt --dir $dir${muonsused:+ --muons $muonsused}${setupused:+ --setup $setupused}${osused:+ --os-major $osused}"
   fi
 fi
@@ -109,7 +115,7 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
   printf '%s\n' "$queue" | awk 'NF >= 3 { r = ""; for (i = 4; i <= NF; ++i) r = r (i > 4 ? " " : "") $i
                                           printf "Q\t%s\t%s\t%s\t%s\n", $1, $2, $3, r }'
   printf '%s\n' "$factories" | awk 'NF { printf "A\t%s\n", $1 }'
-} | awk -F '\t' -v dir="$dir" -v name="$name" -v target="$target" -v qok="$qok" -v all="$all" -v resub="$resub" \
+} | awk -F '\t' -v dir="$dir" -v name="$name" -v target="$target" -v detector="$detector" -v qok="$qok" -v all="$all" -v resub="$resub" \
         -v date="$(date '+%F %T')" '
   function add(s, t) { return s == "" ? t : s "; " t }
   function bar(f, w,   i, n, s) { n = int(f * w + 0.5); s = ""; for (i = 0; i < w; ++i) s = s (i < n ? "#" : "."); return s }
@@ -188,7 +194,7 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
       count[st]++
     }
     if (total == 0) { printf "%s  %s: no job macros (%s/<band>/log/job<k>.mac)\n", date, dir, dir; exit 1 }
-    printf "%s  %s: target %s, HTCondor batch %s%s\n", date, dir, target, name, qok == "yes" ? "" : " (no condor_q here: queued, running and held unknown)"
+    printf "%s  %s: detector %s, target %s, HTCondor batch %s%s\n", date, dir, detector, target, name, qok == "yes" ? "" : " (no condor_q here: queued, running and held unknown)"
     printf "progress [%s] %d/%d finished OK (%.1f%%)\n", bar(count["ok"] / total, 40), count["ok"], total, 100 * count["ok"] / total
     line = ""
     for (i = 1; i <= 7; ++i) if (count[order[i]]) line = line (line == "" ? "" : ", ") count[order[i]] " " label[order[i]]

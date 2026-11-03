@@ -29,6 +29,7 @@ class TOFmeterPhysicsMessenger : public G4UImessenger
 
     G4UIdirectory* fDirectory;
     G4UIcommand* fCrossSectionCmd;
+    G4UIcommand* fRadioactiveDecayCmd;   // /tof/physics/radioactiveDecay (TOFmeter --preinit)
 };
 
 #endif

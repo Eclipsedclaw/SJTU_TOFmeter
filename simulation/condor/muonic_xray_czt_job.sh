@@ -34,9 +34,10 @@ if [ -e "$job.done" ]; then
   exit 0
 fi
 muons=$(sed -n 's/^\/control\/alias czEvents //p' "$job.mac")
+preinit=$(sed -n 's/^# preinit //p' "$job.mac")   # --detector lyso: the commands before initialisation
 start=$(date +%s)
-echo "$(date '+%F %T')  $band process $k: $muons muons on $(uname -n) in $(pwd), environment $environment"
-./TOFmeter "$job.mac" > "$job.log" 2>&1
+echo "$(date '+%F %T')  $band process $k: $muons muons on $(uname -n) in $(pwd), environment $environment${preinit:+, --preinit $preinit}"
+./TOFmeter ${preinit:+--preinit "$preinit"} "$job.mac" > "$job.log" 2>&1
 status=$?
 s=$(($(date +%s) - start))
 geant4=$(sed -n 's/^ *Geant4 version Name: *\([^ ]*\).*/\1/p' "$job.log" | head -n 1)

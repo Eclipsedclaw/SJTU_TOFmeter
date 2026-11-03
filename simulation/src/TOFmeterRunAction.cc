@@ -36,6 +36,7 @@
 #include "TOFmeterPrimaryGeneratorAction.hh"
 #include "CosmicRaySource.hh"
 #include "DetectorConstruction.hh"
+#include "IntrinsicSource.hh"
 
 #include "G4AnalysisManager.hh"
 #include "G4Run.hh"
@@ -126,6 +127,10 @@ void TOFmeterRunAction::BeginOfRunAction(const G4Run* aRun)
   }
 
   if (global.GPS == 2) fPrimaryGenerator->GetCosmicRaySource()->PrepareRun();
+  // the pixel panel's own radioactivity, alone (/GeneralParticleSource 3) or around the cosmic rays (/tof/intrinsic/)
+  IntrinsicSource* intrinsic = fPrimaryGenerator->GetIntrinsicSource();
+  if (global.GPS == 3 || (global.GPS == 2 && intrinsic->IsEnabled()))
+    intrinsic->PrepareRun(global.GPS == 2 ? fPrimaryGenerator->GetCosmicRaySource()->GetFlux() : 0.);
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -138,12 +143,16 @@ void TOFmeterRunAction::EndOfRunAction(const G4Run* aRun)
 	const G4int nEvents = aRun->GetNumberOfEvent();
 	const CosmicRaySource* cosmic = fPrimaryGenerator->GetCosmicRaySource();
 	const G4bool isCosmic = (global.GPS == 2);
-	const G4double liveTime = isCosmic ? cosmic->GetLiveTime(nEvents) : 0.;
+	// one decay per event of the pixel panel's radioactivity: live time = events / activity
+	const G4double liveTime = isCosmic ? cosmic->GetLiveTime(nEvents)
+	                        : global.GPS == 3 ? fPrimaryGenerator->GetIntrinsicSource()->GetLiveTime(nEvents) : 0.;
 	if (isCosmic)
 	{
 		G4cout << "Cosmic rays: " << nEvents << " events = " << liveTime/s << " s = "
 		       << liveTime/hour << " h of equivalent live time" << G4endl;
 	}
+	if (global.GPS == 3)
+		G4cout << "Intrinsic decays: " << nEvents << " events = " << liveTime/s << " s of the panel's activity" << G4endl;
 
 	if (global.OutputFormat != 0)
 	{

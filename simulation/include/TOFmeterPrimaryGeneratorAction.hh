@@ -38,6 +38,7 @@
 #include "G4VUserPrimaryGeneratorAction.hh"
 
 class CosmicRaySource;
+class IntrinsicSource;
 class G4GeneralParticleSource;
 class G4SPSPosDistribution;
 class G4SPSAngDistribution;
@@ -56,11 +57,13 @@ class TOFmeterPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
   public:
     void GeneratePrimaries(G4Event*);
     CosmicRaySource* GetCosmicRaySource() { return CosmicRays; }
+    IntrinsicSource* GetIntrinsicSource() { return Intrinsic; }
 
   private:
     G4ParticleGun* particleGun;
 		G4GeneralParticleSource* GeneralParticleSource;
     CosmicRaySource* CosmicRays;
+    IntrinsicSource* Intrinsic;   // the pixel panel's own radioactivity (/tof/intrinsic/)
 
 };
 

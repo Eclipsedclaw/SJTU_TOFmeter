@@ -1,0 +1,11 @@
+### The CZT plane as the pixel panel (/tof/czt/...), the defaults of DetectorConstruction.cc written out (the CZT runs,
+### macro/muonic_xray_czt.mac, set only /tof/czt/enable true): 4 x 4 pixels of 25 x 25 x 10 mm side by side,
+### Cd0.9Zn0.1Te at 5.78 g/cm3. Its place: /tof/czt/position, set by the macro that executes this one.
+
+/tof/czt/enable true
+/tof/czt/name CZT
+/tof/czt/material CZT
+/tof/czt/pixels 4
+/tof/czt/pixelSize 25 mm
+/tof/czt/pitch 0 mm
+/tof/czt/thickness 10 mm

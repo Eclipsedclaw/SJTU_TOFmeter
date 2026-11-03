@@ -34,6 +34,7 @@
 
 #include "TOFmeterPrimaryGeneratorAction.hh"
 #include "CosmicRaySource.hh"
+#include "IntrinsicSource.hh"
 
 #include "G4GeneralParticleSource.hh"
 #include "G4SPSAngDistribution.hh"
@@ -67,6 +68,7 @@ TOFmeterPrimaryGeneratorAction::TOFmeterPrimaryGeneratorAction()
     particleGun->SetParticleDefinition(particle);
     particleGun->SetParticleEnergy(10*MeV);
     CosmicRays = new CosmicRaySource();
+    Intrinsic = new IntrinsicSource();
 
 }
 
@@ -77,6 +79,7 @@ TOFmeterPrimaryGeneratorAction::~TOFmeterPrimaryGeneratorAction()
 	delete GeneralParticleSource;
 	delete particleGun;
 	delete CosmicRays;
+	delete Intrinsic;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -84,7 +87,11 @@ TOFmeterPrimaryGeneratorAction::~TOFmeterPrimaryGeneratorAction()
 void TOFmeterPrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
 { 
 	extern global_struct global;
-	if(global.GPS == 2) CosmicRays->GeneratePrimaryVertex(anEvent);
+	if(global.GPS == 2) {
+		CosmicRays->GeneratePrimaryVertex(anEvent);   // first: the cosmic ray is primary 1 (track ID 1, vertex 0)
+		if (Intrinsic->IsEnabled()) Intrinsic->AddDecays(anEvent);   // the pixel panel's decays around it in time
+	}
+	else if(global.GPS == 3) Intrinsic->AddOneDecay(anEvent);   // one decay of the panel's radioactivity alone
 	else if(global.GPS == 1) GeneralParticleSource->GeneratePrimaryVertex(anEvent);
 	else particleGun->GeneratePrimaryVertex(anEvent);
 }

@@ -29,7 +29,8 @@ struct Volume {
   double Hi(int a) const { return c[a] + 0.5 * s[a]; }
 };
 
-enum Part { kSkip, kLead, kWall, kSteel, kBeam, kPlate, kBar, kSi, kYSO, kTarget, kCZT, kOther };
+// kCZT: a pixel of the pixel panel (/tof/czt/name: CZTPixel, LYSOPixel, ...); kGap: the panel's mother between them
+enum Part { kSkip, kLead, kWall, kSteel, kBeam, kPlate, kBar, kSi, kYSO, kTarget, kCZT, kGap, kOther };
 
 Part PartOf(const Volume& v)
 {
@@ -44,7 +45,10 @@ Part PartOf(const Volume& v)
   if (starts("SiliconLayer")) return kSi;
   if (starts("YSOLayer")) return kYSO;
   if (v.name == "Target") return kTarget;
-  if (starts("CZTPixel")) return kCZT;
+  const auto ends = [&](const std::string& s) {
+    return v.name.size() > s.size() && v.name.compare(v.name.size() - s.size(), s.size(), s) == 0; };
+  if (ends("Pixel")) return kCZT;
+  if (ends("Panel")) return kGap;
   return kOther;
 }
 
@@ -59,6 +63,7 @@ int ColourOf(Part p)
     case kYSO: return TColor::GetColor("#17a2b8");
     case kTarget: return TColor::GetColor("#f29c12");
     case kCZT: return TColor::GetColor("#7a40a1");
+    case kGap: return TColor::GetColor("#e3e1dc");
     default: return TColor::GetColor("#9a9a9a");
   }
 }
@@ -297,8 +302,10 @@ std::pair<int, bool> StationBars(const std::vector<Volume>& table, double z)
   return {n, alongX};
 }
 
-// pixels per side and full size of the CZT plane
-struct Plane { int n = 0; double lo[3] = {1e9, 1e9, 1e9}, hi[3] = {-1e9, -1e9, -1e9}, pixel = 0.; };
+// pixels per side and full size of the pixel panel (CZT, LYSO, ...); name: of its volumes and material (CZT, LYSO),
+// what: "CZT plane" or, with gaps between the pixels, e.g. "LYSO panel"
+struct Plane { int n = 0; double lo[3] = {1e9, 1e9, 1e9}, hi[3] = {-1e9, -1e9, -1e9}, pixel = 0., pitch = 0.;
+               std::string name, what; };
 Plane CZTPlane(const std::vector<Volume>& table)
 {
   Plane p;
@@ -307,9 +314,15 @@ Plane CZTPlane(const std::vector<Volume>& table)
     if (PartOf(v) == kCZT) {
       ++pixels;
       p.pixel = v.s[0];
+      p.name = v.name.substr(0, v.name.size() - 5);
       for (int a = 0; a < 3; ++a) { p.lo[a] = std::min(p.lo[a], v.Lo(a)); p.hi[a] = std::max(p.hi[a], v.Hi(a)); }
     }
   p.n = std::lround(std::sqrt(pixels));
+  p.pitch = p.n > 1 ? (p.hi[0] - p.lo[0] - p.pixel) / (p.n - 1) : p.pixel;
+  p.what = p.name + (p.pitch > p.pixel + 1e-3 ? " panel" : " plane");
+  for (const auto& v : table)   // its full size with the gaps' mother, which reaches half a gap past the outer pixels
+    if (PartOf(v) == kGap)
+      for (int a = 0; a < 3; ++a) { p.lo[a] = std::min(p.lo[a], v.Lo(a)); p.hi[a] = std::max(p.hi[a], v.Hi(a)); }
   return p;
 }
 
@@ -394,7 +407,7 @@ void DrawSide(const std::vector<Volume>& table, double yCut, const std::string& 
                       Form("%g \327 %g \327 %g cm", target->s[0], target->s[1], target->s[2])});
   const Plane czt = CZTPlane(table);
   if (czt.n && rightEnd([](const Volume& v) { return PartOf(v) == kCZT; }, ax, ay))
-    labels.push_back({ax, ay, "CZT plane", Form("%d \327 %d pixels, %g \327 %g \327 %g cm", czt.n, czt.n,
+    labels.push_back({ax, ay, czt.what, Form("%d \327 %d pixels, %g \327 %g \327 %g cm", czt.n, czt.n,
                                                 czt.hi[0] - czt.lo[0], czt.hi[1] - czt.lo[1], czt.hi[2] - czt.lo[2])});
   if (rightEnd([](const Volume& v) { return PartOf(v) == kSi || PartOf(v) == kYSO; }, ax, ay))
     labels.push_back({ax, ay, "Si/YSO stack", "Compton detector"});
@@ -489,18 +502,25 @@ void DrawZoom(const std::vector<Volume>& table, double yCut, const std::string& 
   double zw = target->Lo(2) - 1.;   // height of the first width dimension
   if (czt.n) {
     const double czx = 0.5 * (czt.lo[0] + czt.hi[0]), czz = 0.5 * (czt.lo[2] + czt.hi[2]), dz = czt.hi[2] - czt.lo[2];
-    Text(czx, czz, "CZT", 30, 22, kWhite, 63);
+    Text(czx, czz, czt.name.c_str(), std::min(30, int(0.8 * dz / cm)), 22, kWhite, 63);   // fits a thin panel
     const double xc = czt.hi[0] + 0.9;
     Thin(czt.hi[0], czt.lo[2], xc + 0.4, czt.lo[2]);
     Dimension(xc, czt.lo[2], xc, czt.hi[2], Form("%g cm", dz), cm);
-    // its pixels right of the target's edge, clear of the extension lines of the widths
-    Text(target->Hi(0) + 0.35, czz + 0.25, Form("CZT: %d \327 %d pixels", czt.n, czt.n), 26, 12, grey);
-    Text(target->Hi(0) + 0.35, czz - 0.25, Form("of %g \327 %g \327 %g cm", czt.pixel, czt.pixel, dz), 26, 12, grey);
-    zw = czt.lo[2] - 0.9;
-    Thin(czt.lo[0], czt.lo[2], czt.lo[0], zw - 0.3);
-    Thin(czt.hi[0], czt.lo[2], czt.hi[0], zw - 0.3);
-    Dimension(czt.lo[0], zw, czt.hi[0], zw, Form("%g cm", czt.hi[0] - czt.lo[0]), cm);
-    zw -= 1.1;
+    // its pixels right of the target's edge, clear of the extension lines of the widths; under a panel about as wide
+    // as the target (the LYSO's), centred below it
+    const bool wide = czt.hi[0] > target->Hi(0) - 1.;
+    const double tx = wide ? czx : target->Hi(0) + 0.35, tz = wide ? czt.lo[2] - 0.4 : czz + 0.25;
+    Text(tx, tz, Form("%s: %d \327 %d pixels", czt.name.c_str(), czt.n, czt.n), 26, wide ? 22 : 12, grey);
+    Text(tx, tz - 0.5, czt.pitch > czt.pixel + 1e-3
+         ? Form("of %g \327 %g \327 %g cm, %.3g cm pitch", czt.pixel, czt.pixel, dz, czt.pitch)
+         : Form("of %g \327 %g \327 %g cm", czt.pixel, czt.pixel, dz), 26, wide ? 22 : 12, grey);
+    zw = czt.lo[2] - (wide ? 1.6 : 0.9);
+    if (std::abs(czt.hi[0] - czt.lo[0] - target->s[0]) > 0.01) {   // its width, unless that of the target
+      Thin(czt.lo[0], czt.lo[2], czt.lo[0], zw - 0.3);
+      Thin(czt.hi[0], czt.lo[2], czt.hi[0], zw - 0.3);
+      Dimension(czt.lo[0], zw, czt.hi[0], zw, Form("%g cm", czt.hi[0] - czt.lo[0]), cm);
+      zw -= 1.1;
+    }
   }
   Thin(target->Lo(0), target->Lo(2), target->Lo(0), zw - 0.3);
   Thin(target->Hi(0), target->Lo(2), target->Hi(0), zw - 0.3);
@@ -566,11 +586,11 @@ void DrawTop(const std::vector<Volume>& table, const std::string& base)
                       Form("%g \327 %g cm, %g cm thick", target->s[0], target->s[1], target->s[2])});
   }
   const Plane czt = CZTPlane(table);
-  for (const auto& v : table)
-    if (PartOf(v) == kCZT) Box(v.Lo(0), v.Lo(1), v.Hi(0), v.Hi(1), ColourOf(kCZT));
+  for (const auto& v : table)   // the gaps' mother first, then the pixels in it
+    if (PartOf(v) == kCZT || PartOf(v) == kGap) Box(v.Lo(0), v.Lo(1), v.Hi(0), v.Hi(1), ColourOf(PartOf(v)));
   if (czt.n)
     labels.push_back({czt.hi[0], czt.lo[1] + 0.6 * (czt.hi[1] - czt.lo[1]),
-                      target ? "CZT plane, under the target" : "CZT plane",
+                      target ? czt.what + ", under the target" : czt.what,
                       Form("%g \327 %g cm, %d \327 %d pixels", czt.hi[0] - czt.lo[0], czt.hi[1] - czt.lo[1], czt.n,
                            czt.n)});
   if (auto si = Find(table, kSi); si && !czt.n)

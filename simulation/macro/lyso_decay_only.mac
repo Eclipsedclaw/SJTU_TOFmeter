@@ -1,0 +1,27 @@
+### The LYSO panel's own radioactivity alone (no cosmic rays): one Lu-176 decay per event at a random point of the panel
+### (/GeneralParticleSource 3), every event with energy in the panel written (/EventFilter 7). Its live time is events /
+### activity (printed at the end of the run and kept in the run tree). The geometry of macro/muonic_xray_lyso.mac.
+###   ./TOFmeter --preinit macro/preinit_lyso.mac macro/lyso_decay_only.mac
+### Needs the aliases czSeed, czEvents, czDir, czFile, tgtCm, tgtZ and cztZ as macro/muonic_xray_lyso.mac, and
+### tgtMat (the target material, e.g. G4_Al: the target scatters the panel's gammas back into it).
+
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 {tgtCm} cm
+/tof/target/position 0 0 {tgtZ} cm
+/tof/target/material {tgtMat}
+/control/execute macro/panel_lyso.mac
+/tof/czt/position 0 0 {cztZ} cm
+/update
+/process/had/rdm/nucleusLimits 176 176 71 72
+
+/OutputFormat 1
+/EventFilter 7
+/OutputDirectory {czDir}
+/OutputFile {czFile}
+/gun/seed {czSeed}
+/GeneralParticleSource 3
+# as macro/muonic_xray_lyso.mac: Auger electrons off, fluorescence on
+/process/em/auger false
+/process/em/augerCascade false
+/run/beamOn {czEvents}

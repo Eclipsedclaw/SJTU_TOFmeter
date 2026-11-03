@@ -73,7 +73,8 @@ class TOFmeterEventAction : public G4UserEventAction
     // where the energy of a track comes from, for the stack hits (stk_src): a muonic X-ray (source 0) or a
     // nuclear-capture gamma (source 1) of a mu- capture, else what its parent came from (tracking action)
     void SetTrackOrigin(const G4Track& track, G4int captureSource);
-    static constexpr G4int kTargetXray = 1, kOtherXray = 2, kCaptureGamma = 4, kOtherOrigin = 8;
+    // kIntrinsic: the radioactivity of the pixel panel's crystal (/tof/intrinsic/, e.g. Lu-176), since 2026-11-03
+    static constexpr G4int kTargetXray = 1, kOtherXray = 2, kCaptureGamma = 4, kOtherOrigin = 8, kIntrinsic = 16;
     void AddAbsorberHit(G4double edep) { fAbsorberEdep += edep; }
     // first entry of the primary into the Compton detector (later entries are ignored)
     void SetComptonEntry(G4double kinE) { if (fComptonEntryKE < 0.) fComptonEntryKE = kinE; }

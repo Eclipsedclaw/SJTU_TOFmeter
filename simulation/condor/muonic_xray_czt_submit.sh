@@ -5,14 +5,21 @@
 # either place fit together process by process. --target <NIST material> runs the same setup with another target
 # material (/tof/target/material in every job macro; default G4_Al), into its own folder (output/muonic_xray_czt_<name>,
 # e.g. output/muonic_xray_czt_si for G4_Si) with its own seeds (--seed-base b: slow b + k, fast b + 100000 + k;
-# G4_Al 9500000, G4_Si 9700000, any other target needs one); a folder holds the jobs of one target only. At most 60 jobs at a time (max_materialize; 60 cores may be used), and
+# G4_Al 9500000, G4_Si 9700000, any other target needs one); a folder holds the jobs of one target only. --detector lyso
+# (2026-11-03): the LYSO panel with its Lu-176 (macro/muonic_xray_lyso.mac, TOFmeter --preinit macro/preinit_lyso.mac,
+# the panel's centre cztZ 32.2 cm) in place of the CZT plane, into output/muonic_xray_lyso[_<target>], seeds G4_Al
+# 9900000, G4_Si 10100000; a folder holds one detector too. --fluo (2026-11-04, CZT only): the CZT run with fluorescence
+# (TOFmeter --preinit macro/preinit_fluo.mac: K X-rays, escape peaks, the shield's Pb X-rays), into
+# output/muonic_xray_czt_fluo[_<target>], seeds G4_Al 10300000, G4_Si 10500000. --storage <path> (absolute, an existing
+# folder you can write to): the run folders <path>/output/... in place of the build directory's output/..., e.g. on the
+# cluster's Lustre storage; TOFmeter still runs in the build directory. At most 60 jobs at a time (max_materialize; 60 cores may be used), and
 # no submission while jobs of the same folder are still in the queue (the limit is per submission, and no process may
 # run twice). The jobs run muonic_xray_czt_job.sh, the one beside this script, in this build directory, and write into
 # it. Their environment is that of this shell (getenv: set up Geant4 first); with --setup <file> each job also sources
 # that file before TOFmeter starts, for when condor_submit does not start in a shell set up for Geant4 (submit from one
 # without it). In the build directory:
-#   sh condor/muonic_xray_czt_submit.sh [--target G4_Si] [--seed-base b] [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
-#   sh condor/muonic_xray_czt_submit.sh --test [--target G4_Si] [--setup file] [--os-major n] [--no-submit]
+#   sh condor/muonic_xray_czt_submit.sh [--detector lyso | --fluo] [--target G4_Si] [--storage path] [--seed-base b] [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> [<band> <first> <last> ...]
+#   sh condor/muonic_xray_czt_submit.sh --test [--detector lyso | --fluo] [--target G4_Si] [--storage path] [--setup file] [--os-major n] [--no-submit]
 # <band> is slow (0-1 GeV) or fast (1-1000 GeV); of its processes first-last, those without <dir>/<band>/log/job<k>.done
 # are submitted, e.g. slow 79 88 fast 47 168 (what the shared server's run had not finished on 2026-10-31). Defaults:
 # output/muonic_xray_czt, 5 x 10^6 muons per process (~35 min slow, ~50 min fast on the shared server; a job must end
@@ -26,6 +33,9 @@
 # e.g. 9 for EL9, 7 for CentOS 7), the one TOFmeter was built on; condor_status -af Machine OpSysAndVer lists them.
 
 dir=
+detector=czt
+fluo=no
+storage=
 target=G4_Al
 seedbase=
 muons=5000000
@@ -37,6 +47,9 @@ test=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) dir=$2; shift 2 ;;
+    --detector) detector=$2; shift 2 ;;
+    --fluo) fluo=yes; shift ;;
+    --storage) storage=${2%/}; shift 2 ;;
     --target) target=$2; shift 2 ;;
     --seed-base) seedbase=$2; shift 2 ;;
     --muons) muons=$2; shift 2 ;;
@@ -56,17 +69,47 @@ esac
 case "$target" in
   *[!A-Za-z0-9_]*) echo "--target: a NIST material name such as G4_Si" >&2; exit 1 ;;
 esac
+# the detector: its main macro, the pre-initialisation one (none for the CZT) and the panel's centre (cm)
+case "$detector" in
+  czt) mainmac=macro/muonic_xray_czt.mac; preinit=; cztz=32 ;;
+  lyso) mainmac=macro/muonic_xray_lyso.mac; preinit=macro/preinit_lyso.mac; cztz=32.2 ;;
+  *) echo "--detector: czt (default) or lyso" >&2; exit 1 ;;
+esac
+run=$detector   # the run's name: czt, czt_fluo or lyso
+if [ "$fluo" = yes ]; then
+  if [ "$detector" != czt ]; then
+    echo "--fluo: for the CZT run only (the LYSO runs have fluorescence on already)" >&2
+    exit 1
+  fi
+  preinit=macro/preinit_fluo.mac
+  run=czt_fluo
+fi
+if [ -n "$storage" ]; then
+  case "$storage" in
+    /*) ;;
+    *) echo "--storage: an absolute path, e.g. /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work" >&2; exit 1 ;;
+  esac
+  if [ ! -d "$storage" ] || [ ! -w "$storage" ]; then
+    echo "--storage: $storage is not a folder you can write to (make it first)" >&2
+    exit 1
+  fi
+fi
 if [ "$target" = G4_Al ]; then
-  home=output/muonic_xray_czt
+  home=${storage:+$storage/}output/muonic_xray_$run
 else
-  home=output/muonic_xray_czt_$(printf '%s' "${target#G4_}" | tr 'A-Z' 'a-z')
+  home=${storage:+$storage/}output/muonic_xray_${run}_$(printf '%s' "${target#G4_}" | tr 'A-Z' 'a-z')
 fi
 if [ -z "$seedbase" ]; then
-  case "$target" in
-    G4_Al) seedbase=9500000 ;;
-    G4_Si) seedbase=9700000 ;;
-    *) echo "--seed-base: give one for $target (slow seeds base + k, fast base + 100000 + k; 9500000 is G4_Al's," >&2
-       echo "9700000 G4_Si's, 8000000-9300000 other runs')" >&2
+  case "$run$target" in
+    cztG4_Al) seedbase=9500000 ;;
+    cztG4_Si) seedbase=9700000 ;;
+    lysoG4_Al) seedbase=9900000 ;;
+    lysoG4_Si) seedbase=10100000 ;;
+    czt_fluoG4_Al) seedbase=10300000 ;;
+    czt_fluoG4_Si) seedbase=10500000 ;;
+    *) echo "--seed-base: give one for $target (slow seeds base + k, fast base + 100000 + k; CZT G4_Al 9500000," >&2
+       echo "G4_Si 9700000, LYSO G4_Al 9900000, G4_Si 10100000, CZT with --fluo G4_Al 10300000, G4_Si 10500000;" >&2
+       echo "8000000-9300000 other runs')" >&2
        exit 1 ;;
   esac
 fi
@@ -80,8 +123,8 @@ if [ "$test" = yes ]; then
   set -- slow 1 1 fast 1 1
 fi
 if [ $# -eq 0 ] || [ $(($# % 3)) -ne 0 ]; then
-  echo "usage: sh condor/muonic_xray_czt_submit.sh [--target G4_Si] [--seed-base b] [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> ..." >&2
-  echo "       sh condor/muonic_xray_czt_submit.sh --test [--target G4_Si] [--setup file] [--os-major n] [--no-submit]" >&2
+  echo "usage: sh condor/muonic_xray_czt_submit.sh [--detector lyso | --fluo] [--target G4_Si] [--storage path] [--seed-base b] [--dir path] [--muons n] [--max n] [--setup file] [--os-major n] [--no-submit] <band> <first> <last> ..." >&2
+  echo "       sh condor/muonic_xray_czt_submit.sh --test [--detector lyso | --fluo] [--target G4_Si] [--storage path] [--setup file] [--os-major n] [--no-submit]" >&2
   exit 1
 fi
 for v in "$muons" "$max"; do
@@ -100,8 +143,8 @@ fi
 case "$osmajor" in
   *[!0-9]*) echo "--os-major: a whole number, e.g. 9" >&2; exit 1 ;;
 esac
-case "$dir$setup" in
-  *[[:space:]]*) echo "--dir and --setup: paths without spaces" >&2; exit 1 ;;
+case "$dir$setup$storage" in
+  *[[:space:]]*) echo "--dir, --setup and --storage: paths without spaces" >&2; exit 1 ;;
 esac
 if [ -n "$setup" ]; then
   if [ ! -f "$setup" ] || [ ! -r "$setup" ]; then
@@ -111,7 +154,7 @@ if [ -n "$setup" ]; then
   setup=$(cd "$(dirname "$setup")" && pwd -P)/$(basename "$setup")
 fi
 job=$(cd "$(dirname "$0")" && pwd -P)/muonic_xray_czt_job.sh
-for f in ./TOFmeter macro/muonic_xray_czt.mac data/expacs_spectrum.txt "$job"; do
+for f in ./TOFmeter "$mainmac" ${preinit:+"$preinit"} data/expacs_spectrum.txt "$job"; do
   if [ ! -e "$f" ]; then
     echo "Run this in the build directory ($f is missing)" >&2
     exit 1
@@ -146,6 +189,15 @@ for mac in "$dir"/slow/log/job*.mac "$dir"/fast/log/job*.mac; do
   m=$(sed -n 's/^\/tof\/target\/material //p' "$mac")
   if [ "${m:-G4_Al}" != "$target" ]; then
     echo "$dir holds jobs with the target ${m:-G4_Al} ($mac): give another --dir for $target" >&2
+    exit 1
+  fi
+  if ! grep -qx "/control/execute $mainmac" "$mac"; then
+    echo "$dir holds jobs of another detector than $detector ($mac): give another --dir" >&2
+    exit 1
+  fi
+  p=$(sed -n 's/^# preinit //p' "$mac")
+  if [ "$p" != "$preinit" ]; then
+    echo "$dir holds jobs with the pre-initialisation ${p:-none}, not ${preinit:-none} ($mac): give another --dir" >&2
     exit 1
   fi
 done
@@ -183,6 +235,8 @@ while [ $# -gt 0 ]; do
       continue
     fi
     {
+      # read by muonic_xray_czt_job.sh: TOFmeter --preinit <file>
+      [ -n "$preinit" ] && echo "# preinit $preinit"
       echo "/control/verbose 2"
       echo "/control/alias czSeed $((base + k))"
       echo "/control/alias czEvents $muons"
@@ -192,9 +246,9 @@ while [ $# -gt 0 ]; do
       echo "/control/alias czEmax $emax"
       echo "/control/alias tgtCm 4"
       echo "/control/alias tgtZ 34.5"
-      echo "/control/alias cztZ 32"
+      echo "/control/alias cztZ $cztz"
       echo "/tof/target/material $target"
-      echo "/control/execute macro/muonic_xray_czt.mac"
+      echo "/control/execute $mainmac"
     } > "$sub/log/job$k.mac"
     items="$items$band $k
 "
@@ -215,11 +269,11 @@ here=$(pwd -P)
 stamp=$(date +%Y%m%d_%H%M%S)
 file="$dir/condor/submit_$stamp.sub"
 {
-  echo "# HTCondor jobs of the CZT run (macro/muonic_xray_czt.mac), by condor/muonic_xray_czt_submit.sh on $(date '+%F %T')"
+  echo "# HTCondor jobs of the $run run ($mainmac${preinit:+, --preinit $preinit}), by condor/muonic_xray_czt_submit.sh on $(date '+%F %T')"
   echo "# in $here: $ranges, $n processes of $muons muons ($finished done before), at most $max at a time;"
   echo "# target $target, seeds $seedbase + k (slow) and $((seedbase + 100000)) + k (fast);"
   echo "# environment: the submitting shell's${setup:+, then $setup sourced by each job}"
-  echo "# resubmit: sh condor/muonic_xray_czt_submit.sh --target $target --seed-base $seedbase --dir $dir --muons $muons --max $max${setup:+ --setup $setup}${osmajor:+ --os-major $osmajor}"
+  echo "# resubmit: sh condor/muonic_xray_czt_submit.sh --detector $detector$([ "$fluo" = yes ] && echo " --fluo") --target $target --seed-base $seedbase --dir $dir --muons $muons --max $max${setup:+ --setup $setup}${osmajor:+ --os-major $osmajor}"
   echo "universe              = vanilla"
   echo "executable            = /bin/bash"
   echo "arguments             = \"$job $dir \$(band) \$(k)${setup:+ $setup}\""
@@ -244,7 +298,7 @@ file="$dir/condor/submit_$stamp.sub"
   printf '%s' "$items"
   echo ")"
 } > "$file"
-echo "$(date '+%F %T')  $target: $n processes ($ranges; $finished done before) of $muons muons, at most $max at a time: $file"
+echo "$(date '+%F %T')  $run, $target: $n processes ($ranges; $finished done before) of $muons muons, at most $max at a time: $file"
 if [ "$submit" = no ]; then
   echo "not submitted (--no-submit); to submit: condor_submit $file"
   exit 0

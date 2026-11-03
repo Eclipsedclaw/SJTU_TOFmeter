@@ -8,6 +8,9 @@
 #include "G4UIcommand.hh"
 #include "G4UIdirectory.hh"
 #include "G4UIparameter.hh"
+#include "G4RadioactiveDecayPhysics.hh"
+#include "G4RunManager.hh"
+#include "G4VModularPhysicsList.hh"
 
 #include <cmath>
 #include <cstdio>
@@ -28,17 +31,34 @@ TOFmeterPhysicsMessenger::TOFmeterPhysicsMessenger()
   energies->SetDefaultValue("1 2 5 10 20 50 100");
   fCrossSectionCmd->SetParameter(energies);
   fCrossSectionCmd->AvailableForStates(G4State_Idle);
+
+  // e.g. the Lu-176 of a LYSO panel (/tof/intrinsic/); it also turns on fluorescence and Auger electrons everywhere
+  fRadioactiveDecayCmd = new G4UIcommand("/tof/physics/radioactiveDecay", this);
+  fRadioactiveDecayCmd->SetGuidance("Add Geant4's radioactive decay (G4RadioactiveDecayPhysics) to the physics list; it also");
+  fRadioactiveDecayCmd->SetGuidance("turns on fluorescence and Auger electrons. Only before initialisation: TOFmeter --preinit.");
+  fRadioactiveDecayCmd->SetGuidance("Limit which nuclei decay with /process/had/rdm/nucleusLimits (after /run/initialize).");
+  fRadioactiveDecayCmd->AvailableForStates(G4State_PreInit);
 }
 
 TOFmeterPhysicsMessenger::~TOFmeterPhysicsMessenger()
 {
   delete fCrossSectionCmd;
+  delete fRadioactiveDecayCmd;
   delete fDirectory;
 }
 
 void TOFmeterPhysicsMessenger::SetNewValue(G4UIcommand* command, G4String value)
 {
   if (command == fCrossSectionCmd) PrintCrossSection(value);
+  if (command == fRadioactiveDecayCmd) {
+    auto physics = dynamic_cast<G4VModularPhysicsList*>(
+      const_cast<G4VUserPhysicsList*>(G4RunManager::GetRunManager()->GetUserPhysicsList()));
+    if (!physics) G4cout << "/tof/physics/radioactiveDecay: no modular physics list set" << G4endl;
+    else if (!physics->GetPhysics("G4RadioactiveDecay")) {
+      physics->RegisterPhysics(new G4RadioactiveDecayPhysics);
+      G4cout << "/tof/physics/radioactiveDecay: G4RadioactiveDecayPhysics added to the physics list" << G4endl;
+    }
+  }
 }
 
 void TOFmeterPhysicsMessenger::PrintCrossSection(const G4String& arguments) const

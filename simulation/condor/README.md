@@ -165,7 +165,12 @@ about 10-11 MB (5 x 10^6 muons; the CZT's 1.6-2.4 MB), so 60 days take about 24 
   electrons that the radioactive decay turns on it took 273 s, so the macro turns them off). On the cluster, as the CZT
   jobs, about 0.5 h per slow and 0.7 h per fast process: ~1400 core-hours per target, about a day at 60 cores.
   TOFmeter uses ~135 MB.
-- The check script names the detector in its first line (`detector lyso, target G4_Al`).
+- The check script names the detector in its first line (`detector lyso, target G4_Al`) and, at the end, the Geant4
+  version of the finished jobs (from their `job<k>.out`), with a warning when a folder mixes versions.
+- Geant4 11.2.1 or later (2026-11-04): 11.2.0 (LCG_105a) samples beta decays wrongly (fixed in 11.2.1, problem
+  report #2588), which makes the LYSO's Lu-176 deposits too soft; the CZT runs have no radioactive decay and are not
+  affected. After a rebuild, a LYSO job's `.out` must read `with geant4-11-02-patch-01` or later; jobs of an older
+  build go into a folder of their own (the submit script skips every process that has a `.done` marker).
 
 ## The CZT run with fluorescence (`--fluo`)
 

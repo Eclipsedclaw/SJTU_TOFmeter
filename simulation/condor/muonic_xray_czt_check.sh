@@ -257,3 +257,12 @@ errors='EEEE|FatalException|\*\*\* Break \*\*\*|[Ss]egmentation (violation|fault
                resub != "" ? resub : "sh condor/muonic_xray_czt_submit.sh --dir " dir, again
     } else if (count["ok"] == total) printf "all %d jobs finished OK\n", total
   }'
+
+# the Geant4 version of each finished job (its job<k>.out: "done in N s with geant4-...:"): one folder should hold one
+# version, as a run mixed from two builds differs where the versions differ (2026-11-04: 11.2.0 samples beta decays
+# wrongly, fixed in 11.2.1; it matters for the LYSO runs' Lu-176)
+versions=$(cat "$dir"/slow/log/job*.out "$dir"/fast/log/job*.out 2> /dev/null | sed -n 's/.* done in [0-9]* s with \([^:]*\):.*/\1/p' | sort | uniq -c)
+if [ -n "$versions" ]; then
+  printf 'Geant4 of the finished jobs: %s\n' "$(printf '%s\n' "$versions" | awk '{ printf "%s%s (%d jobs)", (NR > 1 ? ", " : ""), $2, $1 }')"
+  [ "$(printf '%s\n' "$versions" | wc -l)" -gt 1 ] && echo "WARNING: this folder mixes Geant4 versions; run each in a folder of its own"
+fi

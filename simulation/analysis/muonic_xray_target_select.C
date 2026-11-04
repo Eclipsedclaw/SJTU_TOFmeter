@@ -76,6 +76,8 @@ bool gCZT = false;
 bool gTOF = false;     // skims with the measured TOF: the trigger, variables 1 and 3 the track and kinetic energy
 bool gPixel = false;   // CZT skims of single pixels: variables 5 and 6 the pixels hit and their energy
 bool gBottomBar = false;   // skims with the bottom-TOF bar as measured (barBotM): variable 10
+bool gOtherPanel = false;  // single-pixel skims of a panel other than the 16-pixel CZT plane (2026-11-04: the LYSO
+                           // panel), known by the skim's pixelPitch
 double SigmaKeV(double eKeV) { return gSigma1MeV * std::sqrt(eKeV / 1000.); }
 // the target's muonic X-ray lines as simulated (the cascade model's energies, keV): L_alpha, L_beta, K_alpha, K_beta;
 // Al's unless the target argument names Si (2026-11-03)
@@ -209,7 +211,7 @@ std::vector<Cut> Options(int i)
     case 7: for (double k : {1.5, 2.5, 3.5}) range(-1e9, k); break;      // at most 1-3 hits
     case 8: for (double x : {0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99}) range(x, 1e9); break;
     case 9:   // outermost hit within x cm; the CZT's pixel centres are at 1.25 and 3.75 cm: the 4 central pixels only
-      if (gCZT) range(-1e9, 2.5);
+      if (gCZT && !gOtherPanel) range(-1e9, 2.5);
       else for (double x : {9.5, 9., 8., 7., 6., 5.}) range(-1e9, x);
       break;
     case 11: for (double a : {15., 20., 25., 30., 35., 40.}) range(-1e9, a); break;   // track within a deg of the vertical
@@ -240,7 +242,8 @@ std::string Describe(const Cuts& cuts, int i)
       return Form("lowest layer >= %d", int(std::ceil(c.lo)));
     case 7: return Form("at most %d hits", int(std::floor(c.hi)));
     case 8: return Form("largest hit > %.2f of the entry", c.lo);
-    case 9: return gCZT ? std::string("one of the 4 central pixels") : std::string(Form("outermost hit < %.1f cm", c.hi));
+    case 9: return gCZT && !gOtherPanel ? std::string("one of the 4 central pixels")
+                                        : std::string(Form("outermost hit < %.1f cm", c.hi));
     case 11: return Form("track within %.0f deg of the vertical", c.hi);
     case 13: return c.lo > 0. ? Form("entry energy %.0f-%.0f keV", c.lo, c.hi) : Form("entry energy < %.0f keV", c.hi);
     default: return "none";
@@ -310,6 +313,20 @@ void muonic_xray_target_select(const char* slowSkim = "output/muonic_xray_target
       printf("WARNING: %s has an energy sigma of %g keV at 1 MeV, this study assumes %g\n", path, skimSigma, sigma1MeV);
     }
   }
+  // the pixel panel (2026-11-04): the CZT plane (16 pixels, 2.5 cm pitch) or another, e.g. the LYSO panel's 30 x 30 on
+  // 0.667 cm: its pitch from the skim (pixelPitch; none in the skims before it: the CZT), its pixels from the highest one
+  double pitch = 2.5;
+  int nPixels = 16;
+  if (gCZT && gPixel) {
+    TFile file(slowSkim);
+    if (auto p = dynamic_cast<TParameter<double>*>(file.Get("pixelPitch"))) pitch = p->GetVal();
+    if (auto n = dynamic_cast<TParameter<double>*>(file.Get("pixelsPerSide")))   // the skim's, from the run's log
+      nPixels = int(n->GetVal() * n->GetVal());
+    else if (auto cand = dynamic_cast<TTree*>(file.Get("cand")))   // older skims: from the highest pixel hit
+      nPixels = std::max(16, int(cand->GetMaximum("pix")) + 1);
+    gOtherPanel = std::abs(pitch - 2.5) > 1e-3;
+    if (gOtherPanel) entryName = "pixel entry";
+  }
   if (gTOF) {   // the reconstructed track and kinetic energy in place of the middle-TOF bar and the time of flight
     kVars[1] = {"track at the target (cm)", 30, 0., 30., false};   // max(|x|,|y|) where it crosses the centre plane
     // every event inside the axes: the bar energies (a hit above 0.2 MeV) on log axes to 10^2.5 MeV, 12 bins a decade; the
@@ -328,11 +345,22 @@ void muonic_xray_target_select(const char* slowSkim = "output/muonic_xray_target
     kVars[6] = {"other pixels' energy (MeV)", 177, std::pow(10., -2.5), 30. * std::sqrt(10.), false, true, 0.01, true, "0",
                 30., "#geq30", true};
     kVars[9] = {"pixel centre (cm)", 5, 0., 5., false};   // max(|x|,|y|): 1.25 inner, 3.75 outer
+    if (gOtherPanel) {   // more and smaller pixels: their centres out to the panel's half width, their numbers
+      static std::string pixelAxis;
+      pixelAxis = Form("pixel (1-%d)", nPixels);
+      kVars[5] = {"pixels hit in the event", 20, 0.5, 20.5, true};
+      kVars[9] = {"pixel centre (cm)", 22, 0., 0.5 * std::sqrt(double(nPixels)) * pitch + 0.5, false};
+      kVars[12] = {pixelAxis.c_str(), 60, 0.5, nPixels + 0.5, false};
+    }
   } else if (gCZT) {      // the CZT entry: pixel hits, the largest pixel hit, the pixel centres (1.25 or 3.75 cm out)
     kVars[7] = {"pixel hits in the entry", 5, 0.5, 5.5, true};
     kVars[8] = {"largest hit / entry", 26, 0., 1.04, false};
     kVars[9] = {"outermost pixel centre (cm)", 5, 0., 5., false};
   }
+  if (gOtherPanel)
+    stamp[0] = Form("pixel panel of %d pixels on a %.3g cm pitch, each read out alone; sigma/E %.1f%% at 662 keV, 10 keV threshold",
+                    nPixels, pitch, 100. * sigma1MeV * std::sqrt(0.662) / 662.);
+  else
   stamp[0] = gCZT ? Form("CZT plane, %s; FWHM/E %.1f%% at 1 MeV, 10 keV threshold", gPixel ? "each of its 16 pixels read out alone"
                                                                                            : "its pixels summed within 100 ns",
                          2.3548 * sigma1MeV / 10.)
@@ -485,7 +513,8 @@ void muonic_xray_target_select(const char* slowSkim = "output/muonic_xray_target
   }
 
   const char* kindNames[3] = {"muonic X-rays of the target", "muonic X-rays of other volumes", "the rest"};
-  printf("\n=== %s: simulated %s entries with a middle-TOF hit in coincidence%s ===\n", label, gCZT ? "CZT" : "stack",
+  printf("\n=== %s: simulated %s entries with a middle-TOF hit in coincidence%s ===\n", label,
+         gOtherPanel ? "pixel" : gCZT ? "CZT" : "stack",
          gTOF ? " and the TOF trigger" : "");
   if (gTOF)
     printf("the trigger (top and middle) keeps in the L_alpha window %s: target X-rays %.1f of %.1f (%.0f%%), everything else "
@@ -1247,7 +1276,7 @@ void muonic_xray_target_select(const char* slowSkim = "output/muonic_xray_target
     return events;
   };
   const std::vector<Entry> captured = eventsOf([](const Entry&) { return true; });
-  const char* anEntry = gCZT ? "a CZT entry" : "a stack entry";
+  const char* anEntry = gOtherPanel ? "a pixel entry" : gCZT ? "a CZT entry" : "a stack entry";
   const char* eventsName = gTOF ? "triggered events" : "events with a middle-TOF hit";
   const std::string capturedAll = Form("%s with %s, all energies (step 2a; one point per event)", eventsName, anEntry);
   corner(captured, true, cornerVars, [](const Entry&) { return true; }, "corner_after",

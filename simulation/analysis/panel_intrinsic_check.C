@@ -263,7 +263,7 @@ void panel_intrinsic_check(const char* dir = "output/lyso_concept", const char* 
     band->Draw();
     singles->Draw("hist same");
     note.DrawLatex(0.42, 0.85, Form("the panel's Lu-176 alone, no trigger: %.0f decays/s", activity));
-    note.DrawLatex(0.42, 0.80, Form("%.0f entries/s of 20-1000 keV, %.0f /s in the %s L_{#alpha} window (shaded)", rEntries, rLine, target));
+    note.DrawLatex(0.42, 0.80, Form("%.0f entries/s at 20-1000 keV, %.0f /s in the %s L_{#alpha} window", rEntries, rLine, target));
     note.DrawLatex(0.42, 0.75, Form("#sigma = %.2f keV #times #sqrt{E/MeV}, single pixels, 10 keV threshold", sigma1MeV));
     Save(c, out + "/panel_intrinsic_singles");
   }
@@ -313,7 +313,7 @@ void panel_intrinsic_check(const char* dir = "output/lyso_concept", const char* 
     stack->SetMaximum(total > 0. ? stack->GetMaximum() * 30. : 1.);
     stack->Draw("hist");
     legend->Draw();
-    note.DrawLatex(0.14, 0.85, s ? "within -5..+30 ns of a trigger, after the eight cuts" : "within -5..+30 ns of a trigger, before the cuts");
+    note.DrawLatex(0.14, 0.85, s ? "-5..+30 ns of a trigger, after the cuts" : "-5..+30 ns of a trigger, before the cuts");
     note.DrawLatex(0.14, 0.80, Form("4 cm %s target, LYSO panel", target));
     note.DrawLatex(0.14, 0.75, Form("%.2f days", slowDays));
     Save(c, out + (s ? "/panel_intrinsic_after" : "/panel_intrinsic_before"));

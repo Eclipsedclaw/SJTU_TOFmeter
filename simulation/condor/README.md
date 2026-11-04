@@ -132,7 +132,7 @@ sh condor/muonic_xray_czt_check.sh output/muonic_xray_czt_si
 ## The LYSO panel (`--detector lyso`)
 
 The same setup and bands with the CZT plane replaced by the LYSO panel and its own Lu-176 (2026-11-03,
-`macro/muonic_xray_lyso.mac`: 30 x 30 pixels of 6 x 6 x 6 mm on a 6.667 mm pitch, its centre at cztZ 32.2 cm; 52 kBq
+`macro/muonic_xray_lyso.mac`: since 2026-11-04 20 x 20 pixels of 6.25 x 6.25 x 3 mm on a 6.33 mm pitch with ESR and an Al frame, its Al face towards the target, its pixels' centre at cztZ 32.332 cm; 12.6 kBq
 of Lu-176 decays within +-1 us of every cosmic-ray event). Each job runs `./TOFmeter --preinit macro/preinit_lyso.mac
 <job.mac>`: the job macro's first line, `# preinit macro/preinit_lyso.mac`, tells `muonic_xray_czt_job.sh`. Two months
 for each target, as the CZT run's 60 days (499 slow and 1704 fast processes of 5 x 10^6 muons). Rebuild TOFmeter on

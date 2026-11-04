@@ -17,8 +17,8 @@
 // with a hit within 100 ns of it (itself included) and eOther their energy without it. A CZT hit's x and y are its
 // pixel's centre (2.5 cm pitch), not the smeared position of a stack hit. "czt" reads any pixel panel (/tof/czt/...):
 // pixelPitch (cm) its pitch, for an even number of pixels per side centred on x = y = 0, e.g. the LYSO panel of
-// macro/muonic_xray_lyso.mac (30 x 30 on 0.6666667 cm) with sigma/E 3.3% at 662 keV (the user's measurement; sigma 26.85 keV at 1 MeV):
-//   root -l -b -q 'analysis/muonic_xray_stack_skim.C("output/muonic_xray_lyso/slow", 1, 10000, "skim_slow.root", 4357, "czt", 26.85, 0.3, 0.10, 15., 34.5, 0.6666667)'
+// macro/muonic_xray_lyso.mac (20 x 20 on 0.633 cm since 2026-11-04) with sigma/E 3.3% at 662 keV (the user's measurement; sigma 26.85 keV at 1 MeV):
+//   root -l -b -q 'analysis/muonic_xray_stack_skim.C("output/muonic_xray_lyso/slow", 1, 10000, "skim_slow.root", 4357, "czt", 26.85, 0.3, 0.10, 15., 34.5, 0.633)'
 // (src bit 16: energy of the panel's own Lu-176, /tof/intrinsic/; layers is 0 for pixels from 31 on).
 // sigma1MeV: the energy sigma at 1 MeV (keV), 40 for the stack. etrue: the entry's energy before the response (keV).
 // The TOF as measured, for both detectors, in branches of their own (the true values above stay for the cut studies):
@@ -52,7 +52,7 @@ int VolumeCode(const std::string& v)
   if (v.rfind("Target", 0) == 0) return 0;
   const auto ends = [&](const char* s) { const std::size_t n = std::strlen(s);
                                          return v.size() > n && v.compare(v.size() - n, n, s) == 0; };
-  if (ends("Pixel") || ends("Panel")) return 8;
+  if (ends("Pixel") || ends("Panel") || ends("Frame")) return 8;
   if (v.rfind("FrameworkAl", 0) == 0) return 1;
   if (v.rfind("SiliconLayer", 0) == 0) return 2;
   if (v.rfind("YSOLayer", 0) == 0) return 3;
@@ -82,6 +82,21 @@ std::string Geant4Version(const char* dir, int k)
     return version;
   }
   return "unknown (no log)";
+}
+// pixels per side of the pixel panel as the process's log prints it ("<name> plane: 20 x 20 pixels of ..."), 0 if none
+int PanelPixelsPerSide(const char* dir, int k)
+{
+  std::ifstream log(Form("%s/log/job%d.log", dir, k));
+  std::string line;
+  for (int i = 0; i < 3000 && std::getline(log, line); ++i) {
+    const auto at = line.find(" plane: ");
+    if (at == std::string::npos || line.find(" pixels of ", at) == std::string::npos) continue;
+    std::istringstream words(line.substr(at + 8));
+    int n = 0;
+    words >> n;
+    if (n > 0) return n;
+  }
+  return 0;
 }
 // processes in ascending order as ranges, e.g. "1-78, 80"
 std::string Ranges(const std::vector<int>& k)
@@ -156,6 +171,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
   double liveTime = 0.;
   long long muons = 0;
   int files = 0;
+  int pixelsPerSide = 0;   // of the pixel panel, from the first process's log
   std::map<std::string, std::vector<int>> versions;   // the processes of every Geant4 version
   info->Branch("live_time", &liveTime); info->Branch("muons", &muons); info->Branch("files", &files);
 
@@ -176,6 +192,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
     muons += nEvents;
     ++files;
     versions[Geant4Version(dir, k)].push_back(k);
+    if (pixelsPerSide == 0) pixelsPerSide = PanelPixelsPerSide(dir, k);   // the panel's size, from its log (2026-11-04)
     int eventID = 0, primary = 0, primStations = 0;
     double kin = 0., tEnd = 0., xEnd = 0., yEnd = 0., zEnd = 0., keEnd = 0., kePb = -1., keTopBar = -1.;
     char vol[128] = "", process[128] = "";
@@ -340,6 +357,7 @@ void muonic_xray_stack_skim(const char* dir = "output/muonic_xray_stack", int fi
   TParameter<double>("vEff", vEff, 'f').Write();
   TParameter<double>("targetZ", targetZ, 'f').Write();
   TParameter<double>("pixelPitch", pixelPitch, 'f').Write();
+  if (pixelsPerSide > 0) TParameter<double>("pixelsPerSide", pixelsPerSide, 'f').Write();   // pixel panels (czt_*)
   output.Write();
   printf("%s", c.str().c_str());
   printf("%s: %d processes, %.2f days, %lld candidates\n", out, files, liveTime / 86400., cand->GetEntries());

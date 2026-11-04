@@ -1,15 +1,15 @@
 ### Muonic X-rays in a LYSO panel right under the 20 x 20 x 4 cm target, with the LYSO's own Lu-176 radioactivity, one
 ### job (condor/muonic_xray_czt_submit.sh --detector lyso writes and runs many). The setup of macro/muonic_xray_czt.mac with
-### the CZT plane replaced by the panel (/tof/czt/...: a 200 x 200 x 6 mm LYSO panel read out as 30 x 30 pixels of
-### 6 x 6 x 6 mm on a 6.667 mm pitch, BaSO4 reflector in the gaps as a placeholder for the cells' dead volume; Lu1.8Y0.2SiO5
-### at 7.2 g/cm3), its top face against the target's bottom face. Cosmic mu+ and mu- of czEmin - czEmax GeV from the plane
+### the CZT plane replaced by the panel (/tof/czt/...: a 126.88 x 126.88 x 3.18 mm LYSO panel of 20 x 20 pixels of
+### 6.25 x 6.25 x 3 mm on a 6.33 mm pitch, 0.08 mm ESR between, around and over them, a 0.1 mm Al frame (2026-11-04); Lu1.8Y0.2SiO5
+### at 7.2 g/cm3), its Al top face against the target's bottom face. Cosmic mu+ and mu- of czEmin - czEmax GeV from the plane
 ### of the CZT runs; every cosmic-ray event also gets the panel's Lu-176 decays that fall within -1 to +1 us of it
-### (/tof/intrinsic/: about 52 kBq from the LYSO's mass, 0.1 decays per event on average, at random times and places), so
+### (/tof/intrinsic/: about 12.6 kBq from the LYSO's mass, 0.025 decays per event on average, at random times and places), so
 ### random coincidences with the TOF trigger come out at the true rate; hit source bit 16 (czt_src) marks their energy.
 ### Only events with energy in the panel and a middle-TOF hit or a muon stopped in the target are written (/EventFilter 8;
 ### filter 7 would keep the decays of every event). The live time in the run tree is that of the cosmic-ray band.
 ### Needs TOFmeter --preinit macro/preinit_lyso.mac (radioactive decay) and the aliases czSeed, czEvents, czDir, czFile,
-### czEmin, czEmax, tgtCm, tgtZ and cztZ (centres in cm; cztZ 32.2: the panel at z = 31.9 to 32.5 cm under the target's
+### czEmin, czEmax, tgtCm, tgtZ and cztZ (centres in cm; cztZ 32.332: the pixels at z = 32.182 to 32.482 cm, the ESR and Al over them up to the target's
 ### bottom face at 32.5 cm).
 
 /tof/det/worldSize 420 420 300 cm

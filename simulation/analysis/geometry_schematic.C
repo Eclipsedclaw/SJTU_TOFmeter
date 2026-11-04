@@ -48,7 +48,7 @@ Part PartOf(const Volume& v)
   const auto ends = [&](const std::string& s) {
     return v.name.size() > s.size() && v.name.compare(v.name.size() - s.size(), s.size(), s) == 0; };
   if (ends("Pixel")) return kCZT;
-  if (ends("Panel")) return kGap;
+  if (ends("Panel") || ends("Frame")) return kGap;   // the reflector between the pixels, the frame around them
   return kOther;
 }
 
@@ -304,7 +304,7 @@ std::pair<int, bool> StationBars(const std::vector<Volume>& table, double z)
 
 // pixels per side and full size of the pixel panel (CZT, LYSO, ...); name: of its volumes and material (CZT, LYSO),
 // what: "CZT plane" or, with gaps between the pixels, e.g. "LYSO panel"
-struct Plane { int n = 0; double lo[3] = {1e9, 1e9, 1e9}, hi[3] = {-1e9, -1e9, -1e9}, pixel = 0., pitch = 0.;
+struct Plane { int n = 0; double lo[3] = {1e9, 1e9, 1e9}, hi[3] = {-1e9, -1e9, -1e9}, pixel = 0., pitch = 0., pixelDz = 0.;
                std::string name, what; };
 Plane CZTPlane(const std::vector<Volume>& table)
 {
@@ -314,6 +314,7 @@ Plane CZTPlane(const std::vector<Volume>& table)
     if (PartOf(v) == kCZT) {
       ++pixels;
       p.pixel = v.s[0];
+      p.pixelDz = v.s[2];
       p.name = v.name.substr(0, v.name.size() - 5);
       for (int a = 0; a < 3; ++a) { p.lo[a] = std::min(p.lo[a], v.Lo(a)); p.hi[a] = std::max(p.hi[a], v.Hi(a)); }
     }
@@ -507,13 +508,13 @@ void DrawZoom(const std::vector<Volume>& table, double yCut, const std::string& 
     Thin(czt.hi[0], czt.lo[2], xc + 0.4, czt.lo[2]);
     Dimension(xc, czt.lo[2], xc, czt.hi[2], Form("%g cm", dz), cm);
     // its pixels right of the target's edge, clear of the extension lines of the widths; under a panel about as wide
-    // as the target (the LYSO's), centred below it
-    const bool wide = czt.hi[0] > target->Hi(0) - 1.;
+    // as the target or a thin one (the LYSO panels), centred below it
+    const bool wide = czt.hi[0] > target->Hi(0) - 1. || dz < 0.8;   // or thin: no room beside it (the LYSO panel)
     const double tx = wide ? czx : target->Hi(0) + 0.35, tz = wide ? czt.lo[2] - 0.4 : czz + 0.25;
     Text(tx, tz, Form("%s: %d \327 %d pixels", czt.name.c_str(), czt.n, czt.n), 26, wide ? 22 : 12, grey);
     Text(tx, tz - 0.5, czt.pitch > czt.pixel + 1e-3
-         ? Form("of %g \327 %g \327 %g cm, %.3g cm pitch", czt.pixel, czt.pixel, dz, czt.pitch)
-         : Form("of %g \327 %g \327 %g cm", czt.pixel, czt.pixel, dz), 26, wide ? 22 : 12, grey);
+         ? Form("of %g \327 %g \327 %g cm, %.3g cm pitch", czt.pixel, czt.pixel, czt.pixelDz, czt.pitch)
+         : Form("of %g \327 %g \327 %g cm", czt.pixel, czt.pixel, czt.pixelDz), 26, wide ? 22 : 12, grey);
     zw = czt.lo[2] - (wide ? 1.6 : 0.9);
     if (std::abs(czt.hi[0] - czt.lo[0] - target->s[0]) > 0.01) {   // its width, unless that of the target
       Thin(czt.lo[0], czt.lo[2], czt.lo[0], zw - 0.3);

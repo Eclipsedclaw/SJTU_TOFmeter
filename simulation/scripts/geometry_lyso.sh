@@ -30,5 +30,5 @@ python3 -I scripts/picture_finish.py "$out/raw/setup.png" "$out/geometry_3d_setu
 python3 -I scripts/picture_finish.py "$out/raw/target.png" "$out/geometry_3d_target.png" \
   'plastic bars of the middle TOF=#4db050' "$target" "$lyso" || exit 1
 python3 -I scripts/picture_finish.py "$out/raw/panel.png" "$out/geometry_3d_panel.png" \
-  'LYSO pixels, 6 x 6 x 6 mm, 0.67 mm gaps (BaSO4)=#7a40a1' "$target" || exit 1
+  'LYSO pixels, 6.25 x 6.25 x 3 mm, 0.08 mm ESR gaps=#7a40a1' "$target" || exit 1
 ROOT_HIST=0 root -l -b -q "analysis/geometry_schematic.C(\"$out/geometry.log\", \"$out\", 1.0)"

@@ -155,7 +155,9 @@ DetectorConstruction::DetectorConstruction()
       fCZTName("CZT"),
       fCZTMaterialName("CZT"),
       fCZTPitch(0.),
-      fCZTGapMaterialName("G4_BARIUM_SULFATE")
+      fCZTGapMaterialName("G4_BARIUM_SULFATE"),
+      fCZTBackThickness(0.), fCZTFrameThickness(0.), fCZTFrameMaterialName("G4_Al"),
+      fCZTCoverOnTop(false)
 {
     // 在构造函数中调用DefineMaterials确保材料被创建
     DefineMaterials();
@@ -801,8 +803,8 @@ void DetectorConstruction::PrintGeometry()
     const std::ios_base::fmtflags oldFlags = G4cout.flags();
     const std::streamsize oldPrecision = G4cout.precision();
     G4cout << "\n=== Placed volumes (world frame, cm; size is the axis-aligned extent) ===\n"
-           << "name:copy                       material                    centre x       y       z"
-           << "     size x       y       z      z from      to" << G4endl;
+           << "name:copy                       material                     centre x        y        z"
+           << "      size x        y        z       z from       to" << G4endl;
 
     std::function<void(const G4VPhysicalVolume*, const G4Transform3D&, G4int)> print =
         [&](const G4VPhysicalVolume* pv, const G4Transform3D& toWorld, G4int depth) {
@@ -823,9 +825,9 @@ void DetectorConstruction::PrintGeometry()
         const G4String name = G4String(2 * depth, ' ') + pv->GetName() + ":" + std::to_string(pv->GetCopyNo());
         G4cout << std::left << std::setw(32) << name << std::setw(26)
                << pv->GetLogicalVolume()->GetMaterial()->GetName() << std::right << std::fixed
-               << std::setprecision(2) << std::setw(10) << centre.x() << std::setw(8) << centre.y()
-               << std::setw(8) << centre.z() << std::setw(11) << size.x() << std::setw(8) << size.y()
-               << std::setw(8) << size.z() << std::setw(12) << wMin.z() / cm << std::setw(8)
+               << std::setprecision(3) << std::setw(11) << centre.x() << std::setw(9) << centre.y()   // 10 um, for
+               << std::setw(9) << centre.z() << std::setw(12) << size.x() << std::setw(9) << size.y()   // thin layers
+               << std::setw(9) << size.z() << std::setw(13) << wMin.z() / cm << std::setw(9)
                << wMax.z() / cm << std::defaultfloat << G4endl;
 
         const G4LogicalVolume* lv = pv->GetLogicalVolume();
@@ -936,15 +938,33 @@ void DetectorConstruction::ConstructCZT()
     auto logic_Pixel = new G4LogicalVolume(solid_Pixel, fCZTMaterial, fCZTName + "PixelLogic");
     logic_Pixel->SetVisAttributes(G4VisAttributes(G4Colour(1.0, 0.8, 0.1)));
     fKinds[logic_Pixel] = DetectorKind::CZT;
+    // with gaps (2026-11-04): the gap material also a full gap wide outside the outer pixels and a sheet of backThickness
+    // on one face of the pixels (below them, or on top with coverOnTop); the frame of frameThickness of frameMaterial
+    // around that on the sides and on that face. The pixels' other face is open, flush with the panel's face there (e.g.
+    // the LYSO panel's SiPM side); position is the centre of the pixel layer
     G4LogicalVolume* mother = logic_world;
     G4ThreeVector centre = fCZTPosition;
     if (gaps) {
-        const G4double half = 0.5 * fCZTPixels * pitch;
-        auto solid_Panel = new G4Box(fCZTName + "PanelSolid", half, half, 0.5 * fCZTThickness);
+        const G4double gap = pitch - fCZTPixelSize;
+        const G4double half = 0.5 * (fCZTPixels * pitch + gap), back = fCZTBackThickness, frame = fCZTFrameThickness;
+        const G4double dzPanel = fCZTThickness + back;
+        G4LogicalVolume* outer = logic_world;
+        const G4double side = fCZTCoverOnTop ? 1. : -1.;   // where the sheet and the frame's closed face are
+        G4ThreeVector panelPos = fCZTPosition + G4ThreeVector(0., 0., 0.5 * side * back);   // the pixels' open face flush
+        if (frame > 0.) {
+            auto solid_Frame = new G4Box(fCZTName + "FrameSolid", half + frame, half + frame, 0.5 * (dzPanel + frame));
+            auto logic_Frame = new G4LogicalVolume(solid_Frame, FindMaterial(fCZTFrameMaterialName), fCZTName + "FrameLogic");
+            logic_Frame->SetVisAttributes(G4VisAttributes(G4Colour(0.66, 0.80, 0.91)));
+            const G4ThreeVector framePos = fCZTPosition + G4ThreeVector(0., 0., side * (0.5 * (dzPanel + frame) - 0.5 * fCZTThickness));
+            new G4PVPlacement(nullptr, framePos, logic_Frame, fCZTName + "Frame", logic_world, false, 0, fCheckOverlaps);
+            outer = logic_Frame;
+            panelPos = G4ThreeVector(0., 0., -0.5 * side * frame);   // in the frame: its open face flush with the frame's
+        }
+        auto solid_Panel = new G4Box(fCZTName + "PanelSolid", half, half, 0.5 * dzPanel);
         mother = new G4LogicalVolume(solid_Panel, FindMaterial(fCZTGapMaterialName), fCZTName + "PanelLogic");
         mother->SetVisAttributes(G4VisAttributes(G4Colour(0.92, 0.92, 0.92)));
-        new G4PVPlacement(nullptr, fCZTPosition, mother, fCZTName + "Panel", logic_world, false, 0, fCheckOverlaps);
-        centre = G4ThreeVector();
+        new G4PVPlacement(nullptr, panelPos, mother, fCZTName + "Panel", outer, false, 0, fCheckOverlaps);
+        centre = G4ThreeVector(0., 0., -0.5 * side * back);   // the pixel layer at the panel box's open face
     }
     for (G4int ix = 0; ix < fCZTPixels; ++ix)
         for (G4int iy = 0; iy < fCZTPixels; ++iy) {
@@ -958,6 +978,10 @@ void DetectorConstruction::ConstructCZT()
     G4cout << "\n" << fCZTName << " plane: " << fCZTPixels << " x " << fCZTPixels << " pixels of " << fCZTMaterial->GetName()
            << ", " << fCZTPixelSize/mm << " x " << fCZTPixelSize/mm << " x " << fCZTThickness/mm << " mm";
     if (gaps) G4cout << " on a " << pitch/mm << " mm pitch (" << fCZTGapMaterialName << " between them)";
+    if (gaps && fCZTBackThickness > 0.) G4cout << ", " << fCZTBackThickness/mm << " mm of it " << (fCZTCoverOnTop ? "on top" : "below");
+    if (gaps && fCZTFrameThickness > 0.)
+        G4cout << ", in a " << fCZTFrameThickness/mm << " mm " << fCZTFrameMaterialName << " frame ("
+               << (fCZTPixels * pitch + pitch - fCZTPixelSize + 2. * fCZTFrameThickness)/mm << " mm wide)";
     G4cout << ", centre " << fCZTPosition/cm << " cm (z " << (fCZTPosition.z() - 0.5 * fCZTThickness)/cm << " to "
            << (fCZTPosition.z() + 0.5 * fCZTThickness)/cm << " cm)" << G4endl;
 }
@@ -1192,6 +1216,14 @@ void DetectorConstruction::DefineCommands()
         "Centre-to-centre distance of the pixels; up to the pixel size they touch (default 0)");
     czt->DeclareProperty("gapMaterial", fCZTGapMaterialName,
         "Between the pixels when the pitch is larger than they are (default G4_BARIUM_SULFATE, a reflector)");
+    czt->DeclarePropertyWithUnit("backThickness", "mm", fCZTBackThickness,
+        "With gaps: a sheet of the gap material on one face of the pixels, below them or with coverOnTop on top (default 0)");
+    czt->DeclarePropertyWithUnit("frameThickness", "mm", fCZTFrameThickness,
+        "With gaps: a frame around the panel on its sides and on the sheet's face (default 0: none)");
+    czt->DeclareProperty("frameMaterial", fCZTFrameMaterialName, "The frame's material (default G4_Al)");
+    czt->DeclareProperty("coverOnTop", fCZTCoverOnTop,
+        "true: the sheet and the frame's closed face on the top (+z, towards the target), the pixels' bottom face open "
+        "(e.g. to a SiPM readout); false (default): below, the top face open");
     fMessengers.push_back(std::move(czt));
 
     fBlockMessenger = std::make_unique<BlockMessenger>(this);

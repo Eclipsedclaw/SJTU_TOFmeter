@@ -7,7 +7,7 @@
 # e.g. output/muonic_xray_czt_si for G4_Si) with its own seeds (--seed-base b: slow b + k, fast b + 100000 + k;
 # G4_Al 9500000, G4_Si 9700000, any other target needs one); a folder holds the jobs of one target only. --detector lyso
 # (2026-11-03): the LYSO panel with its Lu-176 (macro/muonic_xray_lyso.mac, TOFmeter --preinit macro/preinit_lyso.mac,
-# the panel's centre cztZ 32.2 cm) in place of the CZT plane, into output/muonic_xray_lyso[_<target>], seeds G4_Al
+# the pixels' centre cztZ 32.332 cm) in place of the CZT plane, into output/muonic_xray_lyso[_<target>], seeds G4_Al
 # 9900000, G4_Si 10100000; a folder holds one detector too. --fluo (2026-11-04, CZT only): the CZT run with fluorescence
 # (TOFmeter --preinit macro/preinit_fluo.mac: K X-rays, escape peaks, the shield's Pb X-rays), into
 # output/muonic_xray_czt_fluo[_<target>], seeds G4_Al 10300000, G4_Si 10500000. --storage <path> (absolute, an existing
@@ -72,7 +72,7 @@ esac
 # the detector: its main macro, the pre-initialisation one (none for the CZT) and the panel's centre (cm)
 case "$detector" in
   czt) mainmac=macro/muonic_xray_czt.mac; preinit=; cztz=32 ;;
-  lyso) mainmac=macro/muonic_xray_lyso.mac; preinit=macro/preinit_lyso.mac; cztz=32.2 ;;
+  lyso) mainmac=macro/muonic_xray_lyso.mac; preinit=macro/preinit_lyso.mac; cztz=32.332 ;;
   *) echo "--detector: czt (default) or lyso" >&2; exit 1 ;;
 esac
 run=$detector   # the run's name: czt, czt_fluo or lyso

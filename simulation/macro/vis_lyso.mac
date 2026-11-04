@@ -1,7 +1,7 @@
 ### Pictures of the LYSO setup for slides, no particles: the geometry of macro/muonic_xray_lyso.mac with the defaults of
 ### condor/muonic_xray_czt_submit.sh --detector lyso (keep them in step): the Si/YSO stack out, the 4 cm Al target at
-### z = 32.5 to 36.5 cm and the LYSO panel (200 x 200 x 6 mm, 30 x 30 pixels of 6 x 6 x 6 mm on a 6.667 mm pitch, BaSO4
-### between them) at z = 31.9 to 32.5 cm, against the target's bottom face. scripts/geometry_lyso.sh runs it, finishes
+### z = 32.5 to 36.5 cm and the LYSO panel (126.88 x 126.88 x 3.18 mm, 20 x 20 pixels of 6.25 x 6.25 x 3 mm on a 6.33 mm pitch,
+### ESR between and over them, a 0.1 mm Al frame, Al on top) at z = 32.182 to 32.5 cm, against the target's bottom face. scripts/geometry_lyso.sh runs it, finishes
 ### its pictures and draws the setup to scale (analysis/geometry_schematic.C). By hand:
 ###   ./TOFmeter macro/vis_lyso.mac > output/geometry_lyso/geometry.log
 ### Writes to output/geometry_lyso/raw/ (4000 x 3000 pixels):
@@ -9,7 +9,7 @@
 ###                top and bottom TOF), seen from the -y side
 ###   target.png   the target and the LYSO panel from below, the middle TOF over them
 ###   panel.png    a corner of the LYSO panel from below and close up: its pixels and gaps under the target
-### Colours as macro/vis_czt.mac (the pixel panel purple). The BaSO4 between the pixels is not drawn (its faces lie in
+### Colours as macro/vis_czt.mac (the pixel panel purple). The ESR between the pixels and the Al frame are not drawn (its faces lie in
 ### those of the pixels, which a renderer cannot tell apart): the 0.67 mm gaps show what is behind them.
 
 /control/verbose 0
@@ -18,7 +18,7 @@
 /tof/target/size 20 20 4 cm
 /tof/target/position 0 0 34.5 cm
 /control/execute macro/panel_lyso.mac
-/tof/czt/position 0 0 32.2 cm
+/tof/czt/position 0 0 32.332 cm
 /update
 /tof/det/print
 /control/shell mkdir -p output/geometry_lyso/raw
@@ -33,6 +33,7 @@
 /vis/viewer/set/upVector 0 0 1
 /vis/geometry/set/visibility WorldLogic 0 false
 /vis/geometry/set/visibility LYSOPanelLogic 0 false
+/vis/geometry/set/visibility LYSOFrameLogic 0 false
 /vis/viewer/set/style wireframe
 /vis/viewer/set/hiddenEdge true
 /vis/viewer/set/globalLineWidthScale 2

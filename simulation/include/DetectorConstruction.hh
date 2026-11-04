@@ -183,6 +183,10 @@ private:
     G4String fCZTMaterialName;
     G4double fCZTPitch;
     G4String fCZTGapMaterialName;
+    G4double fCZTBackThickness;     // a sheet of the gap material under the pixels (2026-11-04: the LYSO's ESR)
+    G4double fCZTFrameThickness;    // a frame around it, on the sides and below (the LYSO's Al)
+    G4String fCZTFrameMaterialName;
+    G4bool fCZTCoverOnTop;          // the sheet and the frame's closed face on the top (+z, towards the target)
 
     // Free-form boxes, e.g. lead shielding bricks (/tof/blocks/...)
     struct Block {

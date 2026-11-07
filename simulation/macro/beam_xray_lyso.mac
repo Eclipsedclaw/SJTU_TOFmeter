@@ -1,0 +1,43 @@
+### Muonic X-rays from a mu- beam in the 20 x 20 x 4 cm target lying on the LYSO panel, one job (2026-11-07, the beam study
+### of Al in Si; condor/beam_xray_submit.sh writes and runs many). The setup of macro/muonic_xray_lyso.mac: the
+### 126.88 x 126.88 x 3.18 mm LYSO panel of 20 x 20 pixels, its Al top face against the target's bottom face at 32.5 cm.
+### The cosmic rays are replaced by a mono-energetic mu- beam straight down (-z) onto the target's top face (36.5 cm),
+### starting at bmZ (cm), with a Gaussian spot of sigma bmSigX x bmSigY (cm; PSI muE1: 39 x 25 mm FWHM = 1.656 x 1.062 cm)
+### and kinetic energy bmEkin (MeV). 29.95 MeV (85 MeV/c) stops at 2.5 cm depth in Si (rms 0.9 mm), 1.5 cm above the panel.
+### Every radioactive decay of the nuclei that the captures leave behind is simulated, at its own time (minutes to years
+### later); analysis/beam_impurity_spectrum.C weights such hits by their chance of falling inside the measuring time.
+### The panel's own Lu-176 is not overlaid here (the gun mode has no overlay). At beam rates every Lu-176 entry counts, so
+### the analysis adds them from the decay-only runs. Only events with energy in the panel and a muon stopped in the
+### target are written (/EventFilter 8).
+### The job macro sets the target (/tof/target/material, impurity, impurityFraction) and the aliases bmSeed, bmEvents,
+### bmDir, bmFile, bmEkin, bmSigX, bmSigY and bmZ, then executes this. Needs TOFmeter --preinit macro/preinit_lyso.mac
+### (radioactive decay and fluorescence).
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 4 cm
+/tof/target/position 0 0 34.5 cm
+/control/execute macro/panel_lyso.mac
+/tof/czt/position 0 0 32.332 cm
+/update
+/OutputFormat 1
+/EventFilter 8
+/OutputDirectory {bmDir}
+/OutputFile {bmFile}
+/gun/seed {bmSeed}
+/GeneralParticleSource 1
+/gps/particle mu-
+/gps/pos/type Beam
+/gps/pos/centre 0 0 {bmZ} cm
+/gps/pos/sigma_x {bmSigX} cm
+/gps/pos/sigma_y {bmSigY} cm
+/gps/direction 0 0 -1
+/gps/ene/type Mono
+/gps/ene/mono {bmEkin} MeV
+# Auger electrons off (the radioactive decay turned them on), as in the LYSO cosmic runs: their few keV stay in the pixel
+# anyway, and they make the run 1.5 times slower. Fluorescence (K X-rays that can leave a pixel) stays on.
+/process/em/auger false
+/process/em/augerCascade false
+# verbose 1: the log ends with "Number of events processed : <bmEvents>", which beam_xray_job.sh and _check.sh look for
+/run/verbose 1
+/run/printProgress 100000
+/run/beamOn {bmEvents}

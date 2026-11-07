@@ -37,7 +37,13 @@ class TOFmeterMuonCascade : public G4HadronicInteraction
     G4HadFinalState* ApplyYourself(const G4HadProjectile& projectile, G4Nucleus& nucleus) override;
     void ModelDescription(std::ostream& out) const override;
 
+    // Z of the event's first muonic atom (the element that caught its first stopped mu-), 0 if none;
+    // TOFmeterEventAction resets it at each event's start and writes it as cap_z (2026-11-07)
+    static G4int CaptureZ() { return fCaptureZ; }
+    static void ResetCaptureZ() { fCaptureZ = 0; }
+
   private:
+    static G4ThreadLocal G4int fCaptureZ;
     void SetModel(G4String model);
     void Print() const;
 

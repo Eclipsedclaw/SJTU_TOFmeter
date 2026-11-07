@@ -13,6 +13,7 @@ place fit together process by process.
 | `muonic_xray_czt_compare.C` | Compares two outputs of the same process (same seed) event by event, or their distributions if the events differ. |
 | `muonic_xray_czt_check.sh` | The state of each job of a folder, checked (exit code 0, output not empty, log without error): queued, running, held, finished OK, failed, the progress; for failed and held jobs the HTCondor ID, the reason and the log paths, and the commands to run them again. Read-only. |
 | `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
+| `beam_xray_submit.sh`, `beam_xray_job.sh`, `beam_xray_check.sh` | (2026-11-07) The same three for the beam study of Al in Si (`macro/beam_xray_lyso.mac`): a mu- beam into the target on the LYSO panel. See "The beam study" below. |
 
 CMake copies this folder's scripts (`*.sh`, `*.C`) into the build directory (`<build>/condor/`); run `cmake` again
 after changing a file here.
@@ -194,6 +195,38 @@ sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo_si
 ```
 
 The 60-core limit holds for all your jobs together: two runs at a time with `--max 30` each, or four with `--max 15`.
+
+## The beam study (`beam_xray_*.sh`, 2026-11-07)
+
+A mono-energetic mu- beam goes straight down into the 20 x 20 x 4 cm target lying on the LYSO panel
+(`macro/beam_xray_lyso.mac`, `./TOFmeter --preinit macro/preinit_lyso.mac`).
+- Defaults: PSI muE1's spot (39 x 25 mm FWHM), 29.95 MeV (85 MeV/c: every muon stops at 2.5 cm depth in Si, rms 0.9 mm),
+  a G4_Si target with 1% of its atoms Al.
+- `analysis/beam_impurity_spectrum.C` reweights the Al-caught and Si-caught muons (column `cap_z`) to any Al
+  concentration and scales the run to one day of beam.
+- 5 x 10^5 muons per job: about 25-40 min, 140 MB of output, 150 MB of memory (local test 2026-11-07: 2.7 ms per muon
+  with Geant4 11.2.2).
+- Folder `output/beam_xray_lyso_si_al0.01`, seeds 10700000 + k.
+
+The code is new (`/tof/target/impurity`, the `cap_z` column, the new macro), so run `cmake` and `make` in the build
+directory first. Then:
+
+```sh
+cd <build>
+S=/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work
+sh condor/beam_xray_submit.sh --test --storage $S --setup <file> --os-major 7      # 1 job of 2 x 10^4 muons first
+sh condor/beam_xray_check.sh $S/output/beam_xray_lyso_si_al0.01_condor_test
+sh condor/beam_xray_submit.sh --storage $S --setup <file> --os-major 7 1 200       # 10^8 muons
+sh condor/beam_xray_check.sh $S/output/beam_xray_lyso_si_al0.01
+```
+
+- The check script follows the rules of `muonic_xray_czt_check.sh`: exit code 0, a non-empty `beam/beam_<k>.root`,
+  and the log's `Number of events processed : <muons>` without an error. It is read-only and prints the commands that
+  would run failed jobs again.
+- Other setups get folders of their own: `--impurity none` for pure Si, another `--fraction`, `--ekin`, `--sigma-x`
+  or `--sigma-y`. Give each a different `--seed-base`.
+- To analyse, sync the folder into the work folder's `output/lyso/`, then:
+  `root -l -b -q 'analysis/beam_impurity_spectrum.C("output/lyso/beam_xray_lyso_si_al0.01")'`.
 
 ## Following the jobs
 

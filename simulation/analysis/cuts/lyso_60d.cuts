@@ -1,0 +1,15 @@
+# Cut profile lyso_60d: the LYSO panel under the 4 cm target (12.69 x 12.69 cm: 20 x 20 pixels of 6.25 mm, each read out alone), with the measured TOF.
+# Optimised on 2026-11-06 18:34 by analysis/cut_profile_optimize.C (report lyso_60d_optimisation.txt) on the skims of
+# output/lyso/analysis/si_60d (Si target, L_alpha 76.24 keV, window +-14.83 keV; slow band 60.06 days, fast band 60.01 days):
+# the counting significance Z_A of the full-energy L_alpha entries in the window (the rest from 30-160 keV x 0.247), 12.64 in 60.06 days (even events 12.36,
+# odd 12.91; the start profile czt 12.18, the trigger alone 0.98); each variable the looser of the halves' choices.
+# A cut keeps lo <= value <= hi; "-" is an open side (analysis/CutProfile.h).
+# variable     lo       hi
+track           -        9
+zenith          -       45
+topE          1.5        3
+midE          1.6        -
+tkin           20       80
+entryE          -      600
+otherE          -      0.5
+npix            -        4

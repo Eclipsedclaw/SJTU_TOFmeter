@@ -1,0 +1,13 @@
+# Cut profile czt: the CZT plane under the 4 cm target (16 pixels of 2.5 cm, each read out alone), with the measured TOF.
+# Chosen by hand on 2026-11-02 and optimised for the Al L_alpha peak the same day (the work folder's
+# output/muonic_xray_czt/pixel_tof/cut_optimization.C, the counting significance under the peak); kept for the 60-day
+# runs of Al and Si. A cut keeps lo <= value <= hi; "-" is an open side (analysis/CutProfile.h).
+# variable     lo       hi
+track           -        8
+zenith          -       35
+topE          1.6      3.5
+midE          1.6        -
+tkin           10       80
+entryE          -      600
+otherE          -      0.6
+npix            -        4

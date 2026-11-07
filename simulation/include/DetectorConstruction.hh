@@ -110,6 +110,7 @@ private:
     void ConstructCZT();
     void ConstructBlocks();
     G4Material* FindMaterial(const G4String& name) const;
+    G4Material* TargetMaterial() const;   // the target's material, with its impurity if one is set
 
     G4VPhysicalVolume* fWorldPhys;
 
@@ -162,6 +163,8 @@ private:
     // Target and degrader (/tof/target/..., /tof/degrader/...)
     G4bool fBuildTarget;
     G4String fTargetMaterialName;
+    G4String fTargetImpurity;               // element mixed into the target (/tof/target/impurity), none if empty
+    G4double fTargetImpurityFraction = 0.;  // its atom fraction (/tof/target/impurityFraction)
     G4ThreeVector fTargetSize;
     G4ThreeVector fTargetPosition;
     G4bool fBuildDegrader;

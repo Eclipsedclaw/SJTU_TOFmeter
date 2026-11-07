@@ -34,6 +34,7 @@
  
 #include "TOFmeterEventAction.hh"
 #include "IntrinsicSource.hh"
+#include "TOFmeterMuonCascade.hh"
 
 #include "G4AnalysisManager.hh"
 #include "G4EmProcessSubType.hh"
@@ -102,6 +103,7 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleIColumn("prim_st");    // TOF stations the primary crossed: bit 0 top, 1 middle, 2 bottom
   analysisManager->CreateNtupleIColumn("prim_top");   // first top-TOF bar of the primary, -1 if none
   analysisManager->CreateNtupleIColumn("prim_mid");   // first middle-TOF bar of the primary, -1 if none
+  analysisManager->CreateNtupleIColumn("cap_z");      // Z of the first muonic atom (the element that caught a stopped mu-), 0 if none
   // bars with energy: station 0-2, bar 0-8, energy, first time, energy-weighted position
   analysisManager->CreateNtupleIColumn("bar_st", fBarStation);
   analysisManager->CreateNtupleIColumn("bar_id", fBarIndex);
@@ -203,6 +205,7 @@ void TOFmeterEventAction::BeginOfEventAction(const G4Event* evt)
 {
   extern global_struct global;
   global.eventID = evt->GetEventID();
+  TOFmeterMuonCascade::ResetCaptureZ();
 
   fBars.clear();
   for (G4int i = 0; i < 3; ++i) { fCamEdep[i] = 0.; fCamTime[i] = -1.; }
@@ -602,6 +605,7 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     analysisManager->FillNtupleIColumn(fNtupleId, col++, fPrimSt);
     analysisManager->FillNtupleIColumn(fNtupleId, col++, fPrimTop);
     analysisManager->FillNtupleIColumn(fNtupleId, col++, fPrimMid);
+    analysisManager->FillNtupleIColumn(fNtupleId, col++, TOFmeterMuonCascade::CaptureZ());
     analysisManager->AddNtupleRow(fNtupleId);
 }
 

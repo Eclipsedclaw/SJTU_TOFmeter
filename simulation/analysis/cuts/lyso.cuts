@@ -1,0 +1,17 @@
+# Cut profile lyso: the LYSO panel under the 4 cm target (12.69 x 12.69 cm: 20 x 20 pixels of 6.25 mm, each read out alone), with the measured TOF.
+# Optimised on 2026-11-05 09:37 by analysis/cut_profile_optimize.C (report lyso_optimisation.txt) on the skims of
+# output/lyso/analysis/si_prelim (Si target, L_alpha 76.24 keV, window +-14.83 keV; slow band 60.06 days, fast band 7.68 days):
+# the counting significance Z_A of the full-energy L_alpha entries in the window (the rest from 30-160 keV x 0.248), 12.54 in 60.06 days (even events 12.39,
+# odd 12.68; the start profile czt 12.35, the trigger alone 0.98); each variable the looser of the halves' choices.
+# Preliminary: the fast band had 7.68 of its 60 days (each of its entries x 7.8); the gain over czt, +0.19 in Z_A, is
+# within the simulation's noise. Re-optimise when the Si run is complete, and on the Al run when it exists.
+# A cut keeps lo <= value <= hi; "-" is an open side (analysis/CutProfile.h).
+# variable     lo       hi
+track           -        9
+zenith          -       45
+topE          1.5        3
+midE          1.5        -
+tkin           20       70
+entryE          -      600
+otherE          -      0.5
+npix            -        4

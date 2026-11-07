@@ -85,6 +85,8 @@ endif()
 file(GLOB TOFmeter_SCRIPTS RELATIVE ${PROJECT_SOURCE_DIR}
      ${PROJECT_SOURCE_DIR}/macro/*.mac
      ${PROJECT_SOURCE_DIR}/analysis/*.C
+     ${PROJECT_SOURCE_DIR}/analysis/*.h
+     ${PROJECT_SOURCE_DIR}/analysis/cuts/*.cuts
      ${PROJECT_SOURCE_DIR}/scripts/*.sh
      ${PROJECT_SOURCE_DIR}/scripts/*.py
      ${PROJECT_SOURCE_DIR}/condor/*.sh

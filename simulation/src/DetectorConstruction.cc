@@ -297,6 +297,40 @@ G4Material* DetectorConstruction::FindMaterial(const G4String& name) const
     return mat;
 }
 
+G4Material* DetectorConstruction::TargetMaterial() const
+{
+    // The target's material, with /tof/target/impurity mixed in at /tof/target/impurityFraction of its atoms
+    // (2026-11-07, the beam study of Al in Si). The mixture keeps the host's density; the element that catches a
+    // stopped mu- is then drawn from the material's atoms by Geant4, and cap_z of the events ntuple tells which one.
+    G4Material* host = FindMaterial(fTargetMaterialName);
+    if (fTargetImpurity.empty() || fTargetImpurityFraction <= 0.) return host;
+    if (fTargetImpurityFraction >= 1.) {
+        G4Exception("DetectorConstruction::TargetMaterial", "Material003", FatalErrorInArgument,
+                    "/tof/target/impurityFraction: an atom fraction below 1");
+    }
+    std::ostringstream name;
+    name << fTargetMaterialName << "+" << fTargetImpurity << "(" << fTargetImpurityFraction << ")";
+    if (G4Material* existing = G4Material::GetMaterial(name.str(), false)) return existing;
+    G4Element* impurity = G4NistManager::Instance()->FindOrBuildElement(fTargetImpurity);
+    if (!impurity) {
+        G4ExceptionDescription ed;
+        ed << "/tof/target/impurity: unknown element \"" << fTargetImpurity << "\" (a symbol such as Al)";
+        G4Exception("DetectorConstruction::TargetMaterial", "Material004", FatalErrorInArgument, ed);
+    }
+    // atom fraction f -> mass fraction: the host's mean mass per atom against the impurity's
+    const G4double f = fTargetImpurityFraction;
+    const G4double hostPerAtom = host->GetDensity() / host->GetTotNbOfAtomsPerVolume();
+    const G4double impurityPerAtom = impurity->GetA() / CLHEP::Avogadro;
+    const G4double w = f * impurityPerAtom / (f * impurityPerAtom + (1. - f) * hostPerAtom);
+    auto mixture = new G4Material(name.str(), host->GetDensity(), 2);
+    mixture->AddMaterial(host, 1. - w);
+    mixture->AddElement(impurity, w);
+    G4cout << "Target material " << name.str() << ": " << fTargetImpurity << " at atom fraction " << f
+           << " (mass fraction " << w << ") in " << fTargetMaterialName << ", density "
+           << host->GetDensity() / (g / cm3) << " g/cm3" << G4endl;
+    return mixture;
+}
+
 G4VPhysicalVolume* DetectorConstruction::Construct()
 {
     G4cout << "\n=== Constructing Geometry ===" << G4endl;
@@ -909,10 +943,10 @@ void DetectorConstruction::ConstructTargetAndDegrader()
     // detector (/tof/target/...); 降速铅砖 (degrader), off by default. Both passive.
     if (fBuildTarget) {
         auto solid_Target = new G4Box("TargetSolid", 0.5 * fTargetSize.x(), 0.5 * fTargetSize.y(), 0.5 * fTargetSize.z());
-        auto logic_Target = new G4LogicalVolume(solid_Target, FindMaterial(fTargetMaterialName), "TargetLogic");
+        auto logic_Target = new G4LogicalVolume(solid_Target, TargetMaterial(), "TargetLogic");
         logic_Target->SetVisAttributes(G4VisAttributes(G4Colour(1.0, 0.6, 0.0)));
         new G4PVPlacement(nullptr, fTargetPosition, logic_Target, "Target", logic_world, false, 0, fCheckOverlaps);
-        G4cout << "\nTarget: " << fTargetMaterialName << ", size " << fTargetSize/cm
+        G4cout << "\nTarget: " << logic_Target->GetMaterial()->GetName() << ", size " << fTargetSize/cm
                << " cm at " << fTargetPosition/cm << " cm" << G4endl;
     }
     if (fBuildDegrader) {
@@ -1188,6 +1222,10 @@ void DetectorConstruction::DefineCommands()
     target->DeclareProperty("enable", fBuildTarget,
         "Build the target box (default true: 20 x 20 x 1 cm G4_Al centred at z = 36 cm)");
     target->DeclareProperty("material", fTargetMaterialName, "Target material (NIST or YSO/LYSO/CdZnTe)");
+    target->DeclareProperty("impurity", fTargetImpurity,
+        "Element mixed into the target material (a symbol such as Al; with impurityFraction)");
+    target->DeclareProperty("impurityFraction", fTargetImpurityFraction,
+        "Atom fraction of the impurity (e.g. 0.01; 0, the default, for none)");
     target->DeclarePropertyWithUnit("size", "cm", fTargetSize, "Full target size x y z");
     target->DeclarePropertyWithUnit("position", "cm", fTargetPosition, "Target centre");
     fMessengers.push_back(std::move(target));

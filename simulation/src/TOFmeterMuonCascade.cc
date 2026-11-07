@@ -10,6 +10,8 @@
 #include "G4ProcessTable.hh"
 #include "G4ios.hh"
 
+G4ThreadLocal G4int TOFmeterMuonCascade::fCaptureZ = 0;
+
 TOFmeterMuonCascade::TOFmeterMuonCascade()
   : G4HadronicInteraction("TOFmeterMuonCascade"),
     fFirstPrinciples(new TOFmeterEmCaptureCascade()),
@@ -45,6 +47,7 @@ TOFmeterMuonCascade* TOFmeterMuonCascade::Install()
 
 G4HadFinalState* TOFmeterMuonCascade::ApplyYourself(const G4HadProjectile& projectile, G4Nucleus& nucleus)
 {
+  if (fCaptureZ == 0) fCaptureZ = nucleus.GetZ_asInt();   // the event's first muonic atom (cap_z)
   const G4bool firstPrinciples = fUseFirstPrinciples && nucleus.GetZ_asInt() <= fZmax;
   return (firstPrinciples ? fFirstPrinciples : fGeant4)->ApplyYourself(projectile, nucleus);
 }

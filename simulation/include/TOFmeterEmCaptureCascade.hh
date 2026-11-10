@@ -80,7 +80,12 @@ public:
   virtual G4HadFinalState* ApplyYourself(const G4HadProjectile &aTrack, 
 					 G4Nucleus & targetNucleus );
 
-  virtual void ModelDescription(std::ostream& outFile) const; 
+  virtual void ModelDescription(std::ostream& outFile) const;
+
+  // Energies of the emitted mu- X-rays (2026-11-09): false (default) the hydrogenic point-nucleus levels; true the
+  // measured K_alpha and L_alpha of Cr, Fe and Ni (hydrogenic from n = 3 up). Set before the run's first capture.
+  static void SetMeasuredEnergies(G4bool on);
+  static G4bool MeasuredEnergies();
 
 private:
 

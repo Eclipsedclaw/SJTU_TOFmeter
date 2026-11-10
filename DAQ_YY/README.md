@@ -236,15 +236,16 @@ Stop after a step fails twice. Don't try other commands or edit other files. Cop
 
 ## Check the recorded data
 
-The [`scripts/`](scripts/) folder has two Python scripts that check what the cards record. They read the ROOT file that `raw2root_new` (ad9694daqtrigchain repo) makes from a run's `.dat` file: one tree per channel, named `ch<id>` with id = 10000 + 10 × board + channel, so board 1 channel 0 is `ch10010`.
+The [`scripts/`](scripts/) folder has three Python scripts that check what the cards record. They read the ROOT file that `raw2root_new` (ad9694daqtrigchain repo) makes from a run's `.dat` file: one tree per channel, named `ch<id>` with id = 10000 + 10 × board + channel, so board 1 channel 0 is `ch10010`.
 
 | Script | Use it to |
 |---|---|
 | [`analyze_baseline.py`](scripts/analyze_baseline.py) | Check every channel of a pedestal run (no signal, software trigger): pedestal level and noise, stability between triggers, noise spectrum, correlated noise, missing and short waveforms |
 | [`plot_waveforms.py`](scripts/plot_waveforms.py) | Look at the raw waveforms of one channel, for example to see where short waveforms stop |
-| [`daqyy_common.py`](scripts/daqyy_common.py) | Code shared by the two scripts. Not run on its own; keep it in the same folder |
+| [`analyze_sync.py`](scripts/analyze_sync.py) | Measure how well the boards agree in time: one pulse split to several channels (self-trigger run), its rising edge compared between them |
+| [`daqyy_common.py`](scripts/daqyy_common.py) | Code shared by the scripts. Not run on its own; keep it in the same folder |
 
-Values stay in ADC counts and samples (only `t2prev`, as the converter stores it, is in seconds). Both scripts number the triggers of each board from 0, so trigger 2 means the same trigger in both.
+`analyze_baseline.py` and `plot_waveforms.py` keep values in ADC counts and samples (only `t2prev`, as the converter stores it, is in seconds), and both number the triggers of each board from 0, so trigger 2 means the same trigger in both. `analyze_sync.py` gives times in ns and ps.
 
 ### Before you start
 
@@ -363,7 +364,44 @@ The plots go to a folder named `<run name>_waveforms` next to the ROOT file, unl
 python3 plot_waveforms.py /path/to/run.root --board 5 --channel 2 --triggers all --out /path/to/output
 ```
 
+### Check the timing between boards
+
+Split one pulse to several channels, for example a square wave through a splitter to one channel of every board, and take a self-trigger run (trigger mode 0). For every pulse that a channel and the reference channel both recorded, `analyze_sync.py` takes the time of the rising edge on each and compares them. The reference is board 1 channel 0 unless you choose another with `--ref 10021`.
+
+```bash
+python3 analyze_sync.py
+```
+
+It asks for the ROOT file and the output folder. Give several files, separated by spaces or as a `*` pattern, to compare runs. To skip the questions:
+
+```bash
+python3 analyze_sync.py /path/to/run.root --out /path/to/output
+python3 analyze_sync.py run00044.root run00045.root run00050.root --out /path/to/output
+```
+
+The edge time is the trigger time tag (`ttt`, 2 ns ticks, which the boards step by 4 ns) plus the point inside the waveform where the edge crosses half of the pulse height, interpolated between samples. Together they resolve far less than one sample. The script reads `pulse_pre` from the `.conf` that XIAOLAB DAQ keeps next to each data file; without one, give `--pulse-pre`. It needs at least 40 samples before the trigger place (`pulse_pre` 20 or more) and pulses at least about 100 ns apart, so that the baseline before each edge is flat. A run of 1.7 million waveforms takes about a minute.
+
+**Passes if** the last line reads `Outputs in <folder>`.
+
+| File | What it shows |
+|---|---|
+| `sync_summary.txt` | One line per channel: usable edges, pulses in common with the reference, offset (ns) and jitter σ (ps) with their errors. With several runs, also the offset and jitter of every channel per run |
+| `sync_offsets.png` | Offset of every channel to the reference |
+| `sync_dt_ch<id>.png` | Histogram of the time difference to the reference, with its Gaussian fit; one file per channel |
+| `sync_runs.png` | With several runs: every channel's offset per run, minus its mean over the runs |
+| `sync_channels.csv` | The numbers, one row per run and channel |
+
+With several runs, each run's plots go into a folder named after the run. `--phase-correction` removes a small bias of the interpolation (up to ±25 ps, depending on where the edge falls between two samples); use it when a channel has thousands of pulses in common with the reference.
+
+#### Reference: runs 39–50 (2026-11-07, square wave split to channel X−1 of board X)
+
+- **Jitter** σ between two boards: 29–42 ps. ADC noise alone (2.2 ADC on an edge that rises 200 ADC per sample) gives 34 ps, so the boards' clocks add no jitter that can be measured (at most about 14 ps). With `--phase-correction` run 50 gives 30–33 ps.
+- **Offsets** to board 1, mean of the runs: board 2 +4.766, board 3 −4.772, board 4 +5.056, board 5 +4.771, board 6 +0.079, board 7 +4.894, board 8 −4.489 ns.
+- **Repeatability:** runs 44–48 (the same pulse shape, five separate starts of the DAQ) repeat every offset to within 2–10 ps. Another pulse shape or record length moves them by up to 40 ps: run 50 (5 % duty cycle), runs 39–40 (2000 samples before the trigger).
+- The offsets are fixed delays: either the cables after the splitter or the boards' clock distribution. Swap two cables and repeat the run to tell which. Measure them once with the pulse you use, then subtract them.
+- At high rates each board records only part of the pulses: in run 50 (1 MHz) each pair shared 2800–4200 pulses, all in the first 0.1 s. At 10 MHz (run 49) the pulses are too close for a flat baseline, so no edge can be used.
+
 ### Good to know
 
-- The scripts suit runs where every trigger records the same window (software or external trigger), not self-trigger runs.
+- `analyze_baseline.py` and `plot_waveforms.py` suit runs where every trigger records the same window (software or external trigger), not self-trigger runs. `analyze_sync.py` is made for self-trigger runs.
 - Running a script creates `scripts/__pycache__/`, Python's compiled copy of `daqyy_common.py`. Git ignores it, and it is safe to delete.

@@ -42,6 +42,9 @@
 //  - October 2026: renamed from G4EmCaptureCascade for the TOFmeter application, because a
 //    class of that name is part of the Geant4 libraries; installed in the mu- capture process
 //    by TOFmeterMuonCascade (/tof/physics/muonCascade).
+//  - November 2026: measured K_alpha and L_alpha energies for Cr, Fe, Ni as an option
+//    (SetMeasuredEnergies, /tof/physics/muonXrayEnergies measured); the default is unchanged.
+//    2026-11-10: also C, N, Si, P, S, K, Mn, Mo, Th, U, with their fine-structure lines and Dirac levels from n = 3.
 //
 //-----------------------------------------------------------------------------
 
@@ -68,6 +71,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -99,7 +103,8 @@ struct MuFPTransition {
   G4double deltaERate = 0.0;
 
   // Energy assigned to the emitted secondary.
-  // This comes from the pure hydrogenic muonic-atom levels with reduced mass.
+  // This comes from the pure hydrogenic muonic-atom levels with reduced mass
+  // (n = 1, 2 from measured lines with /tof/physics/muonXrayEnergies measured).
   G4double deltaEOutput = 0.0;
 
   G4double gammaRad = 0.0;
@@ -116,6 +121,85 @@ struct MuFPChannel {
   G4double emittedEnergy = 0.0;
   MuFPChannelType type = MuFPChannelType::kRadiative;
 };
+
+// The emitted energies (/tof/physics/muonXrayEnergies): false (default) the pure hydrogenic (point-nucleus) levels
+// for every element; true, for the elements of kMeasuredLines (2026-11-09 Cr, Fe, Ni; 2026-11-10 the steel study's
+// C, N, Si, P, S, K, Mn, Mo, Th, U):
+//   - the levels from n = 3 up from the Dirac equation of a point nucleus with the reduced mass (the circular orbit's
+//     j = n - 1/2 and n - 3/2, averaged with 2j + 1), times 1.0047 for the vacuum polarisation (Fe's 3d5/2 -> 2p3/2;
+//     it gives 208Pb's 4f -> 3d at 938.1 and 973.7 keV, measured 938.0 and 971.9, and 238U's 5g -> 4f at 544.3 keV,
+//     measured 544); the hydrogenic levels are 2-4% off for U;
+//   - n = 2 and n = 1 below them by the 2j+1-weighted means of the L_alpha (3 -> 2) and K_alpha (2 -> 1) lines;
+//   - each emitted 2 -> 1, 3 -> 2 (and, where given, 4 -> 3) photon one of its fine-structure lines, drawn with the
+//     statistical weights 2p3/2 : 2p1/2 = 2 : 1, 3d5/2->2p3/2 : 3d3/2->2p1/2 : 3d3/2->2p3/2 = 9 : 5 : 1 and
+//     4f7/2->3d5/2 : 4f5/2->3d3/2 : 4f5/2->3d5/2 = 20 : 14 : 1 (D.F. Measday, Phys. Rep. 354 (2001) 243, eq. 3.5);
+//     the 3 -> 2 lines other than 3d -> 2p get the same split.
+// From Z ~ 20 the muon's 1s orbit overlaps the nucleus (Fe: ~10 fm against ~4.6 fm), so the hydrogenic K lines come
+// out too high: Cr 1212, Fe 1423, Ni 1650 keV (11-16%), U ~18 MeV against a measured ~6.1-6.4 MeV.
+// The rates keep their own energy scale (deltaERate) either way.
+G4bool gMeasuredEnergies = false;
+
+// The lines in keV. Measured where a measurement was at hand: Fe (natural Fe, ENSDF 56Fe(mu-,nu gamma), NDS 112, 1513
+// (2011)), K (natural K, 712.69 keV centre of gravity, Measday Table 3.4), C, N, Si (Measday Table 3.4), Mo (98Mo,
+// ENSDF, NDS 164, 1 (2020): 2708.45, 2683.37, +11.6 keV for natural Mo's smaller mean radius), Ni (64Ni, ENSDF
+// 1976Sh21: 1425.23, 1419.71, +6.6 keV for natural Ni), U (238U, read off the muX collaboration's spectrum, A. Doinaki,
+// CHIPP Winter School 2025: 2p1/2 -> 1s 6125-6145 keV, 2p3/2 -> 1s 6370-6470 keV, split by the deformed nucleus;
+// +-15 and +-40 keV). The others from the point-nucleus Dirac lines times the ratio measured/point of the neighbouring
+// measured elements (C, N, Al, Si, K, Ca, Fe, Ni, Y, Mo, I, Au, Pb, Bi; log(1 - ratio) interpolated in Z): left-out
+// anchors come back within 1-7 keV (K lines) and 0.1-3 keV (L lines) where neighbours are close. Th's and U's L lines
+// from the 2p levels' nuclear-size shifts that the K_alpha splitting gives (calibrated on 208Pb's L lines), +-1-2%;
+// their M lines from the Dirac levels. Cr was 1090.0 keV (one value) until 2026-11-10.
+struct MeasuredLineSet {
+  G4int z;
+  G4double ka[2];   // 2p3/2 -> 1s, 2p1/2 -> 1s
+  G4double la[3];   // 3d5/2 -> 2p3/2, 3d3/2 -> 2p1/2, 3d3/2 -> 2p3/2
+  G4double ma[3];   // 4f7/2 -> 3d5/2, 4f5/2 -> 3d3/2, 4f5/2 -> 3d5/2 (0: from the levels, one line)
+};
+const MeasuredLineSet kMeasuredLines[] = {
+  { 6, {  75.26,   75.25}, {  13.96,   13.97,   13.96}, {}},                         // C
+  { 7, { 102.41,  102.39}, {  19.03,   19.05,   19.03}, {}},                         // N
+  {14, { 400.29,  399.94}, {  76.61,   76.93,   76.57}, {}},                         // Si
+  {15, { 457.49,  457.03}, {  88.00,   88.43,   87.95}, {}},                         // P
+  {16, { 517.63,  517.04}, { 100.17,  100.72,  100.11}, {}},                         // S
+  {19, { 713.07,  711.92}, { 141.48,  142.57,  141.36}, {}},                         // K
+  {24, {1094.46, 1091.45}, { 226.23,  228.93,  225.92}, {}},                         // Cr
+  {25, {1175.60, 1172.06}, { 245.57,  248.74,  245.21}, {}},                         // Mn
+  {26, {1257.19, 1253.06}, { 265.30,  268.90,  264.87}, {}},                         // Fe
+  {28, {1431.83, 1426.31}, { 308.23,  313.04,  307.66}, {}},                         // Ni
+  {42, {2720.05, 2694.97}, { 694.36,  718.37,  691.44}, {}},                         // Mo
+  {90, {6367.65, 6103.60}, {2949.06, 3148.50, 2883.54}, {1133.82, 1186.38, 1120.51}},  // Th
+  {92, {6420.00, 6133.00}, {3060.37, 3275.56, 2988.56}, {1185.82, 1243.45, 1171.27}},  // U
+};
+const G4double kKaWeight[2] = {2., 1.};
+const G4double kLaWeight[3] = {9., 5., 1.};
+const G4double kMaWeight[3] = {20., 14., 1.};
+const G4double kVacuumPolarisation = 1.0047;
+
+const MeasuredLineSet* FindMeasuredLines(G4int Z)
+{
+  for (const MeasuredLineSet& set : kMeasuredLines)
+    if (set.z == Z) return &set;
+  return nullptr;
+}
+
+G4double WeightedMean(const G4double* e, const G4double* w, G4int n)
+{
+  G4double sum = 0., norm = 0.;
+  for (G4int i = 0; i < n; ++i) { sum += w[i] * e[i]; norm += w[i]; }
+  return sum / norm;
+}
+
+G4double DrawLine(const G4double* e, const G4double* w, G4int n)
+{
+  G4double norm = 0.;
+  for (G4int i = 0; i < n; ++i) norm += w[i];
+  G4double r = G4UniformRand() * norm;
+  for (G4int i = 0; i < n; ++i) {
+    if (r < w[i]) return e[i];
+    r -= w[i];
+  }
+  return e[n - 1];
+}
 
 class MuonFirstPrinciplesCascade {
 public:
@@ -223,15 +307,17 @@ public:
       if (selected->emittedEnergy > 0.0) {
         G4ParticleDefinition* definition = nullptr;
 
+        G4double energy = selected->emittedEnergy;
         if (selected->type == MuFPChannelType::kRadiative) {
           definition = G4Gamma::Gamma();
+          energy = PhotonEnergy(currentN, selected->n2, energy);
         } else {
           definition = G4Electron::Electron();
         }
 
         secondaries.push_back(new G4DynamicParticle(
-          definition, G4RandomDirection(), selected->emittedEnergy));
-        emittedEnergySum += selected->emittedEnergy;
+          definition, G4RandomDirection(), energy));
+        emittedEnergySum += energy;
       }
 
       currentN = selected->n2;
@@ -448,6 +534,34 @@ private:
       fLevelEnergy[i] = tableE1 / n2;
       fHydrogenicLevelEnergy[i] = hydrogenicE1 / n2;
     }
+
+    // measured lines (gMeasuredEnergies): Dirac levels from n = 3 up, n = 2 and n = 1 below them by the lines
+    fLines = gMeasuredEnergies ? FindMeasuredLines(fZ) : nullptr;
+    if (fLines && fInitialN >= 2) {
+      const G4double za = fZ * fine_structure_const;
+      auto dirac = [&](G4int n, G4double j) {
+        const G4double k = j + 0.5;
+        const G4double d = k - std::sqrt(k * k - za * za);
+        return reducedMass * (1.0 - 1.0 / std::sqrt(1.0 + std::pow(za / (n - d), 2)));
+      };
+      for (G4int i = 2; i <= fInitialN; ++i) {
+        const G4int n = i + 1;
+        fHydrogenicLevelEnergy[i] = kVacuumPolarisation
+          * (2.0 * n * dirac(n, n - 0.5) + (2.0 * n - 2.0) * dirac(n, n - 1.5)) / (4.0 * n - 2.0);
+      }
+      fHydrogenicLevelEnergy[1] = fHydrogenicLevelEnergy[2] + WeightedMean(fLines->la, kLaWeight, 3) * keV;
+      fHydrogenicLevelEnergy[0] = fHydrogenicLevelEnergy[1] + WeightedMean(fLines->ka, kKaWeight, 2) * keV;
+    }
+  }
+
+  // the emitted photon's energy: one fine-structure line of 2 -> 1, 3 -> 2 (and 4 -> 3) with measured lines
+  G4double PhotonEnergy(G4int n1, G4int n2, G4double levelDifference) const
+  {
+    if (!fLines) return levelDifference;
+    if (n1 == 2 && n2 == 1) return DrawLine(fLines->ka, kKaWeight, 2) * keV;
+    if (n1 == 3 && n2 == 2) return DrawLine(fLines->la, kLaWeight, 3) * keV;
+    if (n1 == 4 && n2 == 3 && fLines->ma[0] > 0.) return DrawLine(fLines->ma, kMaWeight, 3) * keV;
+    return levelDifference;
   }
 
   void CalculateTransitionRates()
@@ -591,6 +705,7 @@ private:
   std::vector<G4double> fHydrogenicLevelEnergy;
   std::vector<MuFPTransition> fTransitions;
   std::map<std::uint64_t,G4double> fRadialCache;
+  const MeasuredLineSet* fLines = nullptr;   // the element's measured lines (gMeasuredEnergies), none if null
 };
 
 MuonFirstPrinciplesCascade& GetMuonFirstPrinciplesCascade(G4int Z, G4int A,
@@ -598,10 +713,10 @@ MuonFirstPrinciplesCascade& GetMuonFirstPrinciplesCascade(G4int Z, G4int A,
 {
   // One cache per Geant4 worker thread.  Expensive radial integrals and rates
   // are calculated once for each target isotope, then reused event-by-event.
-  using Key = std::pair<G4int,G4int>;
+  using Key = std::tuple<G4int,G4int,G4bool>;   // Z, A, measured energies
   thread_local std::map<Key,std::unique_ptr<MuonFirstPrinciplesCascade>> cache;
 
-  const Key key(Z,A);
+  const Key key(Z,A,gMeasuredEnergies);
   auto it = cache.find(key);
   if (it == cache.end()) {
     std::unique_ptr<MuonFirstPrinciplesCascade> model(
@@ -725,6 +840,10 @@ TOFmeterEmCaptureCascade::TOFmeterEmCaptureCascade()
 
 TOFmeterEmCaptureCascade::~TOFmeterEmCaptureCascade()
 {}
+
+void TOFmeterEmCaptureCascade::SetMeasuredEnergies(G4bool on) { gMeasuredEnergies = on; }
+
+G4bool TOFmeterEmCaptureCascade::MeasuredEnergies() { return gMeasuredEnergies; }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 

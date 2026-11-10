@@ -1,0 +1,5 @@
+### Executed by /vis/reviewKeptEvents for each kept event of macro/vis_tridents_lyso.mac (scripts/trident_views_lyso.sh):
+### counts the events (alias tvEvent, 0 before the review) and executes the file that analysis/trident_views_select.C
+### wrote for this event of search tvJob: the bars to highlight and the pictures to write, or nothing.
+/control/add tvEvent {tvEvent} 1
+/control/execute {tvDir}/marks/job{tvJob}_event{tvEvent}.mac

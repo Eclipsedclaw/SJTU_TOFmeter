@@ -8,6 +8,7 @@
 //   geant4            G4EmCaptureCascade, the model of the Geant4 libraries
 // /tof/physics/muonCascade firstPrinciples|geant4 chooses; /tof/physics/muonCascadeZmax Z uses the
 // first-principles model only for elements up to Z and the Geant4 model above (default 92: all).
+// /tof/physics/muonXrayEnergies hydrogenic|measured: the first-principles model's X-ray energies (2026-11-09).
 // Other negative particles stopped at rest keep their own processes and models.
 //
 // @author Jiancheng Zeng with Claude Opus 5.5
@@ -45,6 +46,7 @@ class TOFmeterMuonCascade : public G4HadronicInteraction
   private:
     static G4ThreadLocal G4int fCaptureZ;
     void SetModel(G4String model);
+    void SetXrayEnergies(G4String energies);
     void Print() const;
 
     G4HadronicInteraction* fFirstPrinciples;   // both owned by the hadronic interaction registry

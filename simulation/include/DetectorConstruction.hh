@@ -111,6 +111,13 @@ private:
     void ConstructBlocks();
     G4Material* FindMaterial(const G4String& name) const;
     G4Material* TargetMaterial() const;   // the target's material, with its impurity if one is set
+    G4Material* CompositionMaterial() const;   // the target from /tof/target/composition
+    void SetTargetComposition(const G4String& composition)   // /tof/target/composition; none clears it
+    {
+        G4String c;
+        for (char ch : composition) if (ch != '"') c += ch;
+        fTargetComposition = (c == "none") ? G4String() : c;
+    }
 
     G4VPhysicalVolume* fWorldPhys;
 
@@ -165,6 +172,8 @@ private:
     G4String fTargetMaterialName;
     G4String fTargetImpurity;               // element mixed into the target (/tof/target/impurity), none if empty
     G4double fTargetImpurityFraction = 0.;  // its atom fraction (/tof/target/impurityFraction)
+    G4String fTargetComposition;            // elements and mass percent (/tof/target/composition), none if empty
+    G4double fTargetDensity = 0.;           // its density (/tof/target/density)
     G4ThreeVector fTargetSize;
     G4ThreeVector fTargetPosition;
     G4bool fBuildDegrader;

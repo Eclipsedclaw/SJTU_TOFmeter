@@ -285,7 +285,9 @@ void TOFmeterEventAction::MakeHits(std::vector<StackDeposit>& deposits, std::vec
                                    std::vector<G4double>& e, std::vector<G4double>& t, std::vector<G4double>& x,
                                    std::vector<G4double>& y, std::vector<G4double>& z) const
 {
-  // per layer, the deposits within fStackHitWindow of the first one (the steps of an event do not come in time order)
+  // per layer, the deposits within fStackHitWindow of the first one (the steps of an event do not come in time order);
+  // the difference, not first.time + window: at the times of long-lived decays (~1e25 ns) a double cannot hold the
+  // extra 100 ns, the first deposit would fail its own test and the loop would never end (2026-11-10)
   layer.clear(); src.clear(); e.clear(); t.clear(); x.clear(); y.clear(); z.clear();
   std::sort(deposits.begin(), deposits.end(), [](const StackDeposit& a, const StackDeposit& b) {
     return a.layer != b.layer ? a.layer < b.layer : a.time < b.time;
@@ -296,7 +298,7 @@ void TOFmeterEventAction::MakeHits(std::vector<StackDeposit>& deposits, std::vec
     G4ThreeVector weighted;
     G4int source = 0;
     std::size_t j = i;
-    for (; j < deposits.size() && deposits[j].layer == first.layer && deposits[j].time < first.time + fStackHitWindow; ++j) {
+    for (; j < deposits.size() && deposits[j].layer == first.layer && deposits[j].time - first.time < fStackHitWindow; ++j) {
       edep += deposits[j].edep;
       weighted += deposits[j].edep * deposits[j].position;
       source |= deposits[j].origin;

@@ -81,6 +81,11 @@
 #                                      TOFmeterEmCaptureCascade (default) or Geant4's G4EmCaptureCascade
 # /tof/physics/muonCascadeZmax 92    first-principles cascade only up to this Z, Geant4's above
 #                                      (its heavy-element K lines are far too high, e.g. Pb 14 MeV)
+# /tof/physics/muonXrayEnergies measured   measured (or interpolated) fine-structure K, L lines of C, N, Si, P, S,
+#                                      K, Cr, Mn, Fe, Ni, Mo, Th, U (default hydrogenic: point nucleus, 11-16% too high
+#                                      at Fe, 3x at U); before the first capture
+# /tof/target/composition Fe:rest,Cr:16,...   target from elements and mass percent (rest: the balance), with
+# /tof/target/density 8.0 g/cm3          in place of /tof/target/material (none: back to it)
 # /tof/tridents/keepForVis 0|1|2     keep events (none, with a trident, with a detectable trident)
 #                                      for /vis/reviewKeptEvents; /tof/tridents/maxKept 20 stops the run
 # /tof/tridents/search true          /run/beamOn N (and the Qt Run button) runs until N events are

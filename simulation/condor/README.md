@@ -14,6 +14,7 @@ place fit together process by process.
 | `muonic_xray_czt_check.sh` | The state of each job of a folder, checked (exit code 0, output not empty, log without error): queued, running, held, finished OK, failed, the progress; for failed and held jobs the HTCondor ID, the reason and the log paths, and the commands to run them again. Read-only. |
 | `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
 | `beam_xray_submit.sh`, `beam_xray_job.sh`, `beam_xray_check.sh` | (2026-11-07) The same three for the beam study of Al in Si (`macro/beam_xray_lyso.mac`): a mu- beam into the target on the LYSO panel. See "The beam study" below. |
+| `beam_steel_submit.sh`, `beam_steel_job.sh`, `beam_steel_check.sh` | (2026-11-10) The same three for the steel study with U, Th and K: a mu- beam into a 1 cm steel plate on the CZT plane (band `beam`, `macro/beam_steel_lyso.mac`) and the plate's natural radioactivity (band `decay`, `macro/beam_steel_decay.mac`). See "The steel study" below. |
 
 CMake copies this folder's scripts (`*.sh`, `*.C`) into the build directory (`<build>/condor/`); run `cmake` again
 after changing a file here.
@@ -141,19 +142,18 @@ the cluster first (`cmake` again, then `make`: there is a new source file, `src/
 
 ```sh
 cd <build>
-S=/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work     # --storage: the run folders go to $S/output/
-sh condor/muonic_xray_czt_submit.sh --test --detector lyso --storage $S --setup <file> --os-major 7    # 2 short jobs first
-sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_lyso_condor_test
-sh condor/muonic_xray_czt_submit.sh --detector lyso --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
-sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_lyso
-sh condor/muonic_xray_czt_submit.sh --detector lyso --target G4_Si --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
-sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_lyso_si
+sh condor/muonic_xray_czt_submit.sh --test --detector lyso --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7    # 2 short jobs first
+sh condor/muonic_xray_czt_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_lyso_condor_test
+sh condor/muonic_xray_czt_submit.sh --detector lyso --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_lyso
+sh condor/muonic_xray_czt_submit.sh --detector lyso --target G4_Si --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_lyso_si
 ```
 
 `--storage <path>` (2026-11-04) puts the run folder under `<path>/output/` (any run, any option) in place of the build
 directory's `output/`: the job macros, TOFmeter's logs, the `.done` markers, the outputs and HTCondor's files. TOFmeter
 itself still runs in the build directory. The path must be absolute and an existing folder you can write to. The
-check and status scripts take the run folder as it is printed, e.g. `$S/output/muonic_xray_lyso`. A LYSO job writes
+check and status scripts take the run folder as it is printed, e.g. `/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_lyso`. A LYSO job writes
 about 10-11 MB (5 x 10^6 muons; the CZT's 1.6-2.4 MB), so 60 days take about 24 GB per target.
 
 - Folders `output/muonic_xray_lyso` (G4_Al) and `output/muonic_xray_lyso_si` (G4_Si), batches `tof_muonic_xray_lyso`
@@ -185,13 +185,12 @@ and `output/muonic_xray_czt_fluo_si` (G4_Si), seeds slow 10300000 + k and fast 1
 
 ```sh
 cd <build>
-S=/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work
-sh condor/muonic_xray_czt_submit.sh --test --fluo --storage $S --setup <file> --os-major 7
-sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo_condor_test
-sh condor/muonic_xray_czt_submit.sh --fluo --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
-sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo
-sh condor/muonic_xray_czt_submit.sh --fluo --target G4_Si --storage $S --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
-sh condor/muonic_xray_czt_check.sh $S/output/muonic_xray_czt_fluo_si
+sh condor/muonic_xray_czt_submit.sh --test --fluo --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7
+sh condor/muonic_xray_czt_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_czt_fluo_condor_test
+sh condor/muonic_xray_czt_submit.sh --fluo --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_czt_fluo
+sh condor/muonic_xray_czt_submit.sh --fluo --target G4_Si --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7 --max 30 slow 1 499 fast 1 1704
+sh condor/muonic_xray_czt_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_xray_czt_fluo_si
 ```
 
 The 60-core limit holds for all your jobs together: two runs at a time with `--max 30` each, or four with `--max 15`.
@@ -213,11 +212,10 @@ directory first. Then:
 
 ```sh
 cd <build>
-S=/lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work
-sh condor/beam_xray_submit.sh --test --storage $S --setup <file> --os-major 7      # 1 job of 2 x 10^4 muons first
-sh condor/beam_xray_check.sh $S/output/beam_xray_lyso_si_al0.01_condor_test
-sh condor/beam_xray_submit.sh --storage $S --setup <file> --os-major 7 1 200       # 10^8 muons
-sh condor/beam_xray_check.sh $S/output/beam_xray_lyso_si_al0.01
+sh condor/beam_xray_submit.sh --test --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7      # 1 job of 2 x 10^4 muons first
+sh condor/beam_xray_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/beam_xray_lyso_si_al0.01_condor_test
+sh condor/beam_xray_submit.sh --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup <file> --os-major 7 1 200       # 10^8 muons
+sh condor/beam_xray_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/beam_xray_lyso_si_al0.01
 ```
 
 - The check script follows the rules of `muonic_xray_czt_check.sh`: exit code 0, a non-empty `beam/beam_<k>.root`,
@@ -227,6 +225,42 @@ sh condor/beam_xray_check.sh $S/output/beam_xray_lyso_si_al0.01
   or `--sigma-y`. Give each a different `--seed-base`.
 - To analyse, sync the folder into the work folder's `output/lyso/`, then:
   `root -l -b -q 'analysis/beam_impurity_spectrum.C("output/lyso/beam_xray_lyso_si_al0.01")'`.
+
+## The steel study with U, Th and K (`beam_steel_*.sh`, 2026-11-10)
+
+A mono-energetic mu- beam goes straight down into a 20 x 20 x 1 cm stainless-steel plate lying on the CZT plane (4 x 4
+pixels of 25 x 25 x 10 mm, their top against the plate; `--detector lyso` for the LYSO panel), with
+`./TOFmeter --preinit macro/preinit_lyso.mac` (radioactive decay and fluorescence; nothing of the LYSO).
+- Two bands in one folder: `beam` (processes 1-N, 5 x 10^5 muons each, seeds 10900000 + k, every event written) and
+  `decay` (processes 1-4, 5 x 10^6 decays each, seeds 11000000 + k: 1 U-238, 2 Th-232, 3 K-40, 4 U-235, each nucleus
+  with its whole chain in the event, secular equilibrium).
+- Target: `--composition Fe:rest,Cr:16,Ni:10,Mo:2,Mn:2,Si:0.75,N:0.10,C:0.08,P:0.045,S:0.03,U:0.1,Th:0.1,K:0.1` (mass
+  percent; U, Th, K raised to 0.1% so that enough muons catch on them) at `--density 8.0`. The analysis reweights every
+  element to the real steel (`cap_z`).
+- The muonic X-rays get the measured (or interpolated) fine-structure lines of all 13 elements
+  (`/tof/physics/muonXrayEnergies measured`, set by the macro).
+- Speed (local test 2026-11-10, Geant4 11.2.2): a beam job spends ~3 min building the cascade models of ~40 isotopes,
+  then ~1.3 ms per muon: ~15 min for 5 x 10^5 muons, 150 MB of memory, ~230 MB of output (460 B per muon: ~46 GB for
+  10^8). A decay job: ~0.5 ms per chain, ~45 min for 5 x 10^6, ~280 MB of output.
+- Folder `output/beam_steel_czt_trace` (with `--storage`, under `<path>/output/`).
+
+The code is new (`/tof/target/composition`, the measured lines of the new elements, and a fix in the panel's hit
+building: hits at the times of long-lived decays, ~1e25 ns, made the old `time < first + window` test loop forever), so
+bring the sources to the cluster and run `cmake` and `make` in the build directory first. Then:
+
+```sh
+cd <build>
+sh condor/beam_steel_submit.sh --test --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup ~/tof_setup_c7.sh --os-major 7    # beam 1 x 2e4 muons, decay 4 x 2e4
+sh condor/beam_steel_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/beam_steel_czt_trace_condor_test
+sh condor/beam_steel_submit.sh --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup ~/tof_setup_c7.sh --os-major 7 1 200    # 10^8 muons + the 4 decay jobs
+sh condor/beam_steel_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/beam_steel_czt_trace
+```
+
+- The check script follows the rules of the others, per band: exit code 0, a non-empty `<band>/<file>.root` (the job
+  macro's `bmFile`), and the log's `Number of events processed : <events>` without an error. It is read-only and
+  prints the commands that would run failed jobs again (`--no-beam` for failed decay jobs only).
+- To analyse, sync the folder into the work folder's `output/czt/`, then:
+  `root -l -b -q 'analysis/beam_steel_trace_spectrum.C("output/czt/beam_steel_czt_trace")'`.
 
 ## Following the jobs
 

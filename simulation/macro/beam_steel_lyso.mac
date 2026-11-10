@@ -1,0 +1,48 @@
+### Muonic X-rays from a mu- beam in a 1 cm steel plate lying on the LYSO panel, one job (2026-11-09, the beam study of
+### stainless steel: can the panel tell the Fe, Cr and Ni peaks apart; scripts/beam_steel_local.sh writes and runs the
+### jobs). The setup of macro/beam_xray_lyso.mac, the 126.88 x 126.88 x 3.18 mm LYSO panel of 20 x 20 pixels with its Al
+### top face at 32.5 cm, but with a 20 x 20 x 1 cm plate on the panel (32.5-33.5 cm) in place of the 4 cm target.
+### Another panel: bmPanel (macro/panel_<bmPanel>.mac) with its centre at bmPanelZ (cm): lyso 32.332, or czt 32.0 (the
+### CZT plane of 4 x 4 pixels of 25 x 25 x 10 mm, its top against the plate; the same study for the CZT, 2026-11-09).
+### The mu- beam comes straight down (-z) onto the plate's top face, starting at bmZ (cm), with a Gaussian spot of
+### sigma bmSigX x bmSigY (cm; PSI muE1: 39 x 25 mm FWHM = 1.656 x 1.062 cm) and kinetic energy bmEkin (MeV): 29.95 MeV
+### (85 MeV/c) stops about 0.8 cm deep in steel, ~2 mm above the panel.
+### The muonic X-rays get the measured energies of Cr, Fe and Ni (/tof/physics/muonXrayEnergies measured): the default
+### point-nucleus levels put their K lines 11-16% too high.
+### As in the Si study, every radioactive decay of the nuclei that the captures leave behind is simulated at its own time;
+### analysis/beam_steel_spectrum.C weights such hits by their chance of falling inside the measuring time, and adds the
+### panel's own Lu-176 from a decay-only run.
+### The job macro sets the target material (/tof/target/material) and the aliases bmSeed, bmEvents, bmDir, bmFile,
+### bmEkin, bmSigX, bmSigY, bmZ, bmPanel, bmPanelZ and bmFilter (/EventFilter: 0 writes every event, so that the analysis counts the muons
+### each element caught; 8 only the events with energy in the panel and a muon stopped in the target), then executes
+### this. Needs TOFmeter --preinit macro/preinit_lyso.mac (radioactive decay and fluorescence).
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 1 cm
+/tof/target/position 0 0 33.0 cm
+/control/execute macro/panel_{bmPanel}.mac
+/tof/czt/position 0 0 {bmPanelZ} cm
+/update
+/tof/physics/muonXrayEnergies measured
+/OutputFormat 1
+/EventFilter {bmFilter}
+/OutputDirectory {bmDir}
+/OutputFile {bmFile}
+/gun/seed {bmSeed}
+/GeneralParticleSource 1
+/gps/particle mu-
+/gps/pos/type Beam
+/gps/pos/centre 0 0 {bmZ} cm
+/gps/pos/sigma_x {bmSigX} cm
+/gps/pos/sigma_y {bmSigY} cm
+/gps/direction 0 0 -1
+/gps/ene/type Mono
+/gps/ene/mono {bmEkin} MeV
+# Auger electrons off (the radioactive decay turned them on), as in the Si study: their few keV stay in the pixel
+# anyway, and they make the run 1.5 times slower. Fluorescence (K X-rays that can leave a pixel) stays on.
+/process/em/auger false
+/process/em/augerCascade false
+# verbose 1: the log ends with "Number of events processed : <bmEvents>", which scripts/beam_steel_local.sh looks for
+/run/verbose 1
+/run/printProgress 100000
+/run/beamOn {bmEvents}

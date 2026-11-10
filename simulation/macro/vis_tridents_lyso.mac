@@ -1,0 +1,47 @@
+### Muon trident events in the LYSO setup, for pictures for slides; scripts/trident_views_lyso.sh runs it, twice for
+### the searches whose events it draws. The geometry of macro/vis_lyso.mac (keep them in step): the Si/YSO stack out,
+### the 4 cm Al target at z = 32.5 to 36.5 cm with the LYSO panel under it, the 10 cm lead roof and walls. The muons of
+### macro/trident_cosmic.mac: sea-level cosmic mu+ and mu- above 0.85 GeV (no trident below) from the 2 x 2 m plane at
+### z = 112 cm, zenith < 75 deg, tridents made 10^5 times more often (weight 1e-5). The run keeps the first {tvKept}
+### events with a detectable trident (the primary after its trident and the produced mu+ and mu- all cross a bar of
+### the top and of the middle TOF: /tof/tridents/keepForVis 2), printing a line "Kept trident event ..." for each,
+### and then stops; only events with a trident are written, to {tvDir}/jobs/{tvFile}.root.
+### With tvDraw 1 it also opens the offscreen viewer before the run (macro/vis_tridents_lyso_viewer.mac), so that the
+### kept events can be drawn after it (/vis/reviewKeptEvents macro/vis_trident_event_lyso.mac, in the job macro). The
+### same tvSeed gives the same events with and without the viewer.
+### Aliases: tvSeed, tvKept, tvDir, tvFile, tvJob (the search's number), tvDraw (0 or 1). In the build directory:
+###   ./TOFmeter --preinit macro/physics_tridents.mac <job macro: the aliases, then /control/execute this file>
+
+/control/verbose 2
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 4 cm
+/tof/target/position 0 0 34.5 cm
+/control/execute macro/panel_lyso.mac
+/tof/czt/position 0 0 32.332 cm
+/update
+
+/control/if {tvDraw} == 1 macro/vis_tridents_lyso_viewer.mac
+
+/process/em/setBiasingFactor muToMuonPairProd 1e5 true
+/run/physicsModified
+/OutputFormat 1
+/EventFilter 3
+/OutputDirectory {tvDir}/jobs
+/OutputFile {tvFile}
+/gun/seed {tvSeed}
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species mu+ mu-
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 112 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 75 deg
+/tof/cosmic/energyMin 0.85 GeV
+/tof/cosmic/energyMax 1000 GeV
+/tof/tridents/keepForVis 2
+/tof/tridents/maxKept {tvKept}
+/run/printProgress 100000
+# stops at the {tvKept}-th detectable trident (about 18000 muons each)
+/run/beamOn 10000000

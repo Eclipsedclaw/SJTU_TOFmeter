@@ -40,9 +40,13 @@
 #include "G4Point3D.hh"
 
 #include <cfloat>
+#include <cmath>
 #include <functional>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -302,14 +306,14 @@ G4Material* DetectorConstruction::TargetMaterial() const
     // The target's material, with /tof/target/impurity mixed in at /tof/target/impurityFraction of its atoms
     // (2026-11-07, the beam study of Al in Si). The mixture keeps the host's density; the element that catches a
     // stopped mu- is then drawn from the material's atoms by Geant4, and cap_z of the events ntuple tells which one.
-    G4Material* host = FindMaterial(fTargetMaterialName);
+    G4Material* host = fTargetComposition.empty() ? FindMaterial(fTargetMaterialName) : CompositionMaterial();
     if (fTargetImpurity.empty() || fTargetImpurityFraction <= 0.) return host;
     if (fTargetImpurityFraction >= 1.) {
         G4Exception("DetectorConstruction::TargetMaterial", "Material003", FatalErrorInArgument,
                     "/tof/target/impurityFraction: an atom fraction below 1");
     }
     std::ostringstream name;
-    name << fTargetMaterialName << "+" << fTargetImpurity << "(" << fTargetImpurityFraction << ")";
+    name << host->GetName() << "+" << fTargetImpurity << "(" << fTargetImpurityFraction << ")";
     if (G4Material* existing = G4Material::GetMaterial(name.str(), false)) return existing;
     G4Element* impurity = G4NistManager::Instance()->FindOrBuildElement(fTargetImpurity);
     if (!impurity) {
@@ -326,9 +330,61 @@ G4Material* DetectorConstruction::TargetMaterial() const
     mixture->AddMaterial(host, 1. - w);
     mixture->AddElement(impurity, w);
     G4cout << "Target material " << name.str() << ": " << fTargetImpurity << " at atom fraction " << f
-           << " (mass fraction " << w << ") in " << fTargetMaterialName << ", density "
+           << " (mass fraction " << w << ") in " << host->GetName() << ", density "
            << host->GetDensity() / (g / cm3) << " g/cm3" << G4endl;
     return mixture;
+}
+
+G4Material* DetectorConstruction::CompositionMaterial() const
+{
+    // The target from /tof/target/composition (2026-11-10, the steel study with U, Th and K): element symbols and their
+    // mass percentages, "rest" for the balance of one of them, as one word, e.g. Fe:rest,Cr:16,Ni:10,Mo:2,Si:0.75 (a
+    // command takes only the first word), at /tof/target/density. Each stopped mu- is then caught by one of these
+    // atoms (Geant4: the Z law), as cap_z tells.
+    G4String list = fTargetComposition;
+    for (char& ch : list) if (ch == ',' || ch == ':' || ch == '=') ch = ' ';
+    std::istringstream in(list);
+    std::vector<std::pair<G4Element*, G4String>> parts;
+    G4String symbol, value;
+    G4double sum = 0.;
+    G4int rest = -1;
+    auto fail = [this](const G4String& why) {
+        G4ExceptionDescription ed;
+        ed << "/tof/target/composition \"" << fTargetComposition << "\": " << why
+           << " (element:percent pairs by mass separated by commas, rest for the balance of one, e.g. Fe:rest,Cr:16)";
+        G4Exception("DetectorConstruction::CompositionMaterial", "Material005", FatalErrorInArgument, ed);
+    };
+    while (in >> symbol) {
+        if (!(in >> value)) fail("no value after " + symbol);
+        G4Element* element = G4NistManager::Instance()->FindOrBuildElement(symbol);
+        if (!element) fail("unknown element " + symbol);
+        if (value == "rest") {
+            if (rest >= 0) fail("\"rest\" twice");
+            rest = G4int(parts.size());
+        } else {
+            std::istringstream number(value);
+            G4double percent = -1.;
+            if (!(number >> percent) || percent <= 0.) fail("not a positive mass percent: " + value);
+            sum += percent;
+        }
+        parts.emplace_back(element, value);
+    }
+    if (parts.empty()) fail("no elements");
+    if (rest < 0 ? std::abs(sum - 100.) > 1e-6 : sum >= 100.) fail("the mass percentages do not add up to 100");
+    std::ostringstream name;
+    name << "Composition_" << std::hash<std::string>()(fTargetComposition + "@" + std::to_string(fTargetDensity));
+    if (G4Material* existing = G4Material::GetMaterial(name.str(), false)) return existing;
+    if (fTargetDensity <= 0.) fail("/tof/target/density must be set (e.g. 8.0 g/cm3)");
+    auto material = new G4Material(name.str(), fTargetDensity, G4int(parts.size()));
+    G4cout << "Target material " << name.str() << " (/tof/target/composition), " << fTargetDensity / (g / cm3)
+           << " g/cm3; mass percent:";
+    for (size_t i = 0; i < parts.size(); ++i) {
+        const G4double percent = G4int(i) == rest ? 100. - sum : std::stod(parts[i].second);
+        material->AddElement(parts[i].first, percent / 100.);
+        G4cout << " " << parts[i].first->GetSymbol() << " " << percent;
+    }
+    G4cout << G4endl;
+    return material;
 }
 
 G4VPhysicalVolume* DetectorConstruction::Construct()
@@ -1226,6 +1282,10 @@ void DetectorConstruction::DefineCommands()
         "Element mixed into the target material (a symbol such as Al; with impurityFraction)");
     target->DeclareProperty("impurityFraction", fTargetImpurityFraction,
         "Atom fraction of the impurity (e.g. 0.01; 0, the default, for none)");
+    target->DeclareMethod("composition", &DetectorConstruction::SetTargetComposition,
+        "Target from elements in place of /tof/target/material: element:mass-percent pairs, rest for the balance, "
+        "e.g. Fe:rest,Cr:16,Ni:10,Mo:2 (with /tof/target/density; none: back to the material)");
+    target->DeclarePropertyWithUnit("density", "g/cm3", fTargetDensity, "Density of the /tof/target/composition target");
     target->DeclarePropertyWithUnit("size", "cm", fTargetSize, "Full target size x y z");
     target->DeclarePropertyWithUnit("position", "cm", fTargetPosition, "Target centre");
     fMessengers.push_back(std::move(target));

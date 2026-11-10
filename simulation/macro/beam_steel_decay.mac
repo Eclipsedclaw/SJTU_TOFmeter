@@ -1,0 +1,46 @@
+### Natural radioactivity of the steel plate of macro/beam_steel_lyso.mac, one job (2026-11-10, the steel study with
+### U, Th and K impurities; condor/beam_steel_submit.sh writes and submits the jobs, band decay). The same setup: the
+### 20 x 20 x 1 cm plate at 32.5-33.5 cm on the pixel panel bmPanel (macro/panel_<bmPanel>.mac, centre at bmPanelZ cm).
+### Each event is one nucleus bmIonZ, bmIonA at rest, placed uniformly in the plate, that decays with its whole chain in
+### the same event: Geant4 skips the decay of nuclides that live longer than 1 year (U-238, U-234, Th-230, Ra-226,
+### Pb-210, Th-232, Ra-228, Th-228, K-40, ...) unless that threshold is raised, as here. One event is then one decay of
+### every member of the chain, as in secular equilibrium (each member as active as the parent); the members' decays lie
+### up to 10^17 s apart, so each gives hits of its own (the panel's hits group deposits within 100 ns). The analysis
+### (analysis/beam_steel_trace_spectrum.C) scales the events to the activity of the impurity in the plate.
+### Only events with energy in the panel are written (/EventFilter 7); the number of decays is the run tree's n_events.
+### The job macro sets the aliases bmSeed, bmEvents, bmDir, bmFile, bmPanel, bmPanelZ, bmIonZ and bmIonA, the target's
+### /tof/target/composition and density (the plate's own absorption), then executes this. Needs TOFmeter --preinit
+### macro/preinit_lyso.mac (radioactive decay and fluorescence; nothing of the LYSO).
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 1 cm
+/tof/target/position 0 0 33.0 cm
+/control/execute macro/panel_{bmPanel}.mac
+/tof/czt/position 0 0 {bmPanelZ} cm
+/update
+/OutputFormat 1
+/EventFilter 7
+/OutputDirectory {bmDir}
+/OutputFile {bmFile}
+/gun/seed {bmSeed}
+/GeneralParticleSource 1
+/gps/particle ion
+/gps/ion {bmIonZ} {bmIonA} 0 0
+/gps/pos/type Volume
+/gps/pos/shape Para
+/gps/pos/centre 0 0 33.0 cm
+/gps/pos/halfx 10 cm
+/gps/pos/halfy 10 cm
+/gps/pos/halfz 0.5 cm
+/gps/pos/confine Target
+/gps/ang/type iso
+/gps/ene/type Mono
+/gps/ene/mono 0 keV
+/process/had/rdm/thresholdForVeryLongDecayTime 1.0e+60 year
+# Auger electrons off (their few keV stay where they are made), as in the beam jobs; fluorescence stays on
+/process/em/auger false
+/process/em/augerCascade false
+# verbose 1: the log ends with "Number of events processed : <bmEvents>", which the job script looks for
+/run/verbose 1
+/run/printProgress 100000
+/run/beamOn {bmEvents}

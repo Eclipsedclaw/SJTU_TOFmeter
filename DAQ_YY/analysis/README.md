@@ -166,7 +166,8 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
 | `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
-| `hitmap_<layer>`, `zenith`, `azimuth` | Where the tracks cross, and their angles against the toy (5° bins) |
+| `hitmap_<layer>` | Where the tracks cross the layer, each hit as measured: along its paddle from tA − tB alone (scattered by the resolution, so hits near an end can lie beyond it), across it on the centre line (not measured); strips alongside the outer paddles: the hits per cm along each paddle, tails beyond the ends included. The track fit uses the best estimate inside the paddle instead (`u_<layer>` in `tracks.root`) |
+| `zenith`, `azimuth` | The tracks' angles against the toy (5° bins) |
 | `tof_residual` | Measured time of flight minus s/c, against the simulation of β = 1 with the measured resolution |
 | `beta` | β over its whole measured range; shaded where no particle going down can be (β > 1, β < 0) |
 | `energy_deposit` | The tracks' signal per paddle as measured (ADC); each paddle has its own scale |

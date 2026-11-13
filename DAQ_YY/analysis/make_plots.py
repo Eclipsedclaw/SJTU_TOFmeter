@@ -994,43 +994,113 @@ def outline(ax, p, color, fill=False, lw=0.8):
 
 
 def plot_hitmap(c, layer):
-    """Where the tracks cross the layer. A track through two neighbouring paddles of the layer
-    shows each paddle's own hit (never a point between them)."""
-    fig, ax = figure(6.0, 5.6)
+    """Where the tracks cross the layer, each hit as measured: along its paddle at the position from tA - tB
+    alone (u_meas; the time resolution scatters it by sigma_u, so hits near an end can lie beyond it), across
+    the paddle on its centre line (not measured). A track through two neighbouring paddles of the layer shows
+    each paddle's own hit (never a point between them). The track fit uses the best estimate inside the
+    paddle instead (tracks.root u_<layer>)."""
+    fig, ax = figure(6.4, 6.4)
     for p in c.setup.paddles:
-        if p.layer is layer:
-            outline(ax, p, mc.layer_color(layer.index), fill=True, lw=1.0)
-            if p.axis == "x":   # label just beyond the paddle's +x end
-                ax.text(p.x + 0.5 * p.size_x + 0.6, p.y, p.name, fontsize=6.5, color=INK2, ha="left",
-                        va="center", zorder=2)
-            else:               # label just beyond its +y end, along its length
-                ax.text(p.x, p.y + 0.5 * p.size_y + 0.6, p.name, fontsize=6.5, color=INK2, ha="center",
-                        va="bottom", rotation=90, zorder=2)
-        else:
+        outline(ax, p, mc.layer_color(layer.index), fill=True, lw=1.0) if p.layer is layer else \
             outline(ax, p, AXIS, lw=0.7)
     if c.Pts is not None:
         sel = c.Pts["layer"] == layer.index
-        track = c.Pts["track"][sel]
+        track, pad, um = c.Pts["track"][sel], c.Pts["paddle"][sel], c.Pts["u_meas"][sel]
         ids, counts = np.unique(track, return_counts=True)
         multi = np.isin(track, ids[counts > 1])
-        x, y = c.Pts["x"][sel], c.Pts["y"][sel]
-        ax.plot(x[~multi], y[~multi], "o", ms=4.5, color=DATA_COLOR, mec=SURFACE, mew=1.0,
-                label=f"{(~multi).sum()} tracks, one paddle of this layer", zorder=4)
-        if multi.any():
-            ax.plot(x[multi], y[multi], "o", ms=4.5, color=CATEGORICAL[1], mec=SURFACE, mew=1.0, zorder=5,
-                    label=f"{int((counts > 1).sum())} tracks through two neighbouring paddles: each paddle's hit")
+        n_multi = int((counts > 1).sum())
     else:   # older tracks.root without the points tree
-        s = c.Tr[f"paddle_{layer.name}"] >= 0
-        ax.plot(c.Tr[f"x_{layer.name}"][s], c.Tr[f"y_{layer.name}"][s], "o", ms=4.5, color=DATA_COLOR, mec=SURFACE,
-                mew=1.0, label=f"{s.sum()} tracks", zorder=4)
+        pad, um = c.Tr[f"paddle_{layer.name}"], c.Tr[f"u_meas_{layer.name}"]
+        pad, um = pad[pad >= 0], um[pad >= 0]
+        multi, n_multi = np.zeros(len(pad), dtype=bool), 0
+    x, y = np.full(len(um), np.nan), np.full(len(um), np.nan)
+    lines = []
+    for p in layer.paddles:
+        m = (pad == p.index) & np.isfinite(um)
+        if not m.any():
+            continue
+        x[m], y[m], _ = p.point(um[m])
+        beyond = int((np.abs(um[m]) > 0.5 * p.length).sum())
+        sig = c.calib["paddles"].get(p.name, {}).get("position_sigma_cm")
+        lines.append(f"{p.name}: {beyond} of {int(m.sum())} hits beyond its ends\n"
+                     f"   ({100 * beyond / m.sum():.1f} %)" + (f"; resolution σ {sig:.1f} cm" if sig else ""))
+    ok = np.isfinite(x)
+    n_ok = int(ok.sum())
+    alpha = 0.7 if n_ok < 300 else 0.4 if n_ok < 2000 else 0.25    # see-through: dense places look darker
+    ax.plot(x[ok & ~multi], y[ok & ~multi], "o", ms=3.6, color=DATA_COLOR, alpha=alpha, mew=0, zorder=4,
+            label=f"{int((ok & ~multi).sum())} tracks, one paddle of this layer")
+    if (ok & multi).any():
+        ax.plot(x[ok & multi], y[ok & multi], "o", ms=3.6, color=CATEGORICAL[1], alpha=max(alpha, 0.6), mew=0,
+                zorder=5, label=f"{n_multi} tracks through two neighbouring\npaddles: each paddle's hit")
+    # alongside each outermost paddle of the layer: its hits per cm along it (bars away from the layer), so the
+    # density and the tails beyond the ends show where points pile up; other paddles keep a label at their end
+    mine = [p for p in layer.paddles]
+    across = {p.index: (p.y if p.axis == "x" else p.x) for p in mine}
+    side = {}
+    if mine and len({p.axis for p in mine}) == 1:
+        lo_p, hi_p = min(mine, key=lambda p: across[p.index]), max(mine, key=lambda p: across[p.index])
+        side = {lo_p.index: -1, hi_p.index: +1} if lo_p is not hi_p else {lo_p.index: +1}
+    wb = 1.0 if n_ok >= 400 else 2.0
+    hists = {}
+    for p in mine:
+        if p.index in side:
+            u_p = um[(pad == p.index) & np.isfinite(um)]
+            reach = max(0.5 * p.length + 16, float(np.abs(u_p).max()) + wb if len(u_p) else 0.0)   # every hit
+            edges = np.arange(-math.ceil(reach), math.ceil(reach) + wb / 2, wb)
+            hists[p.index] = (edges, np.histogram(u_p, bins=edges)[0])
+    cmax = max([h[1].max() for h in hists.values()] + [1])
+    strip = 8.0                      # cm on the map for the highest bin
+    for p in mine:
+        col = mc.layer_color(layer.index)
+        along0 = p.x if p.axis == "x" else p.y
+        if p.index not in hists:
+            ax.text(*((p.x + 0.5 * p.size_x + 0.6, p.y) if p.axis == "x" else (p.x, p.y + 0.5 * p.size_y + 0.6)),
+                    p.name, fontsize=6.5, color=INK2, ha="left" if p.axis == "x" else "center",
+                    va="center" if p.axis == "x" else "bottom", rotation=0 if p.axis == "x" else 90, zorder=2)
+            continue
+        edges, cnt = hists[p.index]
+        nz = np.nonzero(cnt)[0]           # the strip ends a bin after its last hit, at least 2 cm beyond the ends
+        first = min(nz[0] - 1 if len(nz) else 0, int(np.searchsorted(edges, -0.5 * p.length - 2.0)))
+        last = max(nz[-1] + 1 if len(nz) else len(cnt) - 1, int(np.searchsorted(edges, 0.5 * p.length + 2.0)))
+        first, last = max(first, 0), min(last, len(cnt) - 1)
+        edges, cnt = edges[first:last + 2], cnt[first:last + 1]
+        s = side[p.index]
+        base = across[p.index] + s * (0.5 * p.width + 1.0)
+        pos = along0 + p.a_sign * edges
+        steps = np.repeat(pos, 2)[1:-1]
+        bars = base + s * np.repeat(cnt / cmax * strip, 2)
+        if steps[0] > steps[-1]:
+            steps, bars = steps[::-1], bars[::-1]
+        if p.axis == "x":
+            ax.fill_between(steps, base, bars, color=col, alpha=0.25, lw=0, zorder=3)
+            ax.plot(steps, bars, color=col, lw=0.9, zorder=3)
+        else:
+            ax.fill_betweenx(steps, base, bars, color=col, alpha=0.25, lw=0, zorder=3)
+            ax.plot(bars, steps, color=col, lw=0.9, zorder=3)
+        for e in (-0.5 * p.length, 0.5 * p.length):   # the paddle's ends, carried across its strip
+            a = along0 + p.a_sign * e
+            seg = ([a, a], [base, base + s * strip]) if p.axis == "x" else ([base, base + s * strip], [a, a])
+            ax.plot(*seg, color=MUTED, lw=0.8, ls="--", zorder=3)
+        tip = base + s * (strip + 0.8)
+        ax.text(*((along0, tip) if p.axis == "x" else (tip, along0)), p.name, fontsize=7, color=INK2,
+                ha="center", va=("bottom" if s > 0 else "top") if p.axis == "x" else "center",
+                rotation=0 if p.axis == "x" else 90, zorder=3)
+    if hists:
+        lines.append(f"strips alongside: each paddle's hits\nper {wb:g} cm along it (longest bar {cmax});\n"
+                     f"dashed: the paddle's ends")
     ax.set_aspect("equal")
     ax.set_xlabel("x (cm)")
     ax.set_ylabel("y (cm)")
-    ax.margins(0.08)
-    ax.legend(loc="lower right")
+    ax.margins(0.06)
+    # the legend and the numbers beside the map, so that they hide no hit
+    ax.legend(loc="upper left", bbox_to_anchor=(1.03, 1.0), fontsize=7, borderaxespad=0)
+    if lines:
+        ax.text(1.03, 0.80, "\n".join(lines), transform=ax.transAxes, ha="left", va="top", fontsize=7,
+                color=INK2, linespacing=1.45, bbox=dict(boxstyle="round,pad=0.45", fc=SURFACE, ec=GRID, lw=0.6))
     mc.title(ax, f"Where the tracks cross the {layer.name} layer: {c.short}",
-             f"filled: {layer.name} paddles; grey: the other layers; across a paddle: its centre line, "
-             f"along it: the best estimate inside the paddle")
+             f"each hit as measured: along its paddle from tA - tB alone (it scatters by the resolution σ,\n"
+             f"so hits near an end can lie beyond it), across it on the centre line (not measured); "
+             f"filled: {layer.name} paddles")
     c.save(fig, f"hitmap_{layer.name}")
 
 

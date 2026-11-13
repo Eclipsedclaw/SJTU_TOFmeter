@@ -340,6 +340,158 @@ def plot_tdiff(c, p):
     c.save(fig, f"tdiff_{p.name}")
 
 
+def plot_tdiff_resolution(c, p):
+    """How sigma(tA - tB) is measured, step by step, on the hits and the fit of calibrate.py:
+    1. the measured tA - tB with the model's parts: muons evenly along the paddle fill a box with sharp ends at
+       lo and hi, the time resolution (a Gaussian of sigma) blurs its edges, plus a small flat background;
+    2., 3. each edge zoomed: the model rises from 16 % to 50 % to 84 % of its step at edge - sigma, edge and
+       edge + sigma, so sigma is the width of the edge; the same edge drawn with sigma / 2 and 1.5 sigma;
+    4. the likelihood of the fit against sigma, the other parameters refitted at each sigma: its minimum is the
+       fitted sigma and -2 dlnL = 1 its 68 % error."""
+    from matplotlib.gridspec import GridSpec
+    from scipy.optimize import minimize
+    cal = c.calib["paddles"].get(p.name, {})
+    status = str(cal.get("tdiff_status", ""))
+    if not status.startswith("fitted"):
+        return
+    sel, used, cut = fitted_hits(c, p, cal)
+    r0, r1 = cal["tdiff_fit_range_ns"]
+    td = c.H["tdiff_ns"][sel][used]
+    td = td[(td >= r0) & (td <= r1)]
+    n = len(td)
+    if n < 20:
+        return
+    lo, hi, sg, bkg = (float(cal[k]) for k in ("tdiff_lo_ns", "tdiff_hi_ns", "tdiff_sigma_ns", "tdiff_background"))
+
+    def model(t, s=sg):
+        return mc.box_pdf(t, lo, hi, s, bkg, r0, r1)
+
+    def nll(a, b, s, f):
+        if not (r0 <= a < b <= r1) or s < 0.02 or not 0 <= f < 0.9:
+            return 1e30
+        return -np.sum(np.log(np.maximum(mc.box_pdf(td, a, b, s, f, r0, r1), 1e-300)))
+
+    # 4.: the likelihood against sigma, lo / hi / b refitted at every sigma (only the centre and b with a shared speed)
+    shared, half = "shared" in status, 0.5 * (hi - lo)
+    err = cal.get("tdiff_sigma_err_ns")
+    step = max(err if err and np.isfinite(err) and err > 0 else 0.03 * sg, 0.002)
+    grid = sg + np.linspace(-4.5, 4.5, 19) * step
+    grid = grid[grid > 0.03]
+    prof = []
+    for s in grid:
+        if shared:
+            res = minimize(lambda q: nll(q[0] - half, q[0] + half, s, q[1]), [0.5 * (lo + hi), bkg],
+                           method="Nelder-Mead", options={"xatol": 1e-5, "fatol": 1e-6, "maxiter": 4000})
+        else:
+            res = minimize(lambda q: nll(q[0], q[1], s, q[2]), [lo, hi, bkg], method="Nelder-Mead",
+                           options={"xatol": 1e-5, "fatol": 1e-6, "maxiter": 4000})
+        prof.append(res.fun)
+    prof = np.array(prof)
+    d2 = 2 * (prof - min(prof.min(), nll(lo, hi, sg, bkg)))
+
+    def crossing(side):
+        idx = np.where(grid < sg)[0][::-1] if side < 0 else np.where(grid > sg)[0]
+        for i in idx:
+            j = i + 1 if side < 0 else i - 1
+            if d2[i] >= 1 > d2[j]:
+                return grid[j] + (1 - d2[j]) / (d2[i] - d2[j]) * (grid[i] - grid[j])
+        return float("nan")
+
+    s_lo, s_hi = crossing(-1), crossing(+1)
+
+    fig = plt.figure(figsize=(13.4, 9.0))
+    gs = GridSpec(2, 3, figure=fig, height_ratios=[1.1, 1], hspace=0.45, wspace=0.27, top=0.855, bottom=0.07,
+                  left=0.06, right=0.985)
+    ax = fig.add_subplot(gs[0, :])
+    ae = [fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[1, 1])]
+    al = fig.add_subplot(gs[1, 2])
+
+    # 1. the whole distribution and the model's parts
+    wt = (r1 - r0) / 64
+    bins = np.arange(r0, r1 + wt / 2, wt)
+    for e in (lo, hi):
+        ax.axvspan(e - 3 * sg, e + 3 * sg, color=GRID, alpha=0.6, lw=0)
+    t = np.linspace(r0, r1, 1500)
+    B, P = n * wt * bkg / (r1 - r0), n * wt * float(model(np.array([0.5 * (lo + hi)]))[0])
+    ax.plot([r0, lo, lo, hi, hi, r1], [B, B, P, P, B, B], color=MUTED, lw=1.2, ls="--",
+            label="1. muons evenly along the paddle: a box with sharp ends at lo and hi")
+    ax.plot(t, n * wt * model(t), color=FIT_COLOR, lw=1.6,
+            label=f"2. its edges blurred by the time resolution (Gaussian σ), 3. plus a flat background "
+                  f"b = {100 * bkg:.1f} %: the fitted model")
+    points(ax, td, bins, label=f"data: {n} two-end hits with √(hA·hB) > {cut:.0f} ADC" if cut else f"data: {n} hits")
+    for e, name in ((lo, "left edge: panel 2"), (hi, "right edge: panel 3")):
+        ax.text(e, P * 1.1, name, ha="center", va="bottom", fontsize=7.5, color=INK2)
+    ax.set_xlim(r0, r1)
+    ax.set_ylim(0, P * 1.62)
+    ax.set_xlabel("tA - tB (ns)")
+    ax.set_ylabel(f"hits per {wt:.3g} ns")
+    ax.legend(loc="upper left", fontsize=7.5)
+    v_txt = f"v = 2L/(hi - lo) = {2 * p.length / (hi - lo):.1f} cm/ns, offset = (lo + hi)/2 = {0.5 * (lo + hi):+.3f} ns"
+    note(ax, f"unbinned likelihood fit of every hit (no bins), free: lo, hi, σ, b\n"
+             f"lo = {lo:+.3f} ns, hi = {hi:+.3f} ns (the paddle's ends): {v_txt}\n"
+             f"σ = {fmt_err(sg, cal.get('tdiff_sigma_err_ns'), 3)} ns: the time resolution of tA - tB",
+         loc="upper right", align="left")
+    ax.set_title("1. The measured tA - tB and the model fitted to it", loc="left", fontsize=9, color=INK)
+
+    # 2., 3. the edges: sigma is their width
+    we = max(0.02, round(sg / 4, 2))
+    if n * we / (hi - lo) < 15:
+        we = min(sg, 15 * (hi - lo) / n)
+    for k, (axe, e, sign) in enumerate(zip(ae, (lo, hi), (+1, -1))):
+        be = np.arange(e - 4.5 * sg, e + 4.5 * sg + we / 2, we)
+        tt = np.linspace(be[0], be[-1], 600)
+        Be, Pe = n * we * bkg / (r1 - r0), n * we * float(model(np.array([0.5 * (lo + hi)]))[0])
+        for f_s, ls in ((0.5, ":"), (1.5, "-.")):
+            axe.plot(tt, n * we * model(tt, sg * f_s), color=AXIS, lw=1.1, ls=ls,
+                     label=f"the same edge with {'σ / 2: too sharp' if f_s < 1 else '1.5 σ: too soft'}")
+        axe.plot(tt, n * we * model(tt), color=FIT_COLOR, lw=1.7, label=f"fit: σ = {sg:.3f} ns")
+        points(axe, td, be, label="data")
+        xs = np.array([e - sg, e, e + sg])
+        for x in xs:
+            axe.axvline(x, color=MUTED, lw=0.7, ls=":")
+        for f_l, name in ((0.1587, "16 %"), (0.5, "50 %"), (0.8413, "84 %")):
+            yl = Be + f_l * (Pe - Be)
+            axe.axhline(yl, color=MUTED, lw=0.7, ls=":")
+            axe.text(be[0] if sign > 0 else be[-1], yl, f" {name} ", ha="left" if sign > 0 else "right",
+                     va="bottom", fontsize=7, color=INK2)   # on the side where the model is near zero
+        axe.plot(xs, n * we * model(xs), "o", ms=6, color=FIT_COLOR, mec=SURFACE, mew=1.2, zorder=6)
+        ya = Be + 0.5 * (Pe - Be)
+        axe.annotate("", xy=(e + sign * sg, ya), xytext=(e, ya),
+                     arrowprops=dict(arrowstyle="<->", color=INK, lw=1.1, shrinkA=0, shrinkB=0))
+        axe.text(e + 0.5 * sign * sg, ya - 0.03 * Pe, "σ", ha="center", va="top", fontsize=10, color=INK)
+        axe.set_xlim(be[0], be[-1])
+        axe.set_ylim(0, Pe * 1.5)
+        axe.set_xlabel("tA - tB (ns)")
+        axe.set_ylabel(f"hits per {we:.2g} ns")
+        axe.legend(loc="upper left" if sign > 0 else "upper right", fontsize=6.5)
+        end = "lo" if sign > 0 else "hi"
+        axe.set_title(f"{k + 2}. {'Left' if sign > 0 else 'Right'} edge: {'16' if sign > 0 else '84'} % at {end} - σ, "
+                      f"50 % at {end}, {'84' if sign > 0 else '16'} % at {end} + σ", loc="left", fontsize=8.5,
+                      color=INK)
+
+    # 4. the likelihood against sigma
+    al.plot(grid, d2, "o-", ms=3.5, lw=1.1, color=CATEGORICAL[0], mec=SURFACE, mew=0.6)
+    al.axhline(1, color=MUTED, lw=0.8, ls="--")
+    al.axvline(sg, color=FIT_COLOR, lw=1.1)
+    for x in (s_lo, s_hi):
+        if np.isfinite(x):
+            al.axvline(x, color=FIT_COLOR, lw=0.8, ls=":")
+    al.set_ylim(0, max(4.0, min(float(np.nanmax(d2)), 25.0)) * 1.08)
+    al.set_xlabel("σ tried (ns)")
+    al.set_ylabel("-2 Δln L (lo, hi, b refitted at each σ)")
+    note(al, f"best σ = {sg:.3f} ns\n68 %: {s_lo:.3f} … {s_hi:.3f} ns\n(where -2 Δln L = 1, dashed)",
+         loc="upper right", align="left")
+    al.set_title("4. The fit: how well each σ describes every hit", loc="left", fontsize=8.5, color=INK)
+
+    fig.text(0.06, 0.985, f"How the time resolution of {p.name} is measured: {c.short}", ha="left", va="top",
+             fontsize=10.5, color=INK)
+    fig.text(0.06, 0.955, "Muons cross a paddle evenly along it, so tA - tB fills a box between the two ends; the time "
+             "resolution blurs the box's edges, and how much is σ.\nModel for each hit: f(t) = (1 - b) · [Φ((t - lo)/σ) "
+             "- Φ((t - hi)/σ)] / (hi - lo) + b / (range), Φ = the Gaussian's integral; lo, hi, σ, b are chosen to "
+             "make the observed hits most likely.", ha="left", va="top", fontsize=8.2, color=INK2)
+    c.save(fig, f"tdiff_resolution_{p.name}")
+
+
 def plot_attenuation(c, p):
     """ln(hA / hB) against the position from the timing: light loses exp(-d / lambda) on its way to
     each end, so the log of the two ends' height ratio is a straight line in u of slope 2 / lambda."""
@@ -1332,6 +1484,7 @@ def run(folder, setup_path=None):
                  (f"{p.name} heights", lambda p=p: plot_heights(c, p))]
         if p.both_ends:
             jobs += [(f"{p.name} tA-tB", lambda p=p: plot_tdiff(c, p)),
+                     (f"{p.name} resolution", lambda p=p: plot_tdiff_resolution(c, p)),
                      (f"{p.name} position", lambda p=p: plot_position(c, p)),
                      (f"{p.name} attenuation", lambda p=p: plot_attenuation(c, p)),
                      (f"{p.name} light vs timing", lambda p=p: plot_tdiff_vs_ratio(c, p)),

@@ -158,6 +158,7 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `position_<paddle>` | Measured position along the paddle: how many lie beyond the ends, against the smearing alone |
 | `heights_<paddle>` | Where the thresholds cut the spectrum |
 | `tdiff_<paddle>` | A box with smeared edges; the fit gives v, offset, resolution (and the resolution with the 20 % crossing instead of the edge fit) |
+| `tdiff_resolution_<paddle>` | How σ(tA − tB) is measured, step by step: the fit's parts, each edge zoomed (σ = the edge's width), the likelihood against σ (see *Reading the plots*) |
 | `track_tdiff` | tA − tB of every paddle for the 2-hit events only (one two-end hit in each layer), 2×2, against the simulation of tracks through both layers: the same shape and width means the timing works; dashed: the paddle's ends. Not a flat box: a track must cross where the layers overlap, near the paddles' centres |
 | `attenuation_<paddle>` | ln(hA/hB) rising with u (see *Reading the plots*); the right axis is hA/hB itself |
 | `tdiff_vs_ratio_<paddle>` | The same check with no calibration: raw ln(hA/hB) against raw tA − tB, 2D, with their correlation |
@@ -214,6 +215,17 @@ Map check : top layer y (timing) by middle paddle: slope -0.54 ± 0.44 (+1 expec
 
 ## Reading the plots
 
+- **Time resolution** (`tdiff_resolution_<paddle>`). Muons cross a paddle evenly along it, so tA − tB fills
+  a box between the paddle's two ends (lo, hi); the time resolution blurs the box's edges by a Gaussian of
+  σ. The model for each hit, f(t) = (1 − b)·[Φ((t − lo)/σ) − Φ((t − hi)/σ)]/(hi − lo) + b/range, is
+  fitted to every hit without bins (maximum likelihood); lo, hi, σ and the background b are free.
+  Panel 1: the data with the model's parts (the sharp box, the blurred box, the background). Panels 2
+  and 3: each edge zoomed. The fitted edge passes 16 %, 50 % and 84 % of its step at lo − σ, lo and
+  lo + σ (mirrored at hi), so σ is the width of the edge, drawn as an arrow; the same edge with σ/2 and
+  1.5σ shows why the data choose σ. Panel 4: the likelihood against σ, the other parameters refitted at
+  each σ. Its minimum is σ, and where −2 Δln L = 1 gives the 68 % range (run 59, TOP1: 0.460 ns, 0.451–0.469).
+  The same σ, as `tdiff_sigma_ns`, sets the position resolution (v/2)·σ and the mean-time resolution σ/2.
+  It assumes muons evenly along the paddle; the plateau is flat within a few % here.
 - **Attenuation** (`attenuation_<paddle>`). A hit at u (cm from the centre, + towards end A) is L/2 − u
   from end A and L/2 + u from end B. The light reaching an end falls as exp(−distance/λ), so
   hA ∝ gA·exp(−(L/2 − u)/λ) and hB ∝ gB·exp(−(L/2 + u)/λ), and the energy deposit cancels in their ratio:

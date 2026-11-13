@@ -1,0 +1,127 @@
+# Setup of the first paddle test (2026-11-12): two top and two middle paddles,
+# both ends of each read out by board 1, channels 0-7 (slide 17, "双层采数测试").
+#
+# The analysis picks the setup file whose valid_from is the latest on or before a
+# run's date, so keep old files and add a new one (with a new valid_from) whenever
+# paddles, cables or positions change. Units: cm, ns. Lines after # are comments.
+
+name = "two_layer_2026-11-12"
+description = "2 top + 2 middle scintillator paddles, both ends read out, board 1 channels 0-7"
+valid_from = 2026-11-12
+geometry_source = "simulation design (simulation/src/DetectorConstruction.cc): bars 40 x 4 x 0.6 cm, no gap, top layer 30 cm above the middle one; to be replaced by measured values"
+
+# Coordinates, seen from above as on slide 17 (the wall at the top of the slide):
+#   x  to the right: from the A ends of the middle paddles to their B ends
+#   y  towards the wall
+#   z  up; z = 0 is the centre plane of the middle layer
+# The paddles of the two layers cross at x = y = 0.
+
+[[layers]]
+name = "top"
+z_cm = 30.0
+
+[[layers]]
+name = "middle"
+z_cm = 0.0
+
+# One [[paddles]] table per paddle:
+#   axis       its long direction, "x" or "y"
+#   x_cm, y_cm its centre (z_cm too if it is not at its layer's z)
+#   A_end      where the end read by channel A sits: "+y" = towards the wall, "-x" = on the left, ...
+#   channels   DAQ_YY channel ids: 10000 + 10 x board + channel (board 1 channel 0 = 10010)
+#   label      the name on the slide or cable, if it differs from name
+# length_cm is the scintillator's length: tA - tB spans 2 x length / v_eff.
+
+[[paddles]]
+name = "TOP1"
+layer = "top"
+axis = "y"
+x_cm = -2.0
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "+y"                         # TOP1A at the wall
+channels = { A = 10010, B = 10011 }  # Ch0, Ch1
+
+[[paddles]]
+name = "TOP2"
+layer = "top"
+axis = "y"
+x_cm = 2.0
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "+y"
+channels = { A = 10012, B = 10013 }  # Ch2, Ch3
+
+[[paddles]]
+name = "MID1"
+label = "BOTTOM1"                    # BOTTOM1A / BOTTOM1B on the slide
+layer = "middle"
+axis = "x"
+x_cm = 0.0
+y_cm = 2.0                           # the middle paddle nearer the wall
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"                         # BOTTOM1A on the left
+channels = { A = 10014, B = 10015 }  # Ch4, Ch5
+
+[[paddles]]
+name = "MID2"
+label = "BOTTOM2"
+layer = "middle"
+axis = "x"
+x_cm = 0.0
+y_cm = -2.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10016, B = 10017 }  # Ch6, Ch7
+
+# ---- analysis settings (every key optional; these are the defaults) ----
+
+[pulse]
+polarity = "conf"            # "conf": pulsePolarity of the run's .conf; or "positive" / "negative"
+baseline_end = -20           # baseline = mean of samples 0 .. trigger sample - 20
+search = [-30, 50]           # peak search, samples around the trigger sample (2 x pulse_pre)
+smooth = 5                   # height = highest running mean of 5 samples
+cfd_fraction = 0.2           # pulse time: rising edge at 20 % of the height (sharpest tA - tB in run 56)
+charge_window = [-5, 130]    # charge: samples from the edge - 5 to the edge + 130
+min_height = 100.0           # ADC
+plateau_window = [5, 45]     # flat-top test: samples 5-45 after the peak ...
+min_plateau = 0.5            # ... must stay above half the height (0 switches the test off)
+max_undershoot = 0.5         # noise test: no swing below the baseline deeper than half the height
+pileup_fraction = 0.25       # second pulse: a later rise above 25 % of the height ...
+pileup_min = 200.0           # ... and above 200 ADC
+max_baseline_slope = 100.0   # ADC
+max_baseline_rms = 60.0      # ADC
+
+[events]
+pair_margin_ns = 5.0         # A-B pairing window: length / v_eff + 5 ns
+window_ns = 30.0             # event: hits within 30 ns of its first hit
+
+[calibration]
+v_eff_mode = "shared"        # one signal speed for all paddles (the same bars); "per_paddle" fits each alone
+v_eff_cm_per_ns = 15.0       # used until calibrate.py measures it
+speed_min_mip = 0.8          # speed and attenuation fits: hits with sqrt(hA hB) > 0.8 x muon peak (cuts background)
+tdiff_sigma_ns = 0.6         # used until calibrate.py measures it
+min_hits = 50                # fewer two-end hits: keep the defaults
+min_tof_events = 20          # events per paddle for per-paddle time offsets
+
+[flux]
+vertical_intensity = 70.0    # muons / (m^2 s sr), sea level, above ~1 GeV (PDG review)
+cos_power = 2.0              # I(theta) = I0 cos^2(theta)
+toy_muons = 1000000          # toy muons per layer
+seed = 1
+
+# Time offsets subtracted from every pulse time, for later runs with several boards
+# (board offsets measured by ../scripts/analyze_sync.py, e.g. board 2 runs 4.766 ns late):
+[board_offsets_ns]
+# 2 = 4.766
+
+[channel_offsets_ns]
+# 10013 = 0.25

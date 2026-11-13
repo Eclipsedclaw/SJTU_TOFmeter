@@ -305,7 +305,8 @@ def draw_waveforms(d, row, ax, az):
                 rows.append((int(d.H["paddle"][i]), end, k))
     rows.sort()
     from extract_pulses import lowpass
-    times = []
+    from matplotlib.lines import Line2D
+    times, handles = [], []
     for n, (pi, end, k) in enumerate(rows[:8]):
         chid = int(d.P["channel"][k])
         w = d.waveform(chid, d.P["entry"][k])
@@ -324,8 +325,11 @@ def draw_waveforms(d, row, ax, az):
         amp = float(d.P["fit_amp"][k]) if "fit_amp" in d.P else float("nan")
         fitted = np.isfinite(amp) and chid in d.templates
         level = frac * (amp if fitted else h)          # the pulse time is where the (fitted) edge reaches this
-        ax.plot(t, y, color=col, lw=0.9, label=f"{p.name}-{end}  ch{chid}  {h:.0f} ADC")
-        ax.plot(tp, level, "o", ms=5, color=col, mec=SURFACE, mew=1.2, zorder=4)
+        mark = "D" if fitted else "o"                  # the same marker for the pulse time in both panels
+        ax.plot(t, y, color=col, lw=0.9)
+        ax.plot(tp, level, mark, ms=5, color=col, mec=SURFACE, mew=1.2, zorder=4)
+        handles.append(Line2D([], [], color=col, lw=1.2, marker=mark, ms=5, mec=SURFACE, mew=1.0,
+                              label=f"{p.name}-{end}  ch{chid}  {h:.0f} ADC"))
         az.plot(t, y_raw / h, "o", ms=2.6, color=col, alpha=0.45 if mhz > 0 else 0.9, mew=0)
         if fitted:
             j = int(math.floor(d.P["edge_cfd"][k])) + np.arange(int(ps["fit_window"][0]), int(ps["fit_window"][1]) + 1)
@@ -338,7 +342,7 @@ def draw_waveforms(d, row, ax, az):
             az.plot(t[j], y[j] / h, "o", ms=3.8, color=col, mec=SURFACE, mew=0.6, zorder=4)
         else:
             az.plot(t, y / h, color=col, lw=1.2)
-        az.plot(tp, level / h, "D" if fitted else "o", ms=6, color=col, mec=SURFACE, mew=1.2, zorder=5)
+        az.plot(tp, level / h, mark, ms=6, color=col, mec=SURFACE, mew=1.2, zorder=5)
         az.axvline(tp, color=col, lw=0.7, alpha=0.6)
         times.append((p, end, tp))
     if not times:
@@ -351,9 +355,12 @@ def draw_waveforms(d, row, ax, az):
     ax.set_xlabel("time from the event's first hit (ns)")
     ax.set_ylabel("ADC above the baseline")
     mc.headroom(ax, 1.2)
-    ax.legend(loc="upper right", fontsize=6.5)
+    legend = dict(handles=handles, fontsize=6.5, ncol=2 if len(handles) > 4 else 1)   # the same in both panels
+    ax.legend(loc="upper right", **legend)
+    az.legend(loc="upper left", **legend)
     filt = f"{ps.get('lowpass_kind')} low-pass {mhz:g} MHz" if mhz > 0 else "no filter"
-    ax.set_title(f"the records ({filt}); dots: pulse times", loc="left", fontsize=8.5, color=INK2)
+    ax.set_title(f"the records ({filt}); {'◆' if d.templates else '●'} = pulse time of each channel",
+                 loc="left", fontsize=8.5, color=INK2)
     az.set_xlim(t0 - 14, t1 + 10)
     az.set_ylim(-0.15, 1.15)
     az.axhline(frac, color=MUTED, lw=0.8, ls="--")

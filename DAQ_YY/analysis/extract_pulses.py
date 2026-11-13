@@ -38,7 +38,8 @@ Method, for every waveform (samples are 2 ns; s = the trigger sample, 2 x pulse_
                  peak (mean over plateau_window / height >= min_plateau); noise:
                  no swing below the baseline deeper than max_undershoot x height;
                  pile-up: no later rise of 4 samples above pileup_fraction x height
-                 and pileup_min ADC; saturation: no sample at code 0 or 16383
+                 and pileup_min ADC; saturation: no sample at the ADC limits (0, 16383)
+                 or beyond max_raw_adc / min_raw_adc (where the amplifier clips)
     flags        bit mask, see pulses_summary.txt; SHORT, NO_EDGE, NOISE and LOW
                  pulses are left out by the later steps
 
@@ -74,8 +75,36 @@ def window_length(ref, ps):
                               SHAPE_TO) + 5
 
 
+def lowpass(W, mhz, kind):
+    """Zero-phase low-pass filter of every row of W (2 ns samples), NaN past the end of a
+    record kept. "gauss": Gaussian smoothing whose response falls to -3 dB at `mhz` (no
+    overshoot, no ringing of its own); "butter": 4th-order Butterworth with that design
+    frequency, run forwards and backwards. Both leave a pulse's timing unshifted."""
+    X = np.array(W, dtype=np.float64, copy=True)
+    bad = ~np.isfinite(X)
+    if bad.any():   # continue each record with its last sample, so the filter sees no NaN
+        idx = np.where(~bad, np.arange(X.shape[1])[None, :], 0)
+        np.maximum.accumulate(idx, axis=1, out=idx)
+        X = X[np.arange(len(X))[:, None], idx]
+        X[~np.isfinite(X)] = 0.0
+    if kind == "gauss":
+        from scipy.ndimage import gaussian_filter1d
+        sigma = math.sqrt(math.log(2)) / (2 * math.pi * mhz * 1e6) / (mc.NS_PER_SAMPLE * 1e-9)
+        Y = gaussian_filter1d(X, sigma, axis=1, mode="nearest")
+    elif kind == "butter":
+        from scipy.signal import butter, sosfiltfilt
+        sos = butter(4, mhz * 1e6, fs=1e9 / mc.NS_PER_SAMPLE, output="sos")
+        Y = sosfiltfilt(sos, X, axis=1)
+    else:
+        raise ValueError(f"lowpass_kind must be gauss or butter, not {kind}")
+    Y[bad] = np.nan
+    return Y
+
+
 def measure(W, nsamps, ref, sign, ps):
-    """Measure a chunk of waveforms. W: (n, L) float64, NaN past the end of a record."""
+    """Measure a chunk of waveforms. W: (n, L) float64, NaN past the end of a record.
+    With [pulse] lowpass_mhz > 0 every measurement uses the filtered waveform, except the
+    baseline noise (always the raw samples) and, with lowpass_timing = false, the time."""
     n, L = W.shape
     r = np.arange(n)
     nb = ref + int(ps["baseline_end"])
@@ -85,12 +114,17 @@ def measure(W, nsamps, ref, sign, ps):
     short = nsamps < hi + k
     flags[short] |= mc.FLAG_SHORT
 
+    brms = W[:, :nb].std(axis=1)                   # noise of the raw samples, filter or not
+    sat = ((W >= min(float(ps["max_raw_adc"]), mc.ADC_MAX)) | (W <= max(float(ps["min_raw_adc"]), 0))).any(axis=1)
+    mhz = float(ps["lowpass_mhz"])
+    raw = W
+    if mhz > 0:
+        W = lowpass(W, mhz, str(ps["lowpass_kind"]))
     base = W[:, :nb].mean(axis=1)
-    brms = W[:, :nb].std(axis=1)
     slope = W[:, nb - 30:nb].mean(axis=1) - W[:, :30].mean(axis=1)
-    sat = ((W >= mc.ADC_MAX) | (W <= 0)).any(axis=1)
 
     y = sign * (W - base[:, None])
+    y_time = y if (mhz <= 0 or ps["lowpass_timing"]) else sign * (raw - base[:, None])
     valid = np.isfinite(y)
     y0 = np.where(valid, y, 0.0)
     cs = np.concatenate([np.zeros((n, 1)), np.cumsum(y0, axis=1)], axis=1)       # cs[:, i] = sum y[:, :i]
@@ -108,12 +142,12 @@ def measure(W, nsamps, ref, sign, ps):
         a = max(lo - 15, 1)
         b = min(hi + k, L - 1)
         cols = np.arange(a, b)
-        part = y[:, a:b]
+        part = y_time[:, a:b]
         below = (part <= level[:, None]) & (cols[None, :] < ic[:, None])
         has = below.any(axis=1)
         j = a + (below.shape[1] - 1 - np.argmax(below[:, ::-1], axis=1))
-        ya = y[r, j]
-        yb = y[r, np.minimum(j + 1, L - 1)]
+        ya = y_time[r, j]
+        yb = y_time[r, np.minimum(j + 1, L - 1)]
         with np.errstate(invalid="ignore", divide="ignore"):
             x = j + (level - ya) / (yb - ya)
         ok = has & (yb > ya) & np.isfinite(x)
@@ -225,18 +259,33 @@ def main():
                          "normally pulsePolarity of the .conf)")
     ap.add_argument("--max-waveforms", type=int, default=None,
                     help="Measure only the first N waveforms of every channel (default: all)")
+    ap.add_argument("--lowpass", type=float, default=None,
+                    help="Low-pass filter at this frequency (MHz, -3 dB) before measuring; 0 = off "
+                         "(default: the setup's [pulse] lowpass_mhz)")
+    ap.add_argument("--lowpass-kind", choices=("gauss", "butter"), default=None,
+                    help="Filter shape (default: the setup's lowpass_kind)")
+    ap.add_argument("--raw-timing", action="store_true",
+                    help="Take the pulse time from the raw samples even with the filter on")
     args = ap.parse_args()
     asked = args.file is None
     path = mc.ask_data_file(args.file)
     out = mc.ask_out_folder(args.out, mc.default_out(path)) if asked else \
         mc.ask_out_folder(args.out or mc.default_out(path), None)
-    run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms)
+    run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
+        args.lowpass, args.lowpass_kind, args.raw_timing)
 
 
-def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms=None):
+def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms=None,
+        lowpass_mhz=None, lowpass_kind=None, raw_timing=False):
     """Step 1 for one ROOT file; returns the path of pulses.root."""
     setup = mc.choose_setup(setup_path, path)
-    ps = setup.pulse
+    ps = dict(setup.pulse)
+    if lowpass_mhz is not None:
+        ps["lowpass_mhz"] = float(lowpass_mhz)
+    if lowpass_kind is not None:
+        ps["lowpass_kind"] = lowpass_kind
+    if raw_timing:
+        ps["lowpass_timing"] = False
     conf = mc.read_conf(path)
     if pulse_pre is None:
         if conf is None or conf.pulse_pre is None:
@@ -274,6 +323,11 @@ def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms
             report(f"WARNING     : trigmode {conf.trigmode}: this analysis was checked on self-trigger "
                    f"runs (trigmode 0) only; the trigger is assumed at sample 2 x pulse_pre")
     report(f"Trigger     : ttt refers to sample {ref} of each record (2 x pulse_pre {pulse_pre})")
+    if float(ps["lowpass_mhz"]) > 0:
+        report(f"Filter      : {ps['lowpass_kind']} low-pass at {float(ps['lowpass_mhz']):g} MHz, zero phase; pulse time "
+               f"from the {'filtered' if ps['lowpass_timing'] else 'raw'} samples; baseline noise from the raw samples")
+    else:
+        report("Filter      : none (raw samples)")
     missing = sorted(set(setup.channels) - set(trees))
     unmapped = sorted(set(trees) - set(setup.channels))
     if missing:

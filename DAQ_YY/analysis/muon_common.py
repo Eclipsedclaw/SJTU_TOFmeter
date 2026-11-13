@@ -84,7 +84,8 @@ PULSE_FLAGS = [
     (FLAG_NO_EDGE, "NO_EDGE", "no rising edge through the constant fraction of the height (rejected)"),
     (FLAG_NOISE, "NOISE", "noise burst: no flat top after the peak, or a deep swing below the baseline (rejected)"),
     (FLAG_LOW, "LOW", "height below min_height (rejected)"),
-    (FLAG_SATURATED, "SATURATED", "a sample at ADC code 0 or 16383: the height is only a lower limit (kept)"),
+    (FLAG_SATURATED, "SATURATED", "a sample at the ADC limits or beyond max_raw_adc / min_raw_adc (the amplifier "
+                                  "clips): the height is only a lower limit (kept, left out of the muon-peak fits)"),
     (FLAG_PILEUP, "PILEUP", "a second pulse rises on the tail of the first (kept)"),
     (FLAG_SLOPE, "SLOPE", "the baseline window is not flat, e.g. the tail of an earlier pulse (kept)"),
     (FLAG_NOISY, "NOISY", "baseline noise above max_baseline_rms (kept)"),
@@ -117,6 +118,11 @@ PULSE_DEFAULTS = {
     "pileup_min": 200.0,         # ... and above this many ADC counts is a second pulse
     "max_baseline_slope": 100.0, # ADC between the first and last 30 baseline samples
     "max_baseline_rms": 60.0,    # ADC
+    "max_raw_adc": 16383,        # a raw sample at or above this: SATURATED (the amplifier clips lower)
+    "min_raw_adc": 0,            # a raw sample at or below this: SATURATED
+    "lowpass_mhz": 0.0,          # low-pass filter (-3 dB frequency, MHz) before measuring; 0 = off
+    "lowpass_kind": "gauss",     # "gauss" (no overshoot) or "butter" (4th order); both zero-phase
+    "lowpass_timing": True,      # the pulse time from the filtered waveform too (false: raw samples)
 }
 EVENT_DEFAULTS = {
     "pair_margin_ns": 5.0,       # A and B pulses pair up if |tA - tB| <= length / v_eff + this
@@ -594,8 +600,8 @@ def stamp(step):
 
 
 def default_out(data_path):
-    """Default output folder: <run name>_muon next to the data file."""
-    return os.path.join(os.path.dirname(os.path.abspath(data_path)), f"{run_name(data_path)}_{KIND}")
+    """Default output folder: <run name>_muon next to the data file (its real folder)."""
+    return os.path.join(os.path.dirname(os.path.realpath(data_path)), f"{run_name(data_path)}_{KIND}")
 
 
 def short_run(name):
@@ -607,12 +613,12 @@ def short_run(name):
 def ask_data_file(given):
     """The raw ROOT file from the command line, or asked on the terminal."""
     if given:
-        path = os.path.abspath(os.path.expanduser(given))
+        path = os.path.realpath(os.path.expanduser(given))
         if not os.path.isfile(path):
             sys.exit(f"ERROR: no such file: {path}")
         return path
     enable_path_completion()
-    return ask("ROOT file (raw data of the run)", convert=existing_file)
+    return os.path.realpath(ask("ROOT file (raw data of the run)", convert=existing_file))
 
 
 def ask_out_folder(given, default):
@@ -878,6 +884,27 @@ def expected_position(u_measured, half_length, sigma):
     return um + sigma * (_phi(a) - _phi(b)) / np.maximum(ndtr(b) - ndtr(a), 1e-12)
 
 
+def position_in_paddle(u_measured, half_length, sigma):
+    """Best estimate of where along a paddle a muon crossed, knowing it crossed inside.
+
+    The measured position (from tA - tB) scatters around the true one with the
+    resolution sigma, so near an end it often lies beyond the paddle (about
+    2 sigma / (sqrt(2 pi) L) of all hits for muons spread evenly). Combining the
+    measurement with "the muon was inside -L/2..L/2" gives a Gaussian cut to the
+    paddle: its mean is the estimate (always inside) and its spread the error
+    (smaller near the ends). Returns (mean, sigma) arrays."""
+    from scipy.stats import truncnorm
+    um = np.asarray(u_measured, dtype=np.float64)
+    if not sigma or sigma <= 0:
+        return np.clip(um, -half_length, half_length), np.zeros_like(um)
+    a = (-half_length - um) / sigma
+    b = (half_length - um) / sigma
+    mean, var = truncnorm.stats(a, b, loc=um, scale=sigma, moments="mv")
+    mean = np.clip(np.nan_to_num(np.asarray(mean, dtype=np.float64), nan=0.0), -half_length, half_length)
+    std = np.sqrt(np.clip(np.nan_to_num(np.asarray(var, dtype=np.float64), nan=0.0), 1e-6, None))
+    return mean, std
+
+
 def robust_line(x, y, rounds=5, clip=3.0):
     """Straight line y = a + b x by least squares, dropping points beyond clip x rms
     in each round. Returns dict or None."""
@@ -981,8 +1008,9 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
     thickness are not simulated.
 
     Each muon crossing two layers or more is reconstructed as the data are: the
-    position along each crossed paddle smeared by its resolution, the position
-    across it set to the paddle's centre, then the same line fit.
+    position along each crossed paddle smeared by its resolution and then taken
+    inside the paddle (position_in_paddle), the position across it set to the
+    paddle's centre, then the same line fit.
 
     Returns a dict of arrays (one row per such muon) with 'weight' in Hz per muon.
     """
@@ -1045,13 +1073,14 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
         xt = toy["x0"][rowsel] + toy["bx_true"][rowsel] * dz
         yt = toy["y0"][rowsel] + toy["by_true"][rowsel] * dz
         sig = position_sigma(calib, p, setup)
-        u = p.u_of(xt, yt) + rng.normal(0, sig, rowsel.sum())
+        u_meas = p.u_of(xt, yt) + rng.normal(0, sig, rowsel.sum())
+        u, s_u = position_in_paddle(u_meas, 0.5 * p.length, sig)      # as the data's reconstruction
         px, py, pz = p.point(u)
         j = p.layer.index
         xm[rowsel, j], ym[rowsel, j], zm[rowsel, j] = px, py, pz
         along_x = p.axis == "x"
-        sxm[rowsel, j] = sig if along_x else p.width / math.sqrt(12)
-        sym[rowsel, j] = p.width / math.sqrt(12) if along_x else sig
+        sxm[rowsel, j] = s_u if along_x else p.width / math.sqrt(12)
+        sym[rowsel, j] = p.width / math.sqrt(12) if along_x else s_u
     fit = fit_lines(xm, ym, zm, np.where(np.isfinite(sxm), sxm, 1.0), np.where(np.isfinite(sym), sym, 1.0))
     theta, phi = direction(fit["bx"], fit["by"])
     theta_true, phi_true = direction(toy["bx_true"], toy["by_true"])

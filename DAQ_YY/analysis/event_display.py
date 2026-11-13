@@ -6,8 +6,9 @@ For every chosen track it draws
     event_<n>.png            the setup from above (x-y) and from two sides (x-z,
                              y-z): the paddles that fired, the hit points with
                              their resolution, and the fitted straight line
-    event_<n>_waveforms.png  the event's raw waveforms on one time axis, each
-                             with its pulse time marked (needs the raw ROOT file)
+    event_<n>_waveforms.png  the event's waveforms on one time axis (left) and their
+                             rising edges divided by the height (right), each with
+                             its pulse time marked (needs the raw ROOT file)
 into event_displays/ in the analysis folder. n = the event number of events.root.
 
 Usage:
@@ -15,6 +16,7 @@ Usage:
     python3 event_display.py FOLDER --first 20
     python3 event_display.py FOLDER --events 12,57,301
     python3 event_display.py FOLDER --all
+    python3 event_display.py FOLDER --several 5     # also 5 tracks with several paddles of one layer
     python3 event_display.py FOLDER --no-waveforms
 """
 
@@ -155,7 +157,8 @@ def geometry_figure(d, row, out_dir):
         p = s.paddles[k]
         i = int(T[f"hit_{L.name}"][row])
         sig = mc.position_sigma(d.calib, p, s)
-        lines.append(f"{L.name}: {p.name}  u = {T[f'u_{L.name}'][row]:+.1f} ± {sig:.1f} cm  "
+        um = T[f"u_meas_{L.name}"][row] if f"u_meas_{L.name}" in T else T[f"u_{L.name}"][row]
+        lines.append(f"{L.name}: {p.name}  u = {T[f'u_{L.name}'][row]:+.1f} cm (measured {um:+.1f} ± {sig:.1f})  "
                      f"hA {d.H['hA'][i]:.0f}  hB {d.H['hB'][i]:.0f} ADC  tA-tB {d.H['tdiff_ns'][i]:+.2f} ns")
     ax_xy.text(0.0, -0.13, "\n".join(lines), transform=ax_xy.transAxes, fontsize=7, color=INK2, va="top",
                linespacing=1.5)
@@ -177,47 +180,91 @@ def geometry_figure(d, row, out_dir):
 
 
 def waveform_figure(d, row, out_dir):
+    """The event's waveforms: all of them (left) and their rising edges, each divided by its
+    height (right), where the times of the 20 % crossings show the differences directly."""
     s = d.setup
     T = d.Tr
     e = int(T["event"][row])
     t_event = T["t_ns"][row]
+    ps = d.pinfo["pulse_settings"]
     ref = int(d.pinfo["trigger_sample"])
     origin = int(d.pinfo["ttt_origin"])
-    frac = float(d.pinfo["pulse_settings"]["cfd_fraction"])
+    frac = float(ps["cfd_fraction"])
+    mhz = float(ps.get("lowpass_mhz", 0) or 0)
     rows = []
     for i in np.where(d.H["event"] == e)[0]:
         for end in ("A", "B"):
             k = int(d.H[f"pulse{end}"][i])
             if k >= 0:
-                rows.append((int(d.H["paddle"][i]), end, k))
+                rows.append((int(d.H["paddle"][i]), end, k, int(i)))
     rows.sort()
     if not rows or d.raw is None:
         return None
-    fig, ax = plt.subplots(figsize=(7.4, 4.4))
-    tmin = []
-    for n, (pi, end, k) in enumerate(rows[:8]):
+    from extract_pulses import lowpass
+    fig = plt.figure(figsize=(11.6, 4.6))
+    gs = GridSpec(1, 2, figure=fig, width_ratios=[1.0, 1.0], wspace=0.22, top=0.84)
+    ax, az = fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])
+    times, labels = [], []
+    for n, (pi, end, k, hit) in enumerate(rows[:8]):
         chid = int(d.P["channel"][k])
         w = d.waveform(chid, d.P["entry"][k])
         if w is None:
             continue
         positive = d.pinfo["channels"].get(str(chid), {}).get("positive", True)
-        y = (w - d.P["baseline"][k]) * (1 if positive else -1)
+        sign = 1 if positive else -1
+        y_raw = (w - d.P["baseline"][k]) * sign
+        y = (lowpass(w[None, :], mhz, ps.get("lowpass_kind", "gauss"))[0] - d.P["baseline"][k]) * sign if mhz > 0 else y_raw
         t = ((int(d.P["ttt"][k]) - origin) * mc.NS_PER_TICK + (np.arange(len(w)) - ref) * mc.NS_PER_SAMPLE
              - s.time_offset(chid) - t_event)
         col = CATEGORICAL[n % len(CATEGORICAL)]
         p = s.paddles[pi]
-        ax.plot(t, y, color=col, lw=0.9, label=f"{p.name}-{end}  ch{chid}  height {d.P['height'][k]:.0f}")
+        h = float(d.P["height"][k])
         tp = d.P["t_ns"][k] - t_event
-        ax.plot(tp, frac * d.P["height"][k], "o", ms=5, color=col, mec=SURFACE, mew=1.2, zorder=4)
-        tmin.append(tp)
-    ax.set_xlim(min(tmin) - 60, min(tmin) + 340)
+        ax.plot(t, y, color=col, lw=0.9, label=f"{p.name}-{end}  ch{chid}  height {h:.0f}")
+        ax.plot(tp, frac * h, "o", ms=5, color=col, mec=SURFACE, mew=1.2, zorder=4)
+        # zoom: samples as dots, the (filtered) waveform as a line, both divided by the height
+        az.plot(t, y_raw / h, "o", ms=2.6, color=col, alpha=0.45 if mhz > 0 else 0.9, mew=0)
+        az.plot(t, y / h, color=col, lw=1.1)
+        az.plot(tp, frac, "o", ms=6, color=col, mec=SURFACE, mew=1.2, zorder=5)
+        az.axvline(tp, color=col, lw=0.7, alpha=0.6)
+        times.append((p, end, tp))
+    if not times:
+        plt.close(fig)
+        return None
+    t0 = min(x[2] for x in times)
+    t1 = max(x[2] for x in times)
+    ax.set_xlim(t0 - 60, t0 + 340)
     ax.axhline(0, color=AXIS, lw=0.8)
     ax.set_xlabel("time from the event's first hit (ns)")
     ax.set_ylabel("ADC above the baseline")
     mc.headroom(ax, 1.2)
     ax.legend(loc="upper right")
-    mc.title(ax, f"Waveforms of event {e}, {d.short}",
-             f"dots: pulse time ({frac:.0%} of the height); ends of one paddle differ by -2u/v, layers by the time of flight")
+    ax.set_title("whole records (dots: pulse times)", loc="left", fontsize=8, color=INK2)
+    az.set_xlim(t0 - 14, t1 + 10)
+    az.set_ylim(-0.15, 1.15)
+    az.axhline(frac, color=MUTED, lw=0.8, ls="--")
+    az.axhline(0, color=AXIS, lw=0.8)
+    az.set_xlabel("time from the event's first hit (ns)")
+    az.set_ylabel("signal / pulse height")
+    az.set_title(f"rising edges: dots = samples (2 ns), lines = {'the filtered waveform' if mhz > 0 else 'linear between samples'}; "
+                 f"dashed: {frac:.0%}", loc="left", fontsize=8, color=INK2)
+    # the differences the analysis uses
+    lines = []
+    by_paddle = {}
+    for p, end, tp in times:
+        by_paddle.setdefault(p.name, {})[end] = tp
+    for name, ends in by_paddle.items():
+        if "A" in ends and "B" in ends:
+            lines.append(f"{name}: tA - tB = {ends['A'] - ends['B']:+.2f} ns")
+    if np.isfinite(T["tof_ns"][row]):
+        lines.append(f"time of flight {T['tof_ns'][row]:.2f} ns (s/c {T['tof_expected_ns'][row]:.2f})")
+    az.text(0.98, 0.04, "\n".join(lines), transform=az.transAxes, ha="right", va="bottom", fontsize=7.5,
+            color=INK2, linespacing=1.5, bbox=dict(boxstyle="round,pad=0.45", fc=SURFACE, ec=mc.GRID, lw=0.6))
+    filt = f"{ps.get('lowpass_kind')} low-pass {mhz:g} MHz" if mhz > 0 else "no filter"
+    fig.text(0.125, 0.975, f"Waveforms of event {e}, {d.short}", ha="left", va="top", fontsize=9.5, color=INK)
+    fig.text(0.125, 0.935, f"each pulse's time = where its rising edge crosses {frac:.0%} of its height ({filt}); "
+                           f"the ends of a paddle differ by -2u/v, the layers by the time of flight",
+             ha="left", va="top", fontsize=8, color=INK2)
     mc.footer(fig, f"{d.run}  ·  setup {s.name}")
     path = os.path.join(out_dir, f"event_{e}_waveforms.png")
     mc.save_figure(fig, path)
@@ -231,15 +278,17 @@ def main():
     ap.add_argument("--events", default=None, help="Event numbers, e.g. 12,57,300-310")
     ap.add_argument("--first", type=int, default=10, help="The first N tracks (default 10)")
     ap.add_argument("--all", action="store_true", help="Every track")
+    ap.add_argument("--several", type=int, default=0,
+                    help="Also the first N tracks with several paddles of one layer (default 0)")
     ap.add_argument("--no-waveforms", action="store_true", help="Leave out the waveform pictures")
     ap.add_argument("--setup", default=None, help="Setup file (default: the one step 1 used)")
     args = ap.parse_args()
     folder = mc.ask_analysis_folder(args.folder, mc.TRACKS_FILE, "reconstruct.py")
     events = parse_events(args.events) if args.events else None
-    run(folder, events, None if args.all else args.first, not args.no_waveforms, args.setup)
+    run(folder, events, None if args.all else args.first, not args.no_waveforms, args.setup, args.several)
 
 
-def run(folder, events=None, first=10, waveforms=True, setup_path=None):
+def run(folder, events=None, first=10, waveforms=True, setup_path=None, several=0):
     """Event pictures for one analysis folder; returns the list of files."""
     d = Data(folder, setup_path)
     if events is not None:
@@ -249,6 +298,9 @@ def run(folder, events=None, first=10, waveforms=True, setup_path=None):
             print(f"Note: no track in event(s) {', '.join(map(str, missing))}")
     else:
         rows = list(range(len(d.Tr["event"]) if first is None else min(first, len(d.Tr["event"]))))
+    if several:
+        odd = np.where((d.Tr["flags"] & (mc.TRACK_ADJACENT | mc.TRACK_AMBIGUOUS)) != 0)[0]
+        rows += [int(r) for r in odd if int(r) not in rows][:several]
     out_dir = os.path.join(folder, mc.DISPLAY_DIR)
     os.makedirs(out_dir, exist_ok=True)
     if waveforms and d.raw is None:

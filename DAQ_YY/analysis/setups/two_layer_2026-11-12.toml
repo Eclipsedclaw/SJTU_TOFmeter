@@ -98,7 +98,16 @@ max_undershoot = 0.5         # noise test: no swing below the baseline deeper th
 pileup_fraction = 0.25       # second pulse: a later rise above 25 % of the height ...
 pileup_min = 200.0           # ... and above 200 ADC
 max_baseline_slope = 100.0   # ADC
-max_baseline_rms = 60.0      # ADC
+max_baseline_rms = 60.0      # ADC (measured on the raw samples, filter or not)
+max_raw_adc = 14500          # the amplifiers clip at raw 14600-15100 (6300-6900 above the baseline, run 58): SATURATED
+min_raw_adc = 0
+# Low-pass filter against the ringing (110-190 MHz, ch6 also 50 MHz) before measuring; 0 = off.
+# Scan on run 58: no filter sigma(tA - tB) 0.51/0.60/0.57/0.61 ns (TOP1/TOP2/MID1/MID2), TOF 0.373 ns;
+# butter 80 MHz 0.50/0.50/0.53/0.51 ns, TOF 0.338 ns (best); gauss 80 MHz 0.50/0.52/0.54/0.52 ns, 0.360 ns;
+# gauss 40 MHz slows the edge (TOP1 0.53). Far position outliers 0.23 % -> 0.14 %.
+lowpass_mhz = 80.0
+lowpass_kind = "butter"      # "butter": 4th order, sharp; "gauss": no overshoot; both zero-phase (no time shift)
+lowpass_timing = true        # the pulse time from the filtered waveform (false: from the raw samples)
 
 [events]
 pair_margin_ns = 5.0         # A-B pairing window: length / v_eff + 5 ns

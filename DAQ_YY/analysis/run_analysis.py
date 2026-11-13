@@ -8,7 +8,7 @@ Runs the steps one after the other on one DAQ_YY run:
     3 calibrate.py        signal speed, offsets, resolution, attenuation, muon peak -> calibration.json
     4 reconstruct.py      tracks, angles, time of flight, toy expectation -> tracks.root
     5 make_plots.py       plots/ and analysis_summary.txt
-    6 event_display.py    event_displays/ (the first 10 tracks)
+    6 event_display.py    event_displays/ (the first 10 tracks and 5 with several paddles of one layer)
 
 Usage:
     python3 run_analysis.py                    # asks for the ROOT file and the output folder
@@ -58,6 +58,10 @@ def main():
     ap.add_argument("--polarity", choices=("positive", "negative"), default=None,
                     help="Pulse polarity of every channel (default: from the .conf)")
     ap.add_argument("--toy-muons", type=int, default=None, help="Toy muons per layer (default: setup [flux])")
+    ap.add_argument("--lowpass", type=float, default=None,
+                    help="Low-pass filter (MHz, -3 dB) before measuring; 0 = off (default: setup [pulse])")
+    ap.add_argument("--lowpass-kind", choices=("gauss", "butter"), default=None, help="Filter shape")
+    ap.add_argument("--raw-timing", action="store_true", help="Pulse time from the raw samples even with the filter")
     args = ap.parse_args()
 
     asked = args.file is None
@@ -71,7 +75,8 @@ def main():
 
     if args.start <= 1:
         step(1, "pulses (extract_pulses.py)")
-        extract_pulses.run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms)
+        extract_pulses.run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
+                           args.lowpass, args.lowpass_kind, args.raw_timing)
     if args.start <= 2:
         step(2, "hits and events (build_events.py)")
         build_events.run(out, args.setup)
@@ -89,7 +94,7 @@ def main():
         make_plots.run(out, args.setup)
     if args.start <= 6 and args.events > 0:
         step(6, "event pictures (event_display.py)")
-        event_display.run(out, first=args.events, setup_path=args.setup)
+        event_display.run(out, first=args.events, setup_path=args.setup, several=5)
     print(f"\nDone in {mc.clock(time.monotonic() - start)}. Results in {out}")
     print(f"Start with {os.path.join(out, 'analysis_summary.txt')}")
 

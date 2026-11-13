@@ -16,10 +16,13 @@ Plots (plots/<name>.png):
     pulse_shape_<paddle>   average pulse of both ends, normalised to its height
     heights_<paddle>       pulse heights of both ends, with the DAQ thresholds
     tdiff_<paddle>         tA - tB with the box fit (gives the signal speed)
+    position_<paddle>      measured position along the paddle; why some lie beyond its ends
     attenuation_<paddle>   ln(hA / hB) against the position along the paddle
     mip_<paddle>           sqrt(hA x hB) with the muon-peak fit
     layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns
     event_types            events by the layers with a two-end hit
+    event_quality          selection steps: all events, a paddle at both ends, a track, one
+                           paddle per layer or several paddles of one layer
     coincidences_<a>_<b>   events per paddle pair, measured and expected
     rates_vs_time          hit rate per layer and coincidence rate over the run
     hitmap_<layer>         where the tracks cross each layer (top view)
@@ -354,6 +357,108 @@ def plot_mip(c, p):
     c.save(fig, f"mip_{p.name}")
 
 
+def plot_position(c, p):
+    """Measured position along the paddle (from tA - tB): why some lie beyond the ends."""
+    cal = c.calib["paddles"].get(p.name, {})
+    if not str(cal.get("tdiff_status", "")).startswith("fitted"):
+        return
+    sel, used, cut = fitted_hits(c, p, cal)
+    v, off, sig = cal["v_eff_cm_per_ns"], cal["tdiff_offset_ns"], cal["tdiff_sigma_ns"]
+    u = -0.5 * v * (c.H["tdiff_ns"][sel][used] - off)
+    s_u = 0.5 * v * sig
+    half = 0.5 * p.length
+    r0, r1 = cal["tdiff_fit_range_ns"]
+    umax = 0.5 * v * max(abs(r0), abs(r1))
+    fig, ax = figure()
+    bins = np.linspace(-umax, umax, int(np.clip(len(u) / 40, 30, 90)) + 1)
+    width = bins[1] - bins[0]
+    stairs(ax, u, bins, CATEGORICAL[0], label=f"{len(u)} two-end hits" + (" (fitted)" if cut else ""))
+    # the fitted model, an even spread over the paddle smeared by the resolution, in cm
+    uu = np.linspace(-umax, umax, 800)
+    tt = off - 2 * uu / v
+    pdf_t = mc.box_pdf(tt, cal["tdiff_lo_ns"], cal["tdiff_hi_ns"], sig, cal["tdiff_background"], r0, r1)
+    ax.plot(uu, len(u) * width * pdf_t * 2 / v, color=FIT_COLOR, lw=1.3,
+            label=f"even along it, smeared by σ = {s_u:.1f} cm")
+    for sgn in (-1, 1):
+        ax.axvspan(sgn * half, sgn * umax, color=GRID, alpha=0.5, lw=0)
+        ax.axvline(sgn * half, color=MUTED, lw=0.9, ls="--")
+    # fractions beyond the ends: data, and the smearing alone (the fit without its flat part)
+    grid = np.linspace(r0, r1, 20001)
+    dens = mc.box_pdf(grid, cal["tdiff_lo_ns"], cal["tdiff_hi_ns"], sig, 0.0, r0, r1)
+    ug = -0.5 * v * (grid - off)
+    step = grid[1] - grid[0]
+    exp_out = float(np.sum(dens[np.abs(ug) > half]) * step)
+    exp_far = float(np.sum(dens[np.abs(ug) > half + 3 * s_u]) * step)
+    out = float(np.mean(np.abs(u) > half))
+    far = float(np.mean(np.abs(u) > half + 3 * s_u))
+    note(ax, f"beyond the ends: {out:.1%}\n  smearing alone: {exp_out:.1%}\n"
+             f"beyond the ends + 3σ: {far:.2%}\n  smearing alone: {exp_far:.3%}", loc="upper left")
+    ax.set_xlim(-umax, umax)
+    ax.set_ylim(0, None)
+    mc.headroom(ax, 1.6)
+    ax.set_xlabel(f"measured position along the paddle u (cm, + towards the A end at {p.a_end})")
+    ax.set_ylabel("hits per bin")
+    ax.legend(loc="upper right")
+    mc.title(ax, f"Measured position along {p.name}: {c.short}",
+             "grey: beyond the paddle's ends, reached only through the time resolution; tracks use the "
+             "best estimate inside the paddle")
+    c.save(fig, f"position_{p.name}")
+
+
+def event_quality(c):
+    """Selection steps of the events, each with its count: [(label, count, kind)]; kind
+    'step' for the chain, 'clean' / 'several' for the split of the tracks."""
+    E, s = c.E, c.setup
+    names = [layer.name for layer in s.layers]
+    n_ab = sum(E[f"n_ab_{nm}"].astype(np.int64) for nm in names)
+    rows = [("all events", len(E["event"]), "step"),
+            ("a paddle seen at both ends", int((n_ab >= 1).sum()), "step")]
+    multi = E["n_layers_ab"] >= 2
+    both = " and ".join(names) if len(names) == 2 else "two layers or more"
+    rows.append((f"both ends in the {both} layers (a track)" if len(names) == 2 else
+                 f"both ends in {both} (a track)", int(multi.sum()), "step"))
+    if len(names) > 2:
+        rows.append(("... in every layer", int((E["n_layers_ab"] == len(names)).sum()), "step"))
+    one = multi.copy()
+    for nm in names:
+        one &= E[f"n_ab_{nm}"] <= 1
+    flags = np.zeros(len(E["event"]), dtype=np.int64)
+    if c.has_tracks and len(c.Tr["event"]):
+        flags[c.Tr["event"]] = c.Tr["flags"]
+    inside = one & ((flags & mc.TRACK_OUTSIDE) == 0)
+    adjacent = multi & ~one & ((flags & mc.TRACK_AMBIGUOUS) == 0)
+    apart = multi & ~one & ((flags & mc.TRACK_AMBIGUOUS) != 0)
+    rows += [("one paddle per layer", int(one.sum()), "clean"),
+             ("one paddle per layer, every hit < 3σ beyond its paddle", int(inside.sum()), "clean"),
+             ("several paddles of one layer, side by side", int(adjacent.sum()), "several"),
+             ("several paddles of one layer, not side by side", int(apart.sum()), "several")]
+    return rows
+
+
+def plot_event_quality(c):
+    rows = event_quality(c)
+    n_all = max(rows[0][1], 1)
+    fig, ax = figure(7.2, 0.42 * len(rows) + 1.5)
+    y = np.arange(len(rows))[::-1]
+    colors = {"step": CATEGORICAL[0], "clean": CATEGORICAL[2], "several": CATEGORICAL[1]}
+    for yi, (label, n, kind) in zip(y, rows):
+        ax.barh(yi, max(n, 0.5), height=0.6, color=colors[kind], edgecolor=SURFACE, lw=1.0)
+        ax.text(max(n, 0.5), yi, f"  {n}  ({100 * n / n_all:.3g} %)", va="center", fontsize=7, color=INK2)
+    ax.set_yticks(y, [("    " if kind != "step" else "") + label for label, n, kind in rows])
+    ax.set_xscale("log")
+    ax.set_xlim(0.4, n_all * 12)
+    ax.set_xlabel("events (log scale); in brackets: % of all events")
+    ax.grid(axis="y", visible=False)
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color=colors["step"], label="selection steps, each inside the one above"),
+                       Patch(color=colors["clean"], label="tracks: one paddle per layer"),
+                       Patch(color=colors["several"], label="tracks: several paddles of one layer")],
+              loc="lower right")
+    mc.title(ax, f"Event quality: {c.short}",
+             f"all {n_all} events = hits within {c.setup.events['window_ns']:g} ns; most have one end of one paddle only")
+    c.save(fig, "event_quality")
+
+
 # ---- event plots ----
 
 def plot_layer_delay(c, la, lb):
@@ -510,7 +615,8 @@ def plot_hitmap(c, layer):
     ax.margins(0.08)
     ax.legend(loc="lower right")
     mc.title(ax, f"Where the tracks cross the {layer.name} layer: {c.short}",
-             f"filled: {layer.name} paddles; grey: the other layers; across a paddle the point is its centre line")
+             f"filled: {layer.name} paddles; grey: the other layers; across a paddle: its centre line, "
+             f"along it: the best estimate inside the paddle")
     c.save(fig, f"hitmap_{layer.name}")
 
 
@@ -687,6 +793,12 @@ def headline(c):
     for w in c.calib.get("warnings", []):
         lines.append(f"WARNING   : {w}")
     lines.append("")
+    rows = event_quality(c)
+    n_all = max(rows[0][1], 1)
+    lines.append("Event quality (each step inside the one above; the indented lines split the tracks):")
+    for label, n, kind in rows:
+        lines.append(f"  {('  ' if kind != 'step' else '') + label:<62}{n:>8}  {100 * n / n_all:7.3f} %")
+    lines.append("")
     for key, co in c.einfo.get("coincidences", {}).items():
         lines.append(f"Coincid.  : {key}: {co['events']} events = {co['rate_hz']:.3f} ± "
                      f"{math.sqrt(co['events']) / c.span_s:.3f} Hz (by chance {co['chance_calculated']:.2g})")
@@ -747,13 +859,15 @@ def run(folder, setup_path=None):
                  (f"{p.name} heights", lambda p=p: plot_heights(c, p))]
         if p.both_ends:
             jobs += [(f"{p.name} tA-tB", lambda p=p: plot_tdiff(c, p)),
+                     (f"{p.name} position", lambda p=p: plot_position(c, p)),
                      (f"{p.name} attenuation", lambda p=p: plot_attenuation(c, p)),
                      (f"{p.name} muon peak", lambda p=p: plot_mip(c, p))]
     for i, la in enumerate(s.layers):
         for lb in s.layers[i + 1:]:
             jobs.append((f"{la.name}-{lb.name} delay", lambda la=la, lb=lb: plot_layer_delay(c, la, lb)))
             jobs.append((f"{la.name}-{lb.name} pairs", lambda la=la, lb=lb: plot_coincidences(c, la, lb)))
-    jobs += [("event types", lambda: plot_event_types(c)), ("rates", lambda: plot_rates_vs_time(c))]
+    jobs += [("event types", lambda: plot_event_types(c)), ("event quality", lambda: plot_event_quality(c)),
+             ("rates", lambda: plot_rates_vs_time(c))]
     if c.has_tracks and len(c.Tr["event"]):
         for layer in s.layers:
             jobs.append((f"{layer.name} hit map", lambda layer=layer: plot_hitmap(c, layer)))

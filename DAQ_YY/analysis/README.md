@@ -27,7 +27,8 @@ python3 run_analysis.py /path/to/run.root                 # output next to the d
 python3 run_analysis.py /path/to/run.root --out /path/to/folder
 ```
 
-A 30-minute run (125 000 waveforms) takes about 4 minutes on one CPU core. **Passes if** the last lines
+The results of runs 56–58 are in `/data/data/jiancheng/DAQ_yy_data/raw/<run>_muon/`, next to their data.
+A 30-minute run (125 000 waveforms) takes about 6 minutes on one CPU core. **Passes if** the last lines
 read `Done in ...` and `Start with .../analysis_summary.txt`.
 
 Before the first run, check that Python finds ROOT (as for the scripts in [`../scripts`](../scripts)):
@@ -46,15 +47,17 @@ folder (they ask for it, or take it as the first argument), for example after ch
 | 3 | `calibrate.py` | → `calibration.json` | Signal speed, offsets and resolution of tA − tB, attenuation, muon peak, layer time offsets |
 | 4 | `reconstruct.py` | → `tracks.root` | Hit points, straight tracks, angles, time of flight; toy expectation; channel-map check |
 | 5 | `make_plots.py` | → `plots/`, `analysis_summary.txt` | 30-odd plots, one per file, and the summary |
-| 6 | `event_display.py` | → `event_displays/` | Pictures of single events (first 10 tracks; `--events 12,57` for others) |
+| 6 | `event_display.py` | → `event_displays/` | Pictures of single events: the first 10 tracks and 5 with several paddles of one layer (`--events 12,57`, `--several N`) |
 
 The ideas behind each step (the scripts' `--help` has the details):
 
 1. **Pulse.** The front end integrates the charge: a pulse rises in ~10 ns, stays flat for ~20 ns and
-   decays over ~1 µs. Its *height* (running mean of 5 samples at the peak) measures the light. Its
-   *time* is where the rising edge crosses 20 % of the height ("constant fraction"), interpolated between
-   samples: the same point on every pulse, small or big, so no time walk. Noise bursts (an oscillation
-   that crossed the threshold) have no flat top and swing below the baseline; they are flagged and left out.
+   decays over ~1 µs. The waveform first goes through a low-pass filter (Butterworth, 80 MHz, run forwards
+   and backwards so that no time moves) that removes the ringing at 110–190 MHz; see *The low-pass filter*.
+   The *height* (running mean of 5 samples at the peak) measures the light. The *time* is where the rising
+   edge crosses 20 % of the height ("constant fraction"), interpolated between samples: the same point on
+   every pulse, small or big, so no time walk. Noise bursts (an oscillation that crossed the threshold) have
+   no flat top and swing below the baseline; they are flagged and left out.
 2. **Hit.** A muon crossing a paddle at u (cm from its centre, + towards end A) gives
    tA − tB = −2u/v + offset (v = signal speed along the paddle) and a mean time (tA + tB)/2 that does
    not depend on u. A pulse without a partner at the other end is a one-end hit.
@@ -65,7 +68,9 @@ The ideas behind each step (the scripts' `--help` has the details):
    depend on u) comes from the muons that cross both layers, × cos(zenith). Layer time offsets come from
    requiring β = 1 on average (cosmic muons are relativistic).
 4. **Track.** The position along each paddle comes from the timing; across it, the paddle's centre line
-   (resolution width/√12). A straight line through the points of the layers gives the zenith θ and the
+   (resolution width/√12). The measured position scatters by the resolution (about 4 cm) and so lands
+   beyond a paddle's end for muons near it; the point used is the best estimate *inside* the paddle (see
+   *Positions beyond the paddle ends*). A straight line through the points of the layers gives the zenith θ and the
    azimuth φ of the arrival direction; the time between the layers gives the time of flight and β.
    A toy simulation (muons with I₀ cos²θ through the same geometry, reconstructed like the data) gives the
    rates and angle distributions expected for fully efficient paddles.
@@ -130,7 +135,7 @@ In the output folder:
 | `tracks.root` | Tree `tracks` (one per reconstructed muon); tree `toy` (the toy muons, with weights in Hz) |
 | `*_summary.txt` | The tables each step printed |
 | `plots/*.png` | One plot per file, listed below |
-| `event_displays/` | `event_<n>.png` (top and side views) and `event_<n>_waveforms.png` |
+| `event_displays/` | `event_<n>.png` (top and side views) and `event_<n>_waveforms.png` (all records, and the rising edges divided by their height, where the time differences show) |
 
 The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks->Draw("theta_deg")`.
 
@@ -138,11 +143,13 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 |---|---|
 | `pulse_rates`, `baseline_noise` | Channels with many rejected (noise) pulses or a noisy baseline |
 | `pulse_shape_<paddle>` | Both ends with the same shape |
+| `position_<paddle>` | Measured position along the paddle: how many lie beyond the ends, against the smearing alone |
 | `heights_<paddle>` | Where the thresholds cut the spectrum |
 | `tdiff_<paddle>` | A box with smeared edges; the fit gives v, offset, resolution |
 | `attenuation_<paddle>` | ln(hA/hB) rising with u; the S-shaped curve is what the fitted line predicts at a measured u |
 | `mip_<paddle>` | The muon peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
 | `layer_delay_<a>_<b>` | One peak at 0 ns above a flat chance level |
+| `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
 | `hitmap_<layer>`, `zenith`, `azimuth` | Where the tracks cross, and their angles against the toy |
 | `tof_residual`, `inv_beta` | Time of flight minus s/c against the expected resolution; 1/β around 1 |
@@ -160,6 +167,10 @@ TOF       : tof - s/c robust σ 0.37 ns (expected 0.41 ns) over a median path of
 Map check : top layer y (timing) by middle paddle: slope -0.24 ± 0.45 (+1 expected), ...
 ```
 
+- **Event quality**: each selection step with its count and share of all events. In run 58: 80 503
+  events (hits within 30 ns), 47.8 % with a paddle seen at both ends, 640 tracks (0.8 %), of which 616 have
+  one paddle per layer and 24 two neighbouring paddles of one layer (a muon crossing at their joint, or a
+  shower); none had two paddles of a layer that are not neighbours.
 - **threshold/peak** (per channel, in the paddle lines): the threshold as a fraction of that end's signal
   for a muon through the paddle's centre. A muon near the far end gives only exp(−L/2λ) of it (≈ 0.5 here),
   so thresholds above ~0.3 lose muons near the paddle ends.
@@ -173,6 +184,43 @@ Map check : top layer y (timing) by middle paddle: slope -0.24 ± 0.45 (+1 expec
   shift + slope × toy: slope +1 = the channel map is as the setup file says; −1 = one direction (the A/B
   cables) or one order (which paddle is 1 or 2) is the other way round. It uses the timing and,
   independently, the light sharing. A simulated run with the top cables swapped gives −1.4 ± 0.7.
+
+## The low-pass filter
+
+Most channels ring at 110–190 MHz (2–6 times more noise power there than at 2–40 MHz; ch6 also at
+50 MHz), far above the 35–50 MHz a 10 ns edge needs. Run 58 analysed with each filter setting (σ(tA − tB)
+errors ±0.015 ns):
+
+| Filter | σ(tA − tB), ns: TOP1 / TOP2 / MID1 / MID2 | TOF σ | Positions > 3σ beyond the ends |
+|---|---|---|---|
+| none | 0.509 / 0.596 / 0.566 / 0.613 | 0.373 ns | 0.23 % |
+| Gaussian 120 MHz | 0.499 / 0.546 / 0.546 / 0.563 | 0.356 ns | 0.14 % |
+| Gaussian 80 MHz | 0.495 / 0.522 / 0.537 / 0.519 | 0.360 ns | 0.12 % |
+| Gaussian 40 MHz | 0.528 / 0.528 / 0.550 / 0.544 | 0.366 ns | 0.08 % |
+| **Butterworth 80 MHz** (used) | **0.504 / 0.502 / 0.534 / 0.505** | **0.338 ns** | 0.14 % |
+| Gaussian 60 MHz, time from the raw samples | 0.510 / 0.592 / 0.566 / 0.607 | 0.374 ns | 0.21 % |
+
+The filter improves the timing, most for the noisy channels (TOP2 and MID2 by 18 %), and halves the far
+position outliers. Below ~60 MHz it starts to slow the edge (TOP1 gets worse). Both filters are run forwards
+and backwards (zero phase), so they move no pulse in time; the baseline noise in `pulses_summary.txt` is
+always measured on the raw samples. Settings: `[pulse]` `lowpass_mhz` (0 = off), `lowpass_kind`,
+`lowpass_timing`; or `--lowpass 0` to compare without it. A simulated run (white noise, no ringing) gives
+the same constants with and without the filter.
+
+## Positions beyond the paddle ends
+
+A muon cannot cross outside a paddle, but its *measured* position can lie beyond the end: the position comes
+from tA − tB with a resolution of about 4 cm, so a muon 1 cm from the end is measured beyond it almost half
+the time. For muons spread evenly along a 40 cm paddle that puts 2σ/(√(2π) L) ≈ 8 % of the hits beyond the
+ends, and that is what the data show (`position_<paddle>.png`, run 58: 7.5–8.5 % measured, 7.5–8.0 % from
+the resolution). Far beyond (more than 3σ) Gaussian smearing gives 0.01 %; there were 0.2 % without the
+filter, small pulses whose edge time the ringing had pulled, and 0.06–0.13 % with it.
+
+The track points therefore use the best estimate given that the muon crossed inside: the measurement's
+Gaussian cut to the paddle, its mean as the point and its spread as the error. It always lies inside; in a
+simulated run it and the filter together brought the position error along the paddle from 5.4 to 4.6 cm and
+the zenith error from 8.3° to 7.3°. The measured position is kept as `u_meas_<layer>` in `tracks.root`, and the flag
+OUTSIDE marks a measurement more than 3σ beyond its paddle.
 
 ## Check the analysis with a simulated run
 
@@ -188,31 +236,35 @@ python3 tests/check_fake_run.py /path/to/test_folder/fake_muon
 ```
 
 **Passes if** the constants agree with the truth within about 2σ and the position residuals have a mean
-near 0. On 2026-11-13: signal speed 15.98 ± 0.18 (truth 16.00) cm/ns, λ 37.8–38.3 (38.0) cm, offsets and
-muon peaks within 1.5σ, positions unbiased (rms 1.1 cm across a paddle, 5.3–5.5 cm along it).
+near 0. On 2026-11-13 (filter on): signal speed 15.85 ± 0.17 (truth 16.00) cm/ns, λ 37.7–38.5 (38.0) cm,
+offsets and muon peaks within 2σ, positions unbiased (rms 1.1 cm across a paddle, 4.4–4.8 cm along it),
+zenith −0.9 ± 7.3°, 1/β 1.005.
 
-## Reference: runs 56–58 (2026-11-12/13, board 1, thresholds 400 ADC; run 56: 600)
+## Reference: runs 56–58 (2026-11-12/13, board 1, thresholds 400 ADC; run 56: 600; filter on)
 
 | | run 56 (40 s) | run 57 (10 min) | run 58 (30 min, longer window) |
 |---|---|---|---|
+| Events / with a paddle at both ends | 1 374 / 39 % | 26 968 / 49 % | 80 503 / 48 % |
 | Tracks (top + middle) | 11 | 205 | 640 |
 | Rate | 0.28 ± 0.08 Hz | 0.342 ± 0.024 Hz | 0.356 ± 0.014 Hz |
 | Measured / expected | 0.68 ± 0.21 | 0.84 ± 0.06 | 0.88 ± 0.03 |
-| Signal speed (shared) | 16.8 ± 0.7 cm/ns | 15.3 ± 0.1 cm/ns | 15.24 ± 0.06 cm/ns |
-| σ(tA − tB) | 0.50–0.95 ns | 0.55–0.62 ns | 0.51–0.61 ns |
-| Position resolution along a paddle | 4–8 cm | 4.2–4.8 cm | 3.9–4.7 cm |
-| Attenuation length | 27–34 cm | 27–31 cm | 27–32 cm |
-| Muon peak √(hA·hB) | 775–981 ADC | 649–886 ADC | 628–893 ADC |
-| TOF residual (robust σ) | 0.26 ns | 0.45 ns | 0.37 ns |
+| Signal speed (shared) | 17.6 ± 1.0 cm/ns (too few hits) | 15.5 ± 0.1 cm/ns | 15.35 ± 0.06 cm/ns |
+| σ(tA − tB) | 0.40–0.93 ns | 0.53–0.56 ns | 0.50–0.53 ns |
+| Position resolution along a paddle | 3.5–8 cm | 4.1–4.4 cm | 3.8–4.1 cm |
+| Muon peak √(hA·hB) | 796–982 ADC (all hits) | 642–889 ADC | 637–903 ADC |
+| TOF residual (robust σ) | 0.23 ns (11 tracks) | 0.35 ns | 0.34 ns |
+| Zenith mean (toy) | 24.2° (22.1°) | 24.6° (22.7°) | 23.5° (22.8°) |
 
 - Two-end hits per paddle are 2–4 times the expected muon rate: single paddles also see electrons, gammas
   and radioactivity, mostly below the muon peak (`mip_<paddle>.png`).
 - ch6 (MID2-A) flags up to 31 % of its triggers as noise bursts, ch2 (TOP2-A) 14 % (run 57).
 - Thresholds were 0.43–0.69 of the muon signal at the paddle centre (run 58); TOP2-A is the highest.
-- Map check (runs 57, 58): the middle layer follows TOP1/TOP2 as expected (slope +1.3 ± 0.5); the top
-  layer's position along its paddles does **not** follow MID1/MID2 (slopes −0.24 ± 0.45 timing,
-  −0.08 ± 0.42 light; +1 excluded at 2.6–2.8σ). To check: are TOP1A/TOP2A (ch0, ch2) at the wall, and is
-  BOTTOM1 (ch4/ch5) the middle paddle nearer the wall? Also the top hits sit 1.2 ± 0.4 cm towards −y.
+- The amplifiers clip at raw 14 600–15 100 ADC (6300–6900 above the baseline): a few dozen pulses per
+  channel above ~7 muon peaks pile up there. `max_raw_adc = 14500` flags them SATURATED.
+- Map check (run 58): the middle layer follows TOP1/TOP2 as expected (slope +1.45 ± 0.45); the top layer's
+  position along its paddles does **not** follow MID1/MID2 (slopes −0.52 ± 0.43 timing, −0.10 ± 0.45
+  light; +1 excluded at 3.5 and 2.4σ). To check: are TOP1A/TOP2A (ch0, ch2) at the wall, and is BOTTOM1
+  (ch4/ch5) the middle paddle nearer the wall? Also the top hits sit 1.1 ± 0.4 cm towards −y.
 
 ## Known limitations
 
@@ -226,6 +278,7 @@ muon peaks within 1.5σ, positions unbiased (rms 1.1 cm across a paddle, 5.3–5
   by a cut on √(hA·hB) > 0.8 × the muon peak; without it a simulated run gave v 7 % too high.
 - With two layers the track goes through both points, so nothing checks a single hit; a third layer
   would give a χ² per track and a direct calibration of the middle layer's positions.
+- The filter was chosen on run 58's ringing; another front end (faster pulses) needs its own scan.
 - Checked on self-trigger runs (trigmode 0) only. Other trigger modes may place the trigger elsewhere in
   the record.
 - Reads DAQ_YY files only (raw2root_new format). Another DAQ needs its own reader for step 1.

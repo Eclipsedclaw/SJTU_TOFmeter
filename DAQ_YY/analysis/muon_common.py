@@ -1144,6 +1144,7 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
     zm = np.full((m, nl), np.nan)
     sxm = np.full((m, nl), np.nan)
     sym = np.full((m, nl), np.nan)
+    utm = np.full((m, nl), np.nan)                                     # true position along the crossed paddle
     for p in setup.paddles:
         rowsel = toy["paddles"][:, p.layer.index] == p.index
         if not rowsel.any():
@@ -1152,10 +1153,11 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
         xt = toy["x0"][rowsel] + toy["bx_true"][rowsel] * dz
         yt = toy["y0"][rowsel] + toy["by_true"][rowsel] * dz
         sig = position_sigma(calib, p, setup)
-        u_meas = p.u_of(xt, yt) + rng.normal(0, sig, rowsel.sum())
+        j = p.layer.index
+        utm[rowsel, j] = p.u_of(xt, yt)
+        u_meas = utm[rowsel, j] + rng.normal(0, sig, rowsel.sum())
         u, s_u = position_in_paddle(u_meas, 0.5 * p.length, sig)      # as the data's reconstruction
         px, py, pz = p.point(u)
-        j = p.layer.index
         xm[rowsel, j], ym[rowsel, j], zm[rowsel, j] = px, py, pz
         along_x = p.axis == "x"
         sxm[rowsel, j] = s_u if along_x else p.width / math.sqrt(12)
@@ -1167,7 +1169,7 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
     zmin = np.nanmin(zm, axis=1)
     s_meas = (zmax - zmin) * np.sqrt(1 + fit["bx"] ** 2 + fit["by"] ** 2)
     s_true = (zmax - zmin) * np.sqrt(1 + toy["bx_true"] ** 2 + toy["by_true"] ** 2)
-    toy.update({"x": xm, "y": ym, "z": zm, "theta": theta, "phi": phi, "theta_true": theta_true,
+    toy.update({"x": xm, "y": ym, "z": zm, "u_true": utm, "theta": theta, "phi": phi, "theta_true": theta_true,
                 "phi_true": phi_true, "s": s_meas, "s_true": s_true, "tof_true": s_true / C_CM_PER_NS})
     return toy
 

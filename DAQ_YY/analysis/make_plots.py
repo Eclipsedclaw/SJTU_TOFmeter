@@ -658,6 +658,86 @@ def plot_layer_delay(c, la, lb):
     c.save(fig, f"layer_delay_{la.name}_{lb.name}")
 
 
+def plot_track_tdiff(c):
+    """tA - tB of every paddle for the hits of tracks with one paddle per layer (two layers: the events with
+    exactly two two-end hits, one in each layer). A plain histogram per paddle, one row per layer, no fit.
+    Tracks through two layers cross a paddle mostly where the layers overlap, so the distribution is not the
+    flat box of all hits; the simulation (toy muons through the same paddles, true positions turned into
+    tA - tB with this run's v, offset and resolution) shows the shape working timing should give."""
+    from scipy.special import ndtr
+    s, E, H = c.setup, c.E, c.H
+    one = E["n_layers_ab"] >= 2
+    for layer in s.layers:
+        one &= E[f"n_ab_{layer.name}"] <= 1
+    sel = (H["kind"] == mc.HIT_AB) & one[H["event"]]
+    layers = [L for L in s.layers if any(p.both_ends for p in L.paddles)]
+    if not layers or not sel.any():
+        return
+    ncol = max(sum(p.both_ends for p in L.paddles) for L in layers)
+    half = max(p.length / c.calib["paddles"].get(p.name, {}).get("v_eff_cm_per_ns", 15.0)
+               + abs(c.calib["paddles"].get(p.name, {}).get("tdiff_offset_ns", 0.0)) for L in layers for p in L.paddles)
+    half = math.ceil(half + 2.0)
+    width = 0.25
+    bins = np.arange(-half, half + width / 2, width)
+    fig_h = 2.9 * len(layers) + 1.5
+    fig, axes = plt.subplots(len(layers), ncol, figsize=(4.6 * ncol + 0.8, fig_h), sharex=True, sharey=True,
+                             squeeze=False)
+    fig.subplots_adjust(top=1 - 1.25 / fig_h, hspace=0.32, wspace=0.08)
+    for r, L in enumerate(layers):
+        paddles = [p for p in L.paddles if p.both_ends]
+        for k in range(ncol):
+            ax = axes[r, k]
+            if k >= len(paddles):
+                ax.set_visible(False)
+                continue
+            p = paddles[k]
+            td = H["tdiff_ns"][sel & (H["paddle"] == p.index)]
+            cal = c.calib["paddles"].get(p.name, {})
+            text = f"{len(td)} hits"
+            if str(cal.get("tdiff_status", "")).startswith("fitted"):
+                for i, edge in enumerate((cal["tdiff_lo_ns"], cal["tdiff_hi_ns"])):
+                    ax.axvline(edge, color=MUTED, lw=0.9, ls="--",
+                               label="the paddle's ends (box edges of the calibration)" if i == 0 else None)
+                text += f", resolution σ {cal['tdiff_sigma_ns']:.2f} ns"
+                toy = c.toy
+                if toy is not None and f"u_true_{L.name}" in toy and len(td):
+                    tsel = (toy[f"paddle_{L.name}"] == p.index) & (toy["multi"] == 0)
+                    t0 = -2.0 * toy[f"u_true_{L.name}"][tsel] / cal["v_eff_cm_per_ns"] + cal["tdiff_offset_ns"]
+                    w = toy["weight_hz"][tsel]
+                    if w.sum() > 0:   # expected per bin: each toy muon's Gaussian of width sigma, integrated
+                        cdf = (w[:, None] * ndtr((bins[None, :] - t0[:, None]) / cal["tdiff_sigma_ns"])).sum(0)
+                        expect = np.diff(cdf) * len(td) / w.sum()
+                        ax.stairs(expect, bins, fill=True, color=mc.EXPECTED_COLOR, alpha=0.10, lw=0)
+                        ax.stairs(expect, bins, color=mc.EXPECTED_COLOR, lw=1.3,
+                                  label="simulation: cos²θ muons through both layers, 100 % efficient,\n"
+                                        "this run's v, offset and σ; scaled to the data")
+                        shift = np.mean(td) - np.average(t0, weights=w)
+                        err = np.std(td) / math.sqrt(len(td))
+                        text += (f"\nmean, data - simulation: {shift:+.2f} ± {err:.2f} ns"
+                                 f"\n  (= {-0.5 * cal['v_eff_cm_per_ns'] * shift:+.1f} cm along the paddle)")
+            points(ax, td, bins, label="data: the paddle's hits in these events")
+            out = int((np.abs(td) > half).sum())
+            if out:
+                text += f"\n{out} beyond ±{half:g} ns"
+            note(ax, text, loc="upper right", align="left")
+            ax.set_title(f"{p.name} ({L.name} layer)", loc="left", fontsize=8.5, color=INK2)
+            if r == len(layers) - 1:
+                ax.set_xlabel("tA - tB (ns)")
+            if k == 0:
+                ax.set_ylabel(f"hits per {width:g} ns")
+    axes[0, 0].set_ylim(0, None)
+    mc.headroom(axes[0, 0], 1.6)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper right", bbox_to_anchor=(0.985, 1 - 0.3 / fig_h), fontsize=7)
+    fig.text(0.125, 1 - 0.12 / fig_h, f"Time difference of the two ends in the tracks' hits: {c.short}", ha="left",
+             va="top", fontsize=9.5, color=INK)
+    fig.text(0.125, 1 - 0.42 / fig_h, f"{int(one.sum())} events with one two-end hit in each layer (2 hits).\n"
+             "A track must cross both layers, which overlap only near the paddles'\n"
+             "centres, so the hits gather there (all hits: a flat box, tdiff_<paddle>)", ha="left", va="top",
+             fontsize=8, color=INK2)
+    c.save(fig, "track_tdiff")
+
+
 def plot_event_types(c):
     cats = c.einfo["categories"]
     names = list(cats)
@@ -1261,7 +1341,7 @@ def run(folder, setup_path=None):
             jobs.append((f"{la.name}-{lb.name} delay", lambda la=la, lb=lb: plot_layer_delay(c, la, lb)))
             jobs.append((f"{la.name}-{lb.name} pairs", lambda la=la, lb=lb: plot_coincidences(c, la, lb)))
     jobs += [("event types", lambda: plot_event_types(c)), ("event quality", lambda: plot_event_quality(c)),
-             ("rates", lambda: plot_rates_vs_time(c))]
+             ("track tA-tB", lambda: plot_track_tdiff(c)), ("rates", lambda: plot_rates_vs_time(c))]
     if c.has_tracks and len(c.Tr["event"]):
         for layer in s.layers:
             jobs.append((f"{layer.name} hit map", lambda layer=layer: plot_hitmap(c, layer)))

@@ -356,6 +356,7 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
             tcols[f"paddle_{layer.name}"] = toy["paddles"][:, layer.index].astype(np.int32)
             tcols[f"x_{layer.name}"] = toy["x"][:, layer.index]
             tcols[f"y_{layer.name}"] = toy["y"][:, layer.index]
+            tcols[f"u_true_{layer.name}"] = toy["u_true"][:, layer.index]   # true position along its paddle
         mc.write_tree(tracks_path, "toy", tcols, update=True)
 
     # ---- summary ----

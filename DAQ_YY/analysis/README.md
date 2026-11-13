@@ -143,7 +143,7 @@ In the output folder:
 | `pulses.root` | Tree `pulses`: one entry per waveform (channel, time, height, charge, flags, ...; `edge` = the time in samples, `edge_cfd` = the 20 % crossing, `fit_amp`/`fit_rms` = the edge fit's height and rms residual); tree `templates`: each channel's edge template; tree `shapes`: average pulse per channel |
 | `events.root` | Tree `hits` (one per hit, with its event number); tree `events` (one per event) |
 | `calibration.json` | Every constant, with how it was found; reusable for other runs (`run_analysis.py --calibration`) |
-| `tracks.root` | Tree `tracks` (one per reconstructed muon); tree `toy` (the toy muons, with weights in Hz) |
+| `tracks.root` | Tree `tracks` (one per reconstructed muon); tree `toy` (the toy muons, with weights in Hz and their true positions along the crossed paddles, `u_true_<layer>`) |
 | `*_summary.txt` | The tables each step printed |
 | `plots/*.png` | One plot per file, listed below |
 | `event_displays/` | `event_<n>.png`, one page per event: the setup from above and from two sides, each paddle end's readout box coloured by its pulse height (the light sharing at a glance), every hit at its own paddle, the fitted track as an arrow, the room's wall; an info table; the records and their rising edges divided by the height, where the time differences show, with the samples each edge fit used and the fitted template |
@@ -158,6 +158,7 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `position_<paddle>` | Measured position along the paddle: how many lie beyond the ends, against the smearing alone |
 | `heights_<paddle>` | Where the thresholds cut the spectrum |
 | `tdiff_<paddle>` | A box with smeared edges; the fit gives v, offset, resolution (and the resolution with the 20 % crossing instead of the edge fit) |
+| `track_tdiff` | tA − tB of every paddle for the 2-hit events only (one two-end hit in each layer), 2×2, against the simulation of tracks through both layers: the same shape and width means the timing works; dashed: the paddle's ends. Not a flat box: a track must cross where the layers overlap, near the paddles' centres |
 | `attenuation_<paddle>` | ln(hA/hB) rising with u (see *Reading the plots*); the right axis is hA/hB itself |
 | `tdiff_vs_ratio_<paddle>` | The same check with no calibration: raw ln(hA/hB) against raw tA − tB, 2D, with their correlation |
 | `mip_<paddle>` | The signal peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
@@ -427,6 +428,12 @@ same constants (see *The pulse time*).
   position along its paddles does **not** follow MID1/MID2 (slopes −0.54 ± 0.44 timing, −0.10 ± 0.46
   light; +1 excluded at 3.5 and 2.4σ). To check: are TOP1A/TOP2A (ch0, ch2) at the wall, and is BOTTOM1
   (ch4/ch5) the middle paddle nearer the wall? Also the top hits sit 1.2 ± 0.4 cm towards −y.
+- `track_tdiff`: the middle paddles' 2-hit events are centred on the simulation (run 59: +0.00 and
+  −0.05 ± 0.05 ns); both top paddles sit +0.18 and +0.22 ± 0.04 ns off, 1.4–1.8 cm towards −y (the same
+  in runs 57 and 58, and like the map check's shift). Only 42 ± 1 % of the inclined tracks arrive from the
+  wall side (+y), against 50 % in the simulation (±x: 50 %). Both numbers come from the same top-layer
+  positions, so they cannot tell a top layer placed ~1.6 cm off from fewer muons arriving through the
+  wall. Measuring the paddles' positions, or a run with the setup turned by 180°, would.
 
 ## Known limitations
 

@@ -37,16 +37,20 @@ towards its A end):
                  from +y: the wall side in the first setup)
     speed        time of flight between the highest and the lowest layer, path
                  s = height difference x sqrt(1 + slope_x^2 + slope_y^2),
-                 beta = s / (c x tof); the calibration's layer offsets assume
-                 beta = 1, so beta's spread shows the time resolution
+                 beta = s / (c x tof), as measured: no layer time offsets are
+                 applied (the paddles' cable delays are unknown; setting them
+                 from beta = 1 would force the result). With a 30 cm lever arm
+                 the time resolution makes many tracks look faster than light.
     expected     toy muons, I(theta) = I0 cos^n(theta) (setup [flux]), through the
                  paddles; rates for 100 % efficient paddles, and their angles
                  reconstructed like the data (see muon_common.toy_cosmics)
 
 Outputs (in the analysis folder):
     tracks.root          tree 'tracks' (one entry per reconstructed muon), tree
-                         'toy' (the toy muons that cross two layers, with weights
-                         in Hz), and 'info'
+                         'points' (every two-end hit of the tracks' layers, each at
+                         its own paddle; used = 1 if it went into the track's point),
+                         tree 'toy' (the toy muons that cross two layers, with
+                         weights in Hz), and 'info'
     tracks_summary.txt   tracks, angles, speed, measured against expected rates
 """
 
@@ -105,7 +109,7 @@ def layer_point(idx, H, T, setup):
     if len(idx) == 1:
         i = idx[0]
         return {k: T[k][i] for k in ("x", "y", "z", "sx", "sy", "u", "u_meas", "t", "uamp", "hgeo", "hmip")} | \
-            {"paddle": int(H["paddle"][i]), "hit": int(H["hit"][i]), "outside": bool(T["outside"][i])}, 0
+            {"paddle": int(H["paddle"][i]), "hit": int(H["hit"][i]), "outside": bool(T["outside"][i])}, 0, [i]
     # group neighbouring paddles that fired together
     groups = []
     for i in sorted(idx, key=lambda i: -T["hgeo"][i]):
@@ -137,7 +141,7 @@ def layer_point(idx, H, T, setup):
     i0 = best[0]
     pt.update({"paddle": int(H["paddle"][i0]), "hit": int(H["hit"][i0]),
                "outside": bool(any(T["outside"][j] for j in best))})
-    return pt, flags
+    return pt, flags, list(best)
 
 
 def weighted_mean(v, w=None):
@@ -284,6 +288,7 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
             per_layer[f"{k}_{layer.name}"] = np.full(n, -1, dtype=np.int64 if k == "hit" else np.int32)
         for k in ("x", "y", "z", "u", "u_meas", "t", "sx", "sy", "uamp", "hgeo", "hmip"):
             per_layer[f"{k}_{layer.name}"] = np.full(n, np.nan)
+    pts = {k: [] for k in ("event", "track", "layer", "paddle", "hit", "x", "y", "z", "u", "u_meas", "hgeo", "used")}
     bar = mc.Progress("Tracks", max(n, 1))
     for row, e in enumerate(cand):
         idx = by_event.get(int(e), [])
@@ -291,7 +296,13 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
             li = [i for i in idx if H["layer"][i] == layer.index]
             if not li:
                 continue
-            pt, fl = layer_point(li, H, T, setup)
+            pt, fl, used = layer_point(li, H, T, setup)
+            for i in li:      # every two-end hit of this layer, at its own paddle
+                for k, v in (("event", int(e)), ("track", row), ("layer", layer.index), ("paddle", int(H["paddle"][i])),
+                             ("hit", int(H["hit"][i])), ("x", T["x"][i]), ("y", T["y"][i]), ("z", T["z"][i]),
+                             ("u", T["u"][i]), ("u_meas", T["u_meas"][i]), ("hgeo", T["hgeo"][i]),
+                             ("used", 1 if i in used else 0)):
+                    pts[k].append(v)
             cols["flags"][row] |= fl | (mc.TRACK_OUTSIDE if pt["outside"] else 0)
             cols["n_layers"][row] += 1
             for k in ("paddle", "hit", "x", "y", "z", "u", "u_meas", "t", "sx", "sy", "uamp", "hgeo", "hmip"):
@@ -328,6 +339,10 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
 
     tracks_path = os.path.join(folder, mc.TRACKS_FILE)
     mc.write_tree(tracks_path, "tracks", cols)
+    ints = ("event", "track", "hit")
+    mc.write_tree(tracks_path, "points", {k: np.asarray(v, dtype=np.int64 if k in ints else
+                                                       (np.int32 if k in ("layer", "paddle", "used") else np.float64))
+                                          for k, v in pts.items()}, update=True)
 
     # ---- toy expectation ----
     print("Toy cosmic muons for the expectation ...")

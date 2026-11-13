@@ -7,6 +7,13 @@ at both ends, starting with the two-layer test of 2026-11-12 (two top and two mi
 channels 0–7). Every paddle, channel, layer and board comes from a setup file, so adding channels means
 editing that file, not the code.
 
+**No known muon values in the data processing.** Every number the analysis applies to the data is fitted
+from the data themselves (speeds, offsets, resolutions, attenuation, signal peaks) or comes from the setup
+file (geometry) or from signal processing (filter, timing). What muons are known to do (the cosmic flux and
+its cos²θ, β = 1, the energy loss of a minimum-ionising particle) enters only the toy simulation, and every
+plot that shows it says so ("simulation"). The setup is a test and may be wrong; an analysis that forced it
+towards textbook values would hide that.
+
 ## Quick start
 
 ```bash
@@ -61,12 +68,13 @@ The ideas behind each step (the scripts' `--help` has the details):
 2. **Hit.** A muon crossing a paddle at u (cm from its centre, + towards end A) gives
    tA − tB = −2u/v + offset (v = signal speed along the paddle) and a mean time (tA + tB)/2 that does
    not depend on u. A pulse without a partner at the other end is a one-end hit.
-3. **Calibration from the run itself.** Muons cross a paddle evenly along its length, so tA − tB spreads
-   evenly over 2L/v: a box, smeared by the time resolution. Fitting it gives v, the offset and the
-   resolution. Light falls as exp(−d/λ) towards each end, so ln(hA/hB) = 2u/λ + ln(gA/gB) gives the
-   attenuation length λ and the ends' gain ratio. The muon peak (most probable √(hA·hB), which does not
-   depend on u) comes from the muons that cross both layers, × cos(zenith). Layer time offsets come from
-   requiring β = 1 on average (cosmic muons are relativistic).
+3. **Calibration from the run itself.** Particles cross a paddle evenly along its length, so tA − tB
+   spreads evenly over 2L/v: a box, smeared by the time resolution. Fitting its edges gives v (each paddle
+   its own), the offset and the resolution. Light falls as exp(−d/λ) towards each end, so
+   ln(hA/hB) = 2u/λ + ln(gA/gB) gives the attenuation length λ and the ends' gain ratio. The paddle's
+   signal peak (most probable √(hA·hB), which does not depend on u) is taken from the tracks' hits as
+   measured. No time offsets are applied between the layers: the paddles' cable delays would need a
+   pulser measurement; the offsets that β = 1 would need are only quoted as text.
 4. **Track.** The position along each paddle comes from the timing; across it, the paddle's centre line
    (resolution width/√12). The measured position scatters by the resolution (about 4 cm) and so lands
    beyond a paddle's end for muons near it; the point used is the best estimate *inside* the paddle (see
@@ -146,14 +154,17 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `position_<paddle>` | Measured position along the paddle: how many lie beyond the ends, against the smearing alone |
 | `heights_<paddle>` | Where the thresholds cut the spectrum |
 | `tdiff_<paddle>` | A box with smeared edges; the fit gives v, offset, resolution |
-| `attenuation_<paddle>` | ln(hA/hB) rising with u; the S-shaped curve is what the fitted line predicts at a measured u |
-| `mip_<paddle>` | The muon peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
-| `layer_delay_<a>_<b>` | One peak at 0 ns above a flat chance level |
+| `attenuation_<paddle>` | ln(hA/hB) rising with u (see *Reading the plots*); the right axis is hA/hB itself |
+| `mip_<paddle>` | The signal peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
+| `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
 | `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
 | `hitmap_<layer>`, `zenith`, `azimuth` | Where the tracks cross, and their angles against the toy |
-| `tof_residual`, `inv_beta` | Time of flight minus s/c against the expected resolution; 1/β around 1 |
-| `energy_deposit` | Signal per vertical path, peaking at 1 MIP in every layer |
+| `tof_residual` | Measured time of flight minus s/c, against the simulation of β = 1 with the measured resolution |
+| `beta` | β from 0 to 1, with labelled bins for tracks measured below 0 or at 1 and above |
+| `energy_deposit` | The tracks' signal per paddle as measured (ADC); each paddle has its own scale |
+| `energy_deposit_sim` | Simulation: the energy muons lose in the paddles (MeV, PDG Landau formula) |
+| `signal_vs_path` | Signal against the path through the paddle (1/cos θ): does it grow with the path? |
 
 ## Read the results
 
@@ -161,10 +172,12 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 
 ```text
 Coincid.  : top+middle: 640 events = 0.356 ± 0.014 Hz (by chance 0.013)
-Tracks    : 640; zenith mean 25.4° (toy 24.3°)
+Tracks    : 640; zenith mean 23.5° (toy 22.8°)
 Expected  : 730.8 tracks for fully efficient paddles; measured / expected = 0.88 ± 0.03
-TOF       : tof - s/c robust σ 0.37 ns (expected 0.41 ns) over a median path of 33.4 cm
-Map check : top layer y (timing) by middle paddle: slope -0.24 ± 0.45 (+1 expected), ...
+TOF       : measured tof - s/c median +0.01 ns, robust σ 0.34 ns (simulation of β = 1 with the measured
+            resolution: σ 0.35 ns) over a median path of 33.0 cm; no layer time offsets applied
+β         : median 0.98; 309 of 640 tracks measured at β ≥ 1, 6 below 0 (time resolution)
+Map check : top layer y (timing) by middle paddle: slope -0.53 ± 0.44 (+1 expected), ...
 ```
 
 - **Event quality**: each selection step with its count and share of all events. In run 58: 80 503
@@ -177,13 +190,45 @@ Map check : top layer y (timing) by middle paddle: slope -0.24 ± 0.45 (+1 expec
 - **both-ends share** (`events_summary.txt`): the fraction of a paddle's hits seen at both ends.
 - **measured / expected**: the product of the paddles' efficiencies and of the true flux over the assumed
   one (70 /(m² s sr), cos²θ, sea level).
-- **Speed warning**: with one signal speed for all paddles (`v_eff_mode = "shared"`), the summary also
-  shows each paddle's own fit; if they disagree, see *Known limitations*.
+- **Speeds**: every paddle keeps its own signal speed (`v_eff_mode = "per_paddle"`; run 58 rejects one
+  common speed). With `"shared"` the summary also shows each paddle's own fit and warns if they disagree.
 - **Map check**: where a muon crosses the top layer along its paddles depends on which middle paddle it
   then crosses (and the other way round). The data's mean positions are fitted against the toy's as
   shift + slope × toy: slope +1 = the channel map is as the setup file says; −1 = one direction (the A/B
   cables) or one order (which paddle is 1 or 2) is the other way round. It uses the timing and,
   independently, the light sharing. A simulated run with the top cables swapped gives −1.4 ± 0.7.
+
+## Reading the plots
+
+- **Attenuation** (`attenuation_<paddle>`). A hit at u (cm from the centre, + towards end A) is L/2 − u
+  from end A and L/2 + u from end B. The light reaching an end falls as exp(−distance/λ), so
+  hA ∝ gA·exp(−(L/2 − u)/λ) and hB ∝ gB·exp(−(L/2 + u)/λ), and the energy deposit cancels in their ratio:
+  ln(hA/hB) = 2u/λ + ln(gA/gB). The y axis is that log ratio (right axis: the ratio hA/hB itself), the x
+  axis the position from the timing. The slope of the straight line gives λ (λ ≈ 30 cm here: the light
+  halves every λ ln 2 ≈ 21 cm), its value at u = 0 the gain ratio of the ends. λ does **not** come from the
+  edges of the tA − tB box: those give only the signal speed v, which sets the position scale. The fitted
+  line looks S-shaped because measured positions beyond the ends come from hits near the ends.
+- **Coincidences** (`coincidences_<a>_<b>`). Each cell: tracks measured through that paddle pair, the
+  simulation's number, and their ratio. The simulation sends cosmic muons with the sea-level flux
+  I = I₀ cos²θ, I₀ = 70 /(m² s sr) (PDG, muons above ~1 GeV) through the setup's paddles in straight lines,
+  every paddle fully efficient, for the run's duration. The ratio is the pair's efficiency times the true
+  over the assumed flux (the lab's floors above, the altitude and the soft component change the flux).
+- **Two paddles of one layer**. The bars touch; a track crossing a layer near the joint of two bars at an
+  angle goes through both inside the 0.6 cm thickness. The simulation predicts this for 4.2 % of the tracks
+  (27 in run 58); 24 were measured. The hit map and the event pictures show each bar's own hit; the
+  track's point for the fit is their mean, weighted by the signal.
+- **β** (`beta`). β = path / (c × time of flight). The flight between the layers lasts ~1.1 ns and is
+  measured with σ ≈ 0.35 ns, so half the tracks come out at β ≥ 1: not faster than light, but measured too
+  fast. They are kept in a labelled bin, next to the simulation of β = 1 particles with the same resolution.
+  The full TOF-meter (top to bottom 70 cm) and better timing will separate slow particles.
+- **Energy and the track angle** (`energy_deposit`, `signal_vs_path`). A minimum-ionising particle loses
+  energy at a nearly constant rate per cm of path (dE/dx ≈ 2 MeV/cm in plastic), and that rate does not
+  depend on the angle. The energy deposited in a slab does: a track at zenith θ crosses thickness / cos θ
+  of it, so it deposits 1/cos θ times more (1.41 times at 45°). `signal_vs_path` shows this on the data:
+  the signal rises with 1/cos θ (run 58: from 1.01 to 1.30 times the peak; "∝ path" χ² 10 for 7,
+  "no dependence" χ² 105 for 7). Without the angle the peak of the tracks is ~10 % higher and 15–25 %
+  wider than for vertical tracks; the analysis quotes it as measured and leaves the angle correction to
+  plots that say so.
 
 ## The low-pass filter
 
@@ -236,9 +281,11 @@ python3 tests/check_fake_run.py /path/to/test_folder/fake_muon
 ```
 
 **Passes if** the constants agree with the truth within about 2σ and the position residuals have a mean
-near 0. On 2026-11-13 (filter on): signal speed 15.85 ± 0.17 (truth 16.00) cm/ns, λ 37.7–38.5 (38.0) cm,
-offsets and muon peaks within 2σ, positions unbiased (rms 1.1 cm across a paddle, 4.4–4.8 cm along it),
-zenith −0.9 ± 7.3°, 1/β 1.005.
+near 0. On 2026-11-13 (filter on, no assumptions): each paddle's signal speed 15.6–16.1 (truth 16.0) cm/ns,
+λ 37.4–38.4 (38.0) cm, offsets and signal peaks within 1.6σ (the peak as measured equals the truth times the
+tracks' path factor, ×1.09–1.10), positions unbiased (rms 1.1 cm across a paddle, 4.4–4.8 cm along it),
+zenith −0.9 ± 7.3°. With no time offsets applied, the measured time of flight carries the simulated cables'
+delays (+0.11 ns); after them +0.04 ns remain.
 
 ## Reference: runs 56–58 (2026-11-12/13, board 1, thresholds 400 ADC; run 56: 600; filter on)
 
@@ -248,12 +295,13 @@ zenith −0.9 ± 7.3°, 1/β 1.005.
 | Tracks (top + middle) | 11 | 205 | 640 |
 | Rate | 0.28 ± 0.08 Hz | 0.342 ± 0.024 Hz | 0.356 ± 0.014 Hz |
 | Measured / expected | 0.68 ± 0.21 | 0.84 ± 0.06 | 0.88 ± 0.03 |
-| Signal speed (shared) | 17.6 ± 1.0 cm/ns (too few hits) | 15.5 ± 0.1 cm/ns | 15.35 ± 0.06 cm/ns |
-| σ(tA − tB) | 0.40–0.93 ns | 0.53–0.56 ns | 0.50–0.53 ns |
-| Position resolution along a paddle | 3.5–8 cm | 4.1–4.4 cm | 3.8–4.1 cm |
-| Muon peak √(hA·hB) | 796–982 ADC (all hits) | 642–889 ADC | 637–903 ADC |
-| TOF residual (robust σ) | 0.23 ns (11 tracks) | 0.35 ns | 0.34 ns |
-| Zenith mean (toy) | 24.2° (22.1°) | 24.6° (22.7°) | 23.5° (22.8°) |
+| Signal speed (each paddle) | 16.0–21.0 cm/ns (too few hits) | 14.6–16.6 cm/ns | 14.4–16.5 cm/ns |
+| σ(tA − tB) | 0.43–1.12 ns | 0.46–0.62 ns | 0.42–0.61 ns |
+| Position resolution along a paddle | 3.5–12 cm | 3.4–5.1 cm | 3.0–5.0 cm |
+| Signal peak of the tracks √(hA·hB) | 796–982 ADC (all hits) | 671–964 ADC | 694–991 ADC |
+| TOF − s/c, median and robust σ (no offsets) | −0.16, 0.52 ns (11 tracks) | +0.07, 0.36 ns | +0.01, 0.34 ns |
+| Tracks measured at β ≥ 1 | 6 of 11 | 86 of 205 | 309 of 640 |
+| Zenith mean (toy) | 23.8° (21.6°) | 24.5° (22.7°) | 23.5° (22.8°) |
 
 - Two-end hits per paddle are 2–4 times the expected muon rate: single paddles also see electrons, gammas
   and radioactivity, mostly below the muon peak (`mip_<paddle>.png`).
@@ -270,10 +318,13 @@ zenith −0.9 ± 7.3°, 1/β 1.005.
 
 - **Geometry not measured**: sizes and the 30 cm between the layers are the simulation design. The
   expected rates, angles, path lengths and β depend on them.
-- **End losses bias the signal speed.** With thresholds near the muon signal the far end misses muons near
-  the paddle ends, the tA − tB box looks narrower and v comes out high, more for higher thresholds (run 58:
-  TOP2 16.9, MID1 14.5 cm/ns on their own). The shared speed averages this out; positions near the ends
-  can be off by about (Δv/v) × L/2 ≈ 1–2 cm. Lower thresholds remove it.
+- **End losses can bias the signal speed.** With thresholds near the muon signal the far end misses
+  particles near the paddle ends, the tA − tB box looks narrower and v comes out high, more for higher
+  thresholds (run 58: TOP2 16.5 with the highest threshold, MID1 14.4 cm/ns with the lowest). Positions
+  near the ends can then be off by about (Δv/v) × L/2 ≈ 1–2 cm. Lower thresholds remove it.
+- **No time offsets between the paddles.** Their cable delays are unknown; the time of flight and β are
+  as measured (the delays happen to be small here: TOF − s/c median +0.01 ns in run 58). A pulser into all
+  channels would measure them without assuming anything about the particles.
 - The box fit assumes muons evenly along the paddle. Low-energy hits (mostly near the centre) are removed
   by a cut on √(hA·hB) > 0.8 × the muon peak; without it a simulated run gave v 7 % too high.
 - With two layers the track goes through both points, so nothing checks a single hit; a third layer

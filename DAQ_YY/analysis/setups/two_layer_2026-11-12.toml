@@ -114,7 +114,7 @@ pair_margin_ns = 5.0         # A-B pairing window: length / v_eff + 5 ns
 window_ns = 30.0             # event: hits within 30 ns of its first hit
 
 [calibration]
-v_eff_mode = "shared"        # one signal speed for all paddles (the same bars); "per_paddle" fits each alone
+v_eff_mode = "per_paddle"    # each paddle its own speed (run 58 rejects a shared one: chi2 165 for 4); or "shared"
 v_eff_cm_per_ns = 15.0       # used until calibrate.py measures it
 speed_min_mip = 0.8          # speed and attenuation fits: hits with sqrt(hA hB) > 0.8 x muon peak (cuts background)
 tdiff_sigma_ns = 0.6         # used until calibrate.py measures it

@@ -19,7 +19,7 @@ Plots (plots/<name>.png):
     position_<paddle>      measured position along the paddle; why some lie beyond its ends
     attenuation_<paddle>   ln(hA / hB) against the position along the paddle
     mip_<paddle>           sqrt(hA x hB) with the muon-peak fit
-    layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns
+    layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns and a zoom of +-10 ns
     event_types            events by the layers with a two-end hit
     event_quality          selection steps: all events, a paddle at both ends, a track, one
                            paddle per layer or several paddles of one layer
@@ -27,9 +27,12 @@ Plots (plots/<name>.png):
     rates_vs_time          hit rate per layer and coincidence rate over the run
     hitmap_<layer>         where the tracks cross each layer (top view)
     zenith, azimuth        track angles against the toy expectation
-    tof_residual           time of flight minus s / c
-    inv_beta               1 / beta of the tracks
-    energy_deposit         muon signal per layer, sqrt(hA hB) / MIP x cos(zenith)
+    tof_residual           measured time of flight minus s / c (no time offsets applied)
+    beta                   beta of the tracks from 0 to 1, with labelled bins below 0 and at 1 and
+                           above, against the simulation of beta = 1 particles
+    energy_deposit         the tracks' signal per paddle as measured (ADC)
+    energy_deposit_sim     simulation: the energy muons lose in the paddles (MeV, known values)
+    signal_vs_path         signal against the path through the paddle (1 / cos zenith): data test
 """
 
 import os
@@ -70,12 +73,17 @@ class Context:
         self.E = mc.read_tree(ep, "events")
         tp = os.path.join(folder, mc.TRACKS_FILE)
         self.has_tracks = os.path.isfile(tp)
+        self.Pts = None
         # the calibration the reconstruction used (maybe another run's), else this folder's
         cal_path = os.path.join(folder, mc.CALIB_FILE)
         if self.has_tracks:
             self.tinfo = mc.read_info(tp)
             self.Tr = mc.read_tree(tp, "tracks")
             self.toy = mc.read_tree(tp, "toy") if self.tinfo.get("expected") else None
+            f = mc.open_root(tp)
+            has_points = bool(f.Get("points"))
+            f.Close()
+            self.Pts = mc.read_tree(tp, "points") if has_points else None
             if self.tinfo.get("calibration") and os.path.isfile(self.tinfo["calibration"]):
                 cal_path = self.tinfo["calibration"]
         if not os.path.isfile(cal_path):
@@ -277,6 +285,8 @@ def plot_tdiff(c, p):
 
 
 def plot_attenuation(c, p):
+    """ln(hA / hB) against the position from the timing: light loses exp(-d / lambda) on its way to
+    each end, so the log of the two ends' height ratio is a straight line in u of slope 2 / lambda."""
     cal = c.calib["paddles"].get(p.name, {})
     sel, used, cut = fitted_hits(c, p, cal)
     pos = (c.H["hA"][sel] > 0) & (c.H["hB"][sel] > 0)
@@ -296,24 +306,31 @@ def plot_attenuation(c, p):
         uu = np.linspace(-0.75 * p.length, 0.75 * p.length, 200)
         ue = mc.expected_position(uu, 0.5 * p.length, cal.get("position_sigma_cm", 0))
         ax.plot(uu, cal["log_ratio_offset"] + cal["log_ratio_slope_per_cm"] * ue, color=FIT_COLOR, lw=1.3,
-                label="fit: ln(gA/gB) + 2/λ x mean true u at this measured u")
+                label="fitted line, as it looks at a measured u")
         lam = cal.get("attenuation_cm")
-        text = (f"attenuation length λ = {fmt_err(lam, cal.get('attenuation_err_cm'), 1)} cm\n" if lam else
-                "attenuation not measured\n") + \
-            f"gain ratio A/B = {math.exp(cal['log_ratio_offset']):.2f}\nscatter (rms) = {cal['log_ratio_rms']:.2f}"
+        text = (f"attenuation length λ = {fmt_err(lam, cal.get('attenuation_err_cm'), 1)} cm\n"
+                f"(light halves every λ ln 2 = {lam * math.log(2):.0f} cm)\n" if lam else "attenuation not measured\n") + \
+            f"gain ratio A/B = {math.exp(cal['log_ratio_offset']):.2f} (at u = 0)\nscatter (rms) = {cal['log_ratio_rms']:.2f}"
         note(ax, text, loc="upper left")
     for edge in (-0.5 * p.length, 0.5 * p.length):
         ax.axvline(edge, color=MUTED, lw=0.8, ls="--")
-    ax.set_xlabel(f"position along the paddle from tA - tB, u (cm, + towards the A end at {p.a_end})")
-    ax.set_ylabel("ln(hA / hB)")
+    ax.set_xlabel(f"position along the paddle u from the timing (tA - tB), cm, + towards the A end at {p.a_end}")
+    ax.set_ylabel("ln(hA / hB): log of the two ends' height ratio")
     mc.headroom(ax, 1.5)
+    sec = ax.secondary_yaxis("right", functions=(np.exp, lambda r: np.log(np.maximum(r, 1e-9))))
+    lo, hi = ax.get_ylim()
+    ticks = [t for t in (0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50) if lo <= math.log(t) <= hi]
+    sec.set_yticks(ticks, [f"{t:g}" for t in ticks])
+    sec.set_ylabel("hA / hB", color=INK2)
     ax.legend(loc="upper right")
-    mc.title(ax, f"Light attenuation, {p.name}: {c.short}", "dashed: the paddle's ends")
+    mc.title(ax, f"Light attenuation, {p.name}: {c.short}",
+             "hA ∝ exp(-(L/2 - u)/λ), hB ∝ exp(-(L/2 + u)/λ), so ln(hA/hB) = 2u/λ + ln(gA/gB):\n"
+             "the slope gives λ (the tA - tB edges give only the speed v); dashed: the paddle's ends")
     c.save(fig, f"attenuation_{p.name}")
 
 
 def plot_mip(c, p):
-    """sqrt(hA hB) of all two-end hits and of the muon tracks (x cos zenith), with the
+    """sqrt(hA hB) of all two-end hits and of the tracks' hits (as measured), with the
     fit the calibration made, every histogram as a fraction of its hits."""
     sel = (c.H["paddle"] == p.index) & (c.H["kind"] == mc.HIT_AB)
     geo_all = np.sqrt(c.H["hA"][sel] * c.H["hB"][sel])
@@ -323,8 +340,8 @@ def plot_mip(c, p):
     geo_mu = np.zeros(0)
     if c.has_tracks:
         L = p.layer.name
-        tsel = (c.Tr[f"paddle_{L}"] == p.index) & ((c.Tr["flags"] & mc.TRACK_ADJACENT) == 0)
-        geo_mu = c.Tr[f"hgeo_{L}"][tsel] * np.cos(np.radians(c.Tr["theta_deg"][tsel]))
+        tsel = (c.Tr[f"paddle_{L}"] == p.index) & ((c.Tr["flags"] & (mc.TRACK_ADJACENT | mc.TRACK_AMBIGUOUS)) == 0)
+        geo_mu = c.Tr[f"hgeo_{L}"][tsel]
         geo_mu = geo_mu[np.isfinite(geo_mu)]
     fig, ax = figure()
     top = np.percentile(geo_all, 99) * 1.2
@@ -335,7 +352,7 @@ def plot_mip(c, p):
     fitted_on = cal.get("mip_sample", "all")
     if len(geo_mu):
         stairs(ax, np.clip(geo_mu, 0, top * 0.999), bins, CATEGORICAL[0], weights=np.full(len(geo_mu), 1 / len(geo_mu)),
-               label=f"hits of muon tracks x cos(zenith) ({len(geo_mu)})")
+               label=f"hits of tracks (two layers), as measured ({len(geo_mu)})")
     if cal.get("mip_status") == "fitted":
         lo, hi = cal["mip_fit_range_adc"]
         x = np.linspace(lo, hi, 400)
@@ -343,17 +360,17 @@ def plot_mip(c, p):
         n_ref = len(geo_mu) if fitted_on == "muons" and len(geo_mu) else len(geo_all)
         ax.plot(x, cal["mip_n"] / n_ref * width * mc.moyal_pdf(x, cal["mip_adc"], cal["mip_width_adc"]) / norm,
                 color=FIT_COLOR, lw=1.3,
-                label=f"Moyal (Landau-like) fit to the {'muon tracks' if fitted_on == 'muons' else 'two-end hits'}, "
+                label=f"Moyal (Landau-like) fit to the {'tracks' if fitted_on == 'muons' else 'two-end hits'}, "
                       f"{lo:.0f}-{hi:.0f} ADC")
-        note(ax, f"muon peak (MPV) = {fmt_err(cal['mip_adc'], cal.get('mip_err_adc'), 0)} ADC\n"
-                 f"width = {cal['mip_width_adc']:.0f} ADC\nfrom: {'muon tracks' if fitted_on == 'muons' else 'all two-end hits'}",
+        note(ax, f"most probable signal (MPV) = {fmt_err(cal['mip_adc'], cal.get('mip_err_adc'), 0)} ADC\n"
+                 f"width = {cal['mip_width_adc']:.0f} ADC\nfrom: {'the tracks' if fitted_on == 'muons' else 'all two-end hits'}",
              loc="upper left")
-    ax.set_xlabel("sqrt(hA x hB), ADC (does not depend on where the muon crossed)")
+    ax.set_xlabel("sqrt(hA x hB), ADC (does not depend on where the paddle was crossed)")
     ax.set_ylabel("fraction of the hits per bin")
     ax.set_ylim(0, None)
     mc.headroom(ax, 1.45)
     ax.legend(loc="upper right")
-    mc.title(ax, f"Muon signal, {p.name}: {c.short}")
+    mc.title(ax, f"Signal of the paddle, {p.name}: {c.short}")
     c.save(fig, f"mip_{p.name}")
 
 
@@ -472,7 +489,10 @@ def plot_layer_delay(c, la, lb):
     hi = np.searchsorted(t2, t1 + span, "right")
     dts = np.concatenate([t2[l:h] - t for t, l, h in zip(t1, lo, hi)]) if len(t1) else np.zeros(0)
     window = float(c.setup.events["window_ns"])
-    fig, ax = figure()
+    fig = plt.figure(figsize=(11.6, 4.4))
+    from matplotlib.gridspec import GridSpec
+    gs = GridSpec(1, 2, figure=fig, wspace=0.22, top=0.84)
+    ax, az = fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])
     width = 4.0
     bins = np.arange(-span, span + width, width)
     stairs(ax, dts, bins, CATEGORICAL[0], label=f"{len(dts)} pairs of two-end hits")
@@ -490,8 +510,31 @@ def plot_layer_delay(c, la, lb):
     ax.set_xlabel(f"t({lb.name}) - t({la.name}) of two-end hits (ns)")
     ax.set_ylabel(f"pairs per {width:g} ns")
     ax.legend(loc="upper right")
-    mc.title(ax, f"Time between the {la.name} and {lb.name} layers: {c.short}",
-             f"dashed: event window ±{window:g} ns; muons crossing both layers make the peak at 0")
+    ax.set_title(f"±{span:g} ns; dashed: the event window ±{window:g} ns", loc="left", fontsize=8, color=INK2)
+    # zoom on the peak
+    near = dts[np.abs(dts) < 10]
+    zw = 0.2 if len(near) >= 300 else 0.5
+    zb = np.arange(-10, 10 + zw, zw)
+    stairs(az, near, zb, CATEGORICAL[0], label=f"{len(near)} pairs within ±10 ns")
+    if len(near):
+        med = np.median(near)
+        rob = 1.4826 * np.median(np.abs(near - med))
+        dz = abs(np.mean([p.z for p in la.paddles]) - np.mean([p.z for p in lb.paddles]))
+        az.axvline(dz / mc.C_CM_PER_NS, color=FIT_COLOR, lw=1.1, ls="--",
+                   label=f"light over the {dz:g} cm between the layers: {dz / mc.C_CM_PER_NS:.2f} ns")
+        note(az, f"median {med:+.2f} ns\nrobust σ {rob:.2f} ns\n(mean times (tA + tB)/2,\nno offsets, no path)",
+             loc="upper left")
+    az.set_xlim(-10, 10)
+    az.set_ylim(0, None)
+    mc.headroom(az, 1.35)
+    az.set_xlabel(f"t({lb.name}) - t({la.name}) of two-end hits (ns)")
+    az.set_ylabel(f"pairs per {zw:g} ns")
+    az.legend(loc="upper right")
+    az.set_title("zoom: the peak of particles crossing both layers", loc="left", fontsize=8, color=INK2)
+    fig.text(0.125, 0.975, f"Time between the {la.name} and {lb.name} layers: {c.short}", ha="left", va="top",
+             fontsize=9.5, color=INK)
+    fig.text(0.125, 0.935, "every pair of two-end hits in the two layers; particles crossing both make the peak",
+             ha="left", va="top", fontsize=8, color=INK2)
     c.save(fig, f"layer_delay_{la.name}_{lb.name}")
 
 
@@ -528,12 +571,14 @@ def plot_coincidences(c, la, lb):
             key = f"{pa.name}+{pb.name}"
             if key in exp:
                 X[i, j] = exp[key]["expected_count"]
-    fig, ax = figure(1.3 * len(cols) + 2.6, 0.9 * len(rows) + 1.8)
+    fig, ax = figure(1.4 * len(cols) + 2.8, 0.95 * len(rows) + 1.9)
     im = ax.imshow(M, cmap=mc.SEQUENTIAL, vmin=0, vmax=max(M.max(), 1), aspect="auto")
     for i in range(len(rows)):
         for j in range(len(cols)):
             dark = M[i, j] > 0.55 * max(M.max(), 1)
-            text = f"{M[i, j]:.0f}" + (f"\nexpected {X[i, j]:.1f}" if np.isfinite(X[i, j]) else "")
+            text = f"{M[i, j]:.0f}"
+            if np.isfinite(X[i, j]):
+                text += f"\nsimulation {X[i, j]:.1f}" + (f"\nratio {M[i, j] / X[i, j]:.2f}" if X[i, j] > 0 else "")
             ax.text(j, i, text, ha="center", va="center", fontsize=7.5, color="#ffffff" if dark else INK)
     ax.set_xticks(range(len(cols)), [p.name for p in cols])
     ax.set_yticks(range(len(rows)), [p.name for p in rows])
@@ -543,10 +588,13 @@ def plot_coincidences(c, la, lb):
     for s in ax.spines.values():
         s.set_visible(False)
     cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.03)
-    cb.set_label("tracks", color=INK2)
+    cb.set_label("tracks measured", color=INK2)
     cb.outline.set_visible(False)
+    flux = c.setup.flux
     mc.title(ax, f"Tracks per paddle pair: {c.short}",
-             "expected = toy cosmic muons, fully efficient paddles" if exp else None)
+             (f"simulation (known values): muons with I = I0 cos{'²' if flux['cos_power'] == 2 else '^' + format(flux['cos_power'], 'g')}θ, I0 = "
+              f"{flux['vertical_intensity']:g} /(m² s sr) (sea level, PDG),\nstraight through the setup's paddles, every "
+              f"paddle fully efficient, x the run time; ratio = measured / simulation") if exp else None)
     c.save(fig, f"coincidences_{la.name}_{lb.name}")
 
 
@@ -594,21 +642,35 @@ def outline(ax, p, color, fill=False, lw=0.8):
 
 
 def plot_hitmap(c, layer):
-    sel = c.Tr[f"paddle_{layer.name}"] >= 0
-    x, y = c.Tr[f"x_{layer.name}"][sel], c.Tr[f"y_{layer.name}"][sel]
+    """Where the tracks cross the layer. A track through two neighbouring paddles of the layer
+    shows each paddle's own hit (never a point between them)."""
     fig, ax = figure(6.0, 5.6)
     for p in c.setup.paddles:
         if p.layer is layer:
             outline(ax, p, mc.layer_color(layer.index), fill=True, lw=1.0)
-            if p.axis == "x":   # label inside the paddle, near its +x end, along its length
-                ax.text(p.x + 0.5 * p.size_x - 0.6, p.y, p.name, fontsize=6.5, color=INK2, ha="right",
+            if p.axis == "x":   # label just beyond the paddle's +x end
+                ax.text(p.x + 0.5 * p.size_x + 0.6, p.y, p.name, fontsize=6.5, color=INK2, ha="left",
                         va="center", zorder=2)
-            else:
-                ax.text(p.x, p.y + 0.5 * p.size_y - 0.6, p.name, fontsize=6.5, color=INK2, ha="center",
-                        va="top", rotation=90, zorder=2)
+            else:               # label just beyond its +y end, along its length
+                ax.text(p.x, p.y + 0.5 * p.size_y + 0.6, p.name, fontsize=6.5, color=INK2, ha="center",
+                        va="bottom", rotation=90, zorder=2)
         else:
             outline(ax, p, AXIS, lw=0.7)
-    ax.plot(x, y, "o", ms=4.5, color=DATA_COLOR, mec=SURFACE, mew=1.0, label=f"{sel.sum()} tracks", zorder=4)
+    if c.Pts is not None:
+        sel = c.Pts["layer"] == layer.index
+        track = c.Pts["track"][sel]
+        ids, counts = np.unique(track, return_counts=True)
+        multi = np.isin(track, ids[counts > 1])
+        x, y = c.Pts["x"][sel], c.Pts["y"][sel]
+        ax.plot(x[~multi], y[~multi], "o", ms=4.5, color=DATA_COLOR, mec=SURFACE, mew=1.0,
+                label=f"{(~multi).sum()} tracks, one paddle of this layer", zorder=4)
+        if multi.any():
+            ax.plot(x[multi], y[multi], "o", ms=4.5, color=CATEGORICAL[1], mec=SURFACE, mew=1.0, zorder=5,
+                    label=f"{int((counts > 1).sum())} tracks through two neighbouring paddles: each paddle's hit")
+    else:   # older tracks.root without the points tree
+        s = c.Tr[f"paddle_{layer.name}"] >= 0
+        ax.plot(c.Tr[f"x_{layer.name}"][s], c.Tr[f"y_{layer.name}"][s], "o", ms=4.5, color=DATA_COLOR, mec=SURFACE,
+                mew=1.0, label=f"{s.sum()} tracks", zorder=4)
     ax.set_aspect("equal")
     ax.set_xlabel("x (cm)")
     ax.set_ylabel("y (cm)")
@@ -654,11 +716,12 @@ def plot_zenith(c):
 
 
 def plot_azimuth(c):
-    out = plot_angle(c, "phi_deg", "azimuth φ of the arrival direction (0 = from +x, 90 = from +y)", (0, 360), 15, 45)
+    out = plot_angle(c, "phi_deg", "azimuth φ of the arrival direction (0 = from +x, 90 = from +y)", (0, 360), 5, 5)
     if out:
         fig, ax = out
         ax.set_xticks(range(0, 361, 45))
-        mc.title(ax, f"Azimuth of the tracks: {c.short}")
+        mc.title(ax, f"Azimuth of the tracks: {c.short}",
+                 "5° bins; the setup's square acceptance favours the diagonals a little (see the simulation)")
         c.save(fig, "azimuth")
 
 
@@ -678,78 +741,237 @@ def plot_tof(c):
     lim = max(4.0, np.percentile(np.abs(d), 98) * 1.3)
     bw = 0.25 if len(d) >= 100 else 0.5
     bins = np.arange(-lim, lim + bw, bw)
-    points(ax, np.clip(d, -lim, lim - 1e-6), bins, label=f"{len(d)} tracks")
+    points(ax, np.clip(d, -lim, lim - 1e-6), bins, label=f"{len(d)} tracks (measured)")
     s_exp = resolution_tof(c)
     if np.isfinite(s_exp):
         x = np.linspace(-lim, lim, 400)
         ax.plot(x, len(d) * bw * np.exp(-0.5 * (x / s_exp) ** 2) / (s_exp * math.sqrt(2 * math.pi)),
-                color=mc.EXPECTED_COLOR, lw=1.3, label=f"expected from the paddles' time resolution, σ = {s_exp:.2f} ns")
+                color=mc.EXPECTED_COLOR, lw=1.3,
+                label=f"simulation: β = 1, smeared by the measured resolution σ = {s_exp:.2f} ns")
     robust = 1.4826 * np.median(np.abs(d - np.median(d)))
     note(ax, f"median {np.median(d):+.3f} ns\nrobust σ {robust:.3f} ns\nmedian s/c {np.median(c.Tr['tof_expected_ns'][ok]):.3f} ns",
          loc="upper left")
-    ax.set_xlabel("time of flight - s / c (ns); the layer offsets were set for β = 1")
+    ax.set_xlabel("measured time of flight - s / c (ns); no layer time offsets applied")
     ax.set_ylabel(f"tracks per {bw:g} ns")
     ax.set_ylim(0, None)
     mc.headroom(ax)
     ax.legend(loc="upper right")
-    mc.title(ax, f"Time of flight between the layers: {c.short}")
+    mc.title(ax, f"Time of flight between the layers: {c.short}",
+             "s = path between the two hit points; the paddles' cable delays are not known, so the median may be off 0")
     c.save(fig, "tof_residual")
 
 
-def plot_inv_beta(c):
-    ib = c.Tr["inv_beta"][np.isfinite(c.Tr["inv_beta"])]
-    if not len(ib):
+def plot_beta(c):
+    """beta = path / (c x time of flight) as measured, from 0 to 1, with labelled bins for the
+    tracks the timing puts below 0 or at 1 and above (the resolution's doing)."""
+    ok = np.isfinite(c.Tr["beta"]) & np.isfinite(c.Tr["s_cm"])
+    b = c.Tr["beta"][ok]
+    if not len(b):
         return
-    fig, ax = figure()
-    lim = max(3.0, np.percentile(np.abs(ib - 1), 98) * 1.3)
-    bw = 0.1 if len(ib) >= 100 else 0.25
-    bins = np.arange(1 - lim, 1 + lim + bw, bw)
-    points(ax, np.clip(ib, 1 - lim, 1 + lim - 1e-6), bins, label=f"{len(ib)} tracks")
+    s = c.Tr["s_cm"][ok]
+    width = 0.05 if len(b) >= 200 else 0.1
+    edges = np.arange(0, 1 + width / 2, width)
+    def counts(values, weights=None):
+        inner, _ = np.histogram(values[(values >= 0) & (values < 1)], bins=edges,
+                                weights=None if weights is None else weights[(values >= 0) & (values < 1)])
+        w = np.ones(len(values)) if weights is None else weights
+        return inner, float(w[values < 0].sum()), float(w[values >= 1].sum())
+    inner, under, over = counts(b)
+    fig, ax = figure(7.0, 4.2)
+    x_under, x_over = -2 * width, 1 + 2 * width
+    for x0 in (x_under, x_over):
+        ax.axvspan(x0 - width, x0 + width, color=GRID, alpha=0.6, lw=0)
+    centres = 0.5 * (edges[1:] + edges[:-1])
+    allc = np.concatenate([[under], inner, [over]])
+    allx = np.concatenate([[x_under], centres, [x_over]])
+    down, up = mc.poisson_band(allc)
+    m = allc > 0
+    ax.errorbar(allx[m], allc[m], yerr=[down[m], up[m]], fmt="o", ms=4, color=DATA_COLOR, mec=SURFACE, mew=1.0,
+                elinewidth=0.9, capsize=0, label=f"{len(b)} tracks (measured, no layer time offsets)", zorder=4)
     s_exp = resolution_tof(c)
-    s_med = float(np.median(c.Tr["tof_expected_ns"][np.isfinite(c.Tr["inv_beta"])]))
-    if np.isfinite(s_exp) and s_med > 0:
-        width = s_exp / s_med
-        x = np.linspace(1 - lim, 1 + lim, 400)
-        ax.plot(x, len(ib) * bw * np.exp(-0.5 * ((x - 1) / width) ** 2) / (width * math.sqrt(2 * math.pi)),
-                color=mc.EXPECTED_COLOR, lw=1.3, label=f"β = 1 with the time resolution, σ(1/β) = {width:.2f}")
-    ax.axvline(1, color=MUTED, lw=0.8)
-    ax.set_xlabel("1 / β = c x time of flight / path")
-    ax.set_ylabel(f"tracks per {bw:g}")
+    if np.isfinite(s_exp):   # simulation: beta = 1 particles on the same paths, measured with this resolution
+        rng = np.random.default_rng(3)
+        reps = 400
+        ss = np.repeat(s, reps)
+        tof = ss / mc.C_CM_PER_NS + rng.normal(0, s_exp, len(ss))
+        bs = ss / (mc.C_CM_PER_NS * tof)
+        si, su, so = counts(bs, np.full(len(bs), 1.0 / reps))
+        ax.stairs(si, edges, color=mc.EXPECTED_COLOR, lw=1.3,
+                  label=f"simulation: β = 1, measured with σ(tof) = {s_exp:.2f} ns")
+        for x0, val in ((x_under, su), (x_over, so)):
+            ax.plot([x0 - width, x0 + width], [val, val], color=mc.EXPECTED_COLOR, lw=1.3)
+    ax.set_xticks(list(np.round(np.arange(0, 1.01, 0.2), 1)) + [x_under, x_over],
+                  [f"{t:.1f}" for t in np.arange(0, 1.01, 0.2)] + ["< 0", "≥ 1"])
+    ax.set_xlim(x_under - 1.5 * width, x_over + 1.5 * width)
     ax.set_ylim(0, None)
-    mc.headroom(ax)
-    ax.legend(loc="upper right")
+    mc.headroom(ax, 1.35)
+    ax.set_xlabel("β = path / (c x time of flight); grey: tracks measured below 0 or at 1 and above")
+    ax.set_ylabel(f"tracks per {width:g} (grey bins: all of them)")
+    ax.legend(loc="upper left")
+    frac = over / len(b)
+    note(ax, f"{over:.0f} of {len(b)} tracks ({frac:.0%}) measured at β ≥ 1:\nthe time of flight ({np.median(s) / mc.C_CM_PER_NS:.2f} ns)"
+             f" is only ~{(np.median(s) / mc.C_CM_PER_NS) / s_exp:.0f} x its resolution", loc="upper right")
     mc.title(ax, f"Speed of the tracks: {c.short}",
-             "slow particles (β < 1) would sit right of 1; the path between the layers is short for a TOF measurement")
-    c.save(fig, "inv_beta")
+             "nothing can be faster than light: a track at β ≥ 1 was measured too fast by the time resolution")
+    c.save(fig, "beta")
 
 
-def plot_energy(c):
-    cos_t = np.cos(np.radians(c.Tr["theta_deg"]))
+def plot_energy_deposit(c):
+    """The tracks' signal in each paddle, as measured (ADC): energy deposit x light yield x gain."""
     fig, ax = figure()
-    any_drawn = False
-    vals_all = []
-    for layer in c.setup.layers:
-        v = (c.Tr[f"hmip_{layer.name}"] * cos_t)
-        vals_all.append(v[np.isfinite(v)])
-    allv = np.concatenate(vals_all) if vals_all else np.zeros(0)
+    vals = {}
+    for p in c.setup.paddles[:len(CATEGORICAL)]:
+        L = p.layer.name
+        sel = (c.Tr[f"paddle_{L}"] == p.index) & ((c.Tr["flags"] & (mc.TRACK_ADJACENT | mc.TRACK_AMBIGUOUS)) == 0)
+        v = c.Tr[f"hgeo_{L}"][sel]
+        vals[p.name] = v[np.isfinite(v)]
+    allv = np.concatenate(list(vals.values())) if vals else np.zeros(0)
     if not len(allv):
         plt.close(fig)
         return
-    top = max(3.0, np.percentile(allv, 98) * 1.2)
-    bins = np.linspace(0, top, 31 if len(allv) >= 100 else 16)
-    for layer, v in zip(c.setup.layers, vals_all):
-        if len(v):
-            stairs(ax, np.clip(v, 0, top * 0.999), bins, mc.layer_color(layer.index),
-                   label=f"{layer.name} layer ({len(v)} tracks)")
-            any_drawn = True
-    ax.axvline(1, color=MUTED, lw=0.8)
-    ax.set_xlabel("sqrt(hA hB) / muon peak x cos(θ): signal per vertical path, 1 = a vertical muon")
+    top = np.percentile(allv, 98) * 1.25
+    bins = np.linspace(0, top, 41 if len(allv) >= 400 else 21)
+    lines = []
+    for k, p in enumerate(c.setup.paddles[:len(CATEGORICAL)]):
+        v = vals[p.name]
+        if not len(v):
+            continue
+        stairs(ax, np.clip(v, 0, top * 0.999), bins, CATEGORICAL[k], label=f"{p.name} ({len(v)} tracks)", wash=False)
+        mpv = c.calib["paddles"].get(p.name, {}).get("mip_adc")
+        if mpv:
+            lines.append(f"{p.name}: most probable {mpv:.0f} ADC")
+    sim = c.tinfo.get("energy_sim_mpv_mev") if c.has_tracks else None
+    if sim:
+        lines.append("simulation (known muon values): muons here lose")
+        lines.append("most probably " + ", ".join(f"{k} {v:.2f}" for k, v in sim.items()) + " MeV")
+        lines.append("(energy_deposit_sim.png); ADC to MeV needs an")
+        lines.append("energy calibration, e.g. a gamma source")
+    note(ax, "\n".join(lines), loc="upper right")
+    ax.set_xlabel("sqrt(hA x hB) of the track's hit, ADC (as measured, no angle correction)")
     ax.set_ylabel("tracks per bin")
-    mc.headroom(ax)
-    if any_drawn:
-        ax.legend(loc="upper right")
-    mc.title(ax, f"Muon signal per layer, corrected for the path: {c.short}")
+    ax.set_ylim(0, None)
+    mc.headroom(ax, 1.5)
+    ax.legend(loc="upper left")
+    mc.title(ax, f"Energy deposit of the tracks, measured signal: {c.short}",
+             "signal = deposited energy x light yield x gain: each paddle has its own scale")
     c.save(fig, "energy_deposit")
+
+
+def energy_simulation(c, seed=4):
+    """Energy the toy muons lose in each layer's paddle (MeV): PDG Landau most probable loss and width for
+    the path thickness / cos(theta) through plastic, a Moyal-shaped spread. Weighted like the toy."""
+    if c.toy is None or not len(c.toy["weight_hz"]):
+        return None
+    rng = np.random.default_rng(seed)
+    out = {}
+    cos_t = np.cos(np.radians(c.toy["theta_true_deg"]))
+    for layer in c.setup.layers:
+        sel = c.toy[f"paddle_{layer.name}"] >= 0
+        if not sel.any():
+            continue
+        thick = np.array([c.setup.paddles[k].thickness for k in c.toy[f"paddle_{layer.name}"][sel]])
+        path = thick / cos_t[sel]
+        e = mc.sample_moyal(rng, mc.landau_mpv_mev(path), mc.landau_xi_mev(path))
+        out[layer.name] = (e, c.toy["weight_hz"][sel])
+    return out
+
+
+def plot_energy_sim(c):
+    sim = energy_simulation(c)
+    if not sim:
+        return
+    fig, ax = figure()
+    bins = np.linspace(0, 3.0, 61)
+    mpvs = {}
+    for layer in c.setup.layers:
+        if layer.name not in sim:
+            continue
+        e, w = sim[layer.name]
+        k, _ = np.histogram(np.clip(e, 0, 2.999), bins=bins, weights=w)
+        k = k / max(k.sum(), 1e-30)
+        ax.stairs(k, bins, color=mc.layer_color(layer.index), lw=1.3, label=f"{layer.name} layer")
+        j = int(np.argmax(k))
+        mpvs[layer.name] = 0.5 * (bins[j] + bins[j + 1])
+    t0 = c.setup.paddles[0].thickness
+    note(ax, f"SIMULATION with known muon values:\nminimum-ionising muons (βγ = 20), PDG Landau formula;\n"
+             f"a vertical muon in {t0:g} cm of plastic: most probable {mc.landau_mpv_mev(t0):.2f} MeV;\n"
+             f"paths = thickness / cos θ of the toy's tracks;\nno light yield, photo-statistics or noise",
+         loc="upper right")
+    ax.set_xlabel("energy lost in the paddle (MeV)")
+    ax.set_ylabel("fraction of the tracks per 0.05 MeV")
+    ax.set_ylim(0, None)
+    mc.headroom(ax, 1.5)
+    ax.legend(loc="upper left")
+    mc.title(ax, f"Expected energy deposit of muon tracks (simulation): {c.short}",
+             "the toy's tracks through the setup; compare the shape, not the scale, with energy_deposit.png")
+    c.save(fig, "energy_deposit_sim")
+
+
+def plot_signal_vs_path(c):
+    """Does the signal grow with the path through the paddle? Each hit's signal over its paddle's most
+    probable signal, against 1 / cos(zenith) of its track: a data test of the angle correction."""
+    rows_f, rows_r = [], []
+    cos_t = np.cos(np.radians(c.Tr["theta_deg"]))
+    clean = (c.Tr["flags"] & (mc.TRACK_ADJACENT | mc.TRACK_AMBIGUOUS)) == 0
+    for p in c.setup.paddles:
+        mpv = c.calib["paddles"].get(p.name, {}).get("mip_adc")
+        if not mpv:
+            continue
+        L = p.layer.name
+        sel = clean & (c.Tr[f"paddle_{L}"] == p.index) & np.isfinite(c.Tr[f"hgeo_{L}"]) & (cos_t > 0)
+        rows_f.append(1 / cos_t[sel])
+        rows_r.append(c.Tr[f"hgeo_{L}"][sel] / mpv)
+    if not rows_f:
+        return
+    f, r = np.concatenate(rows_f), np.concatenate(rows_r)
+    if len(f) < 30:
+        return
+    edges = np.unique(np.percentile(f, np.linspace(0, 100, 9 if len(f) >= 400 else 5)))
+    xm, ym, ye = [], [], []
+    for a, b in zip(edges[:-1], edges[1:]):
+        s = (f >= a) & (f <= b)
+        if s.sum() < 10:
+            continue
+        med = np.median(r[s])
+        rs = 1.4826 * np.median(np.abs(r[s] - med))
+        xm.append(np.median(f[s]))
+        ym.append(med)
+        ye.append(1.2533 * rs / math.sqrt(s.sum()))
+    xm, ym, ye = map(np.array, (xm, ym, ye))
+    fig, ax = figure()
+    ax.errorbar(xm, ym, yerr=ye, fmt="o", ms=5, color=DATA_COLOR, mec=SURFACE, mew=1.0, elinewidth=0.9, capsize=0,
+                label=f"median of {len(f)} hits per bin (tracks, every paddle)", zorder=4)
+    w = 1 / np.maximum(ye, 1e-9) ** 2
+    a_prop = float(np.sum(w * ym * xm) / np.sum(w * xm * xm))       # ym = a x f
+    a_flat = float(np.sum(w * ym) / np.sum(w))                       # ym = a
+    chi_prop = float(np.sum(w * (ym - a_prop * xm) ** 2))
+    chi_flat = float(np.sum(w * (ym - a_flat) ** 2))
+    xx = np.linspace(1, max(xm.max(), 1.05) * 1.02, 50)
+    ax.plot(xx, a_prop * xx, color=FIT_COLOR, lw=1.3,
+            label=f"signal ∝ path length (χ² = {chi_prop:.1f} for {len(xm) - 1})")
+    ax.plot(xx, np.full_like(xx, a_flat), color=AXIS, lw=1.3,
+            label=f"no dependence on the path (χ² = {chi_flat:.1f} for {len(xm) - 1})")
+    ax.set_xlabel("1 / cos(zenith) of the track = path through the paddle / its thickness")
+    ax.set_ylabel("signal / the paddle's most probable signal")
+    mc.headroom(ax, 1.25)
+    ax.legend(loc="upper left")
+    mc.title(ax, f"Signal against the path through the paddle: {c.short}",
+             "a particle crossing at θ goes through thickness / cos θ; the reconstructed θ (error ~7°) flattens the trend")
+    c.save(fig, "signal_vs_path")
+
+
+def sim_mpv(c):
+    """Most probable simulated energy loss per layer (MeV), quoted as text on the data plot."""
+    sim = energy_simulation(c)
+    if not sim:
+        return
+    out = {}
+    bins = np.linspace(0, 3.0, 121)
+    for name, (e, w) in sim.items():
+        k, _ = np.histogram(e, bins=bins, weights=w)
+        j = int(np.argmax(k))
+        out[name] = 0.5 * (bins[j] + bins[j + 1])
+    c.tinfo["energy_sim_mpv_mev"] = out
 
 
 # ---- summary ----
@@ -785,6 +1007,11 @@ def headline(c):
                      f"{cal.get('position_sigma_cm', float('nan')):.1f} cm, muon peak {cal.get('mip_adc') or float('nan'):.0f} ADC"
                      + (f", threshold/peak {', '.join(thr)}" if thr else ""))
     sp = c.calib.get("speed", {})
+    if sp.get("mode") != "shared":
+        lines.append("Speed     : each paddle its own signal speed: " + ", ".join(
+            f"{p.name} {c.calib['paddles'][p.name]['v_eff_cm_per_ns']:.1f} ± "
+            f"{c.calib['paddles'][p.name].get('v_eff_err_cm_per_ns', float('nan')):.1f}"
+            for p in s.paddles if p.name in c.calib["paddles"]) + " cm/ns")
     if sp.get("mode") == "shared":
         lines.append(f"Speed     : one signal speed for {sp['paddles']} paddles, {sp['v_eff_cm_per_ns']:.2f} ± "
                      f"{sp['err']:.2f} cm/ns; each alone: " +
@@ -814,8 +1041,13 @@ def headline(c):
         good = np.isfinite(tr["tof_ns"])
         if good.any():
             d = (tr["tof_ns"] - tr["tof_expected_ns"])[good]
-            lines.append(f"TOF       : tof - s/c robust σ {1.4826 * np.median(np.abs(d - np.median(d))):.2f} ns "
-                         f"(expected {resolution_tof(c):.2f} ns) over a median path of {np.median(tr['s_cm'][good]):.1f} cm")
+            lines.append(f"TOF       : measured tof - s/c median {np.median(d):+.2f} ns, robust σ "
+                         f"{1.4826 * np.median(np.abs(d - np.median(d))):.2f} ns (simulation of β = 1 with the "
+                         f"measured resolution: σ {resolution_tof(c):.2f} ns) over a median path of "
+                         f"{np.median(tr['s_cm'][good]):.1f} cm; no layer time offsets applied")
+            lines.append(f"β         : median {np.nanmedian(tr['beta'][good]):.2f}; "
+                         f"{int((tr['beta'][good] >= 1).sum())} of {int(good.sum())} tracks measured at β ≥ 1, "
+                         f"{int((tr['beta'][good] < 0).sum())} below 0 (time resolution)")
         for r in c.tinfo.get("map_check", []):
             lines.append(f"Map check : {r['layer']} layer {r['axis']} ({r['method']}) by {r['by_layer']} paddle: "
                          f"slope {r['slope']:+.2f} ± {r['slope_err']:.2f} (+1 expected), shift "
@@ -872,8 +1104,9 @@ def run(folder, setup_path=None):
         for layer in s.layers:
             jobs.append((f"{layer.name} hit map", lambda layer=layer: plot_hitmap(c, layer)))
         jobs += [("zenith", lambda: plot_zenith(c)), ("azimuth", lambda: plot_azimuth(c)),
-                 ("time of flight", lambda: plot_tof(c)), ("1/beta", lambda: plot_inv_beta(c)),
-                 ("muon signal", lambda: plot_energy(c))]
+                 ("time of flight", lambda: plot_tof(c)), ("beta", lambda: plot_beta(c)),
+                 ("energy (simulation)", lambda: sim_mpv(c)), ("energy deposit", lambda: plot_energy_deposit(c)),
+                 ("energy simulation", lambda: plot_energy_sim(c)), ("signal vs path", lambda: plot_signal_vs_path(c))]
     bar = mc.Progress("Plotting", len(jobs))
     for name, job in jobs:
         job()

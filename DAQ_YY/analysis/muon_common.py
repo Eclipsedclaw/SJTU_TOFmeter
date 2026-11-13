@@ -129,12 +129,14 @@ EVENT_DEFAULTS = {
     "window_ns": 30.0,           # hits within this time of an event's first hit belong to the event
 }
 CALIBRATION_DEFAULTS = {
-    "v_eff_mode": "shared",      # "shared": one signal speed for all paddles (same bars); "per_paddle"
+    "v_eff_mode": "per_paddle",  # "per_paddle": each paddle its own signal speed; "shared": one for all
     "v_eff_cm_per_ns": 15.0,     # signal speed along a paddle until calibrate.py measures it
     "speed_min_mip": 0.8,        # speed and attenuation fits use hits with sqrt(hA hB) > this x muon peak
     "tdiff_sigma_ns": 0.6,       # resolution of tA - tB until calibrate.py measures it
     "min_hits": 50,              # fewer A&B hits in a paddle: keep the defaults
     "min_tof_events": 20,        # events per paddle needed for per-paddle time offsets
+    "mip_mev": 0.0,              # most probable energy loss of a vertical muon in a paddle, MeV; 0 = from its
+                                 # thickness (plastic scintillator, Landau formula: 0.95 MeV for 0.6 cm)
 }
 FLUX_DEFAULTS = {
     "vertical_intensity": 70.0,  # muons / (m^2 s sr) at sea level above ~1 GeV (PDG review)
@@ -981,6 +983,61 @@ def direction(bx, by, var_bx=None, var_by=None):
                       0.5 * (var_bx + var_by))
         sigma_theta = np.degrees(np.sqrt(s2) / (1 + r * r))
     return theta, phi, sigma_theta
+
+
+# plastic scintillator (polyvinyltoluene based), PDG atomic and nuclear properties
+PVT = {"density": 1.032, "z_over_a": 0.54141, "i_ev": 64.7,
+       "x0": 0.1464, "x1": 2.4855, "c_bar": 3.1997, "a": 0.16101, "k": 3.2393}
+
+
+def _landau_terms(thickness_cm, beta_gamma, m):
+    bg2 = beta_gamma ** 2
+    b2 = bg2 / (1 + bg2)
+    x = np.asarray(thickness_cm, dtype=np.float64) * m["density"]   # g / cm^2
+    xi = 0.5 * 0.307075 * m["z_over_a"] * x / b2                     # MeV
+    lx = math.log10(beta_gamma)
+    if lx >= m["x1"]:
+        delta = 2 * math.log(10) * lx - m["c_bar"]
+    elif lx >= m["x0"]:
+        delta = 2 * math.log(10) * lx - m["c_bar"] + m["a"] * (m["x1"] - lx) ** m["k"]
+    else:
+        delta = 0.0
+    return xi, b2, bg2, delta
+
+
+def landau_mpv_mev(thickness_cm, beta_gamma=20.0, m=PVT):
+    """Most probable energy loss (MeV) of a minimum-ionising particle crossing a plastic
+    slab of this thickness (cm; a number or an array) straight through (PDG review,
+    'Passage of particles through matter': Delta_p = xi [ln(2 m c^2 b^2 g^2 / I) +
+    ln(xi / I) + j - b^2 - delta], xi = K/2 Z/A x / b^2, j = 0.2). It is lower than the
+    mean loss (about 2 MeV/cm), which the long Landau tail pulls up. Cosmic muons (beta
+    gamma 10-100) give 0.945-0.964 MeV for 0.6 cm (0.953 at the beta gamma 20 used).
+    Used only by the simulation (known values), never on the data."""
+    xi, b2, bg2, delta = _landau_terms(thickness_cm, beta_gamma, m)
+    i_mev = m["i_ev"] * 1e-6
+    out = xi * (math.log(2 * 0.51099895 * bg2 / i_mev) + np.log(xi / i_mev) + 0.2 - b2 - delta)
+    return float(out) if np.ndim(out) == 0 else out
+
+
+def landau_xi_mev(thickness_cm, beta_gamma=20.0, m=PVT):
+    """Width parameter xi (MeV) of the Landau energy-loss distribution (FWHM about 4 xi)."""
+    xi = _landau_terms(thickness_cm, beta_gamma, m)[0]
+    return float(xi) if np.ndim(xi) == 0 else xi
+
+
+def sample_moyal(rng, loc, scale):
+    """Random numbers from a Moyal distribution (close to Landau) with peak loc and width scale."""
+    from scipy.special import erfcinv
+    loc = np.asarray(loc, dtype=np.float64)
+    u = rng.uniform(1e-9, 1 - 1e-9, loc.shape)
+    return loc + np.asarray(scale) * (-2.0 * np.log(math.sqrt(2.0) * erfcinv(u)))
+
+
+def mip_mev(paddle, setup):
+    """A vertical muon's most probable energy loss in the paddle (MeV), for the simulation and
+    for text on plots only: the data processing never converts ADC to MeV with it."""
+    given = float(setup.calibration.get("mip_mev") or 0.0)
+    return given if given > 0 else landau_mpv_mev(paddle.thickness)
 
 
 def position_sigma(calib, paddle, setup):

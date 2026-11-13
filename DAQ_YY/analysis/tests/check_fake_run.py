@@ -61,7 +61,14 @@ def main():
         if c.get("gain_ratio_A_over_B"):
             line("gain ratio A / B", t["gain_ratio_A_over_B"], c["gain_ratio_A_over_B"], None)
         if c.get("mip_adc"):
-            line(f"muon peak ({c.get('mip_sample', '?')})", truth["mip_adc"] * PEAK * math.sqrt(t["gain_A"] * t["gain_B"]),
+            # the peak is measured on the tracks without angle correction: the truth for vertical
+            # muons times the tracks' typical path factor 1 / cos(zenith)
+            layer = p.layer.name
+            others = [lay.name for lay in setup.layers if lay.name != layer]
+            th = (mu[f"paddle_{layer}"] == p.index) & np.all([mu[f"paddle_{o}"] >= 0 for o in others], axis=0)
+            path = float(np.median(1 / np.cos(np.radians(mu["theta_deg"][th])))) if th.any() else 1.0
+            line(f"muon peak ({c.get('mip_sample', '?')}, path x{path:.2f})",
+                 truth["mip_adc"] * PEAK * math.sqrt(t["gain_A"] * t["gain_B"]) * path,
                  c["mip_adc"], c.get("mip_err_adc"), "ADC")
 
     # ---- tracks matched to true muons by time ----
@@ -99,9 +106,16 @@ def main():
     dphi = (T["phi_deg"][ok] - mu["phi_deg"][m[ok]] + 180) % 360 - 180
     big = T["theta_deg"][ok] > 15
     print(f"  {'azimuth, zenith > 15 deg (deg)':<34}{dphi[big].mean():>10.2f}{dphi[big].std():>10.2f}")
-    ib = T["inv_beta"][ok]
-    ib = ib[np.isfinite(ib)]
-    print(f"  {'1/beta (truth 1)':<34}{ib.mean() - 1:>10.3f}{ib.std():>10.3f}")
+    # no time offsets applied: the measured tof is shifted by the simulated cables' mean delays
+    cable = {p.index: 0.5 * (truth["paddles"][p.name]["offset_A_ns"] + truth["paddles"][p.name]["offset_B_ns"])
+             for p in setup.paddles}
+    up, low = names[0], names[-1]
+    sel = ok & np.isfinite(T["tof_ns"])
+    shift = np.array([cable[int(b)] - cable[int(a)] for a, b in zip(T[f"paddle_{up}"][sel], T[f"paddle_{low}"][sel])])
+    resid = (T["tof_ns"] - T["tof_expected_ns"])[sel]
+    print(f"  {'tof - s/c minus the cable shift (ns)':<34}{np.median(resid - shift):>10.3f}"
+          f"{1.4826 * np.median(np.abs(resid - shift - np.median(resid - shift))):>10.3f}   "
+          f"(the cables alone shift it by {np.median(shift):+.3f} ns)")
     print()
     print("Pass if: the constants agree within about 2 sigma (sigma(tA - tB) is larger than sqrt2 x jitter: the ADC")
     print("noise adds to the timing), the position residuals have a mean near 0 and an rms")

@@ -46,25 +46,26 @@ along the paddle.
                    dropped). It gives lambda and the gain ratio of the two ends.
     muon peak    sqrt(hA x hB) does not depend on u. Single paddles also see
                    electrons, gammas and noise, so the peak is taken from the hits
-                   of muons that cross two layers (events with one two-end hit in
-                   each), times cos(zenith) of the line through them: the signal
-                   of a vertical muon. Its most probable value (MPV) comes from a
-                   fit of a Moyal function (close to the Landau shape of energy
-                   loss) from 0.75 x the peak up. Per channel: the signal of that
-                   end for a vertical muon through the paddle's centre, which is
-                   MIP x sqrt(gA / gB) for A and MIP / sqrt(gA / gB) for B (a fit
-                   of the hits within L / 4 of the centre if the attenuation was
-                   not measured). With fewer than min_hits muon hits, all two-end
-                   hits are used (and the summary says so). The threshold of each
-                   channel is then also given in units of its muon peak.
+                   of the tracks (events with one two-end hit in each of two
+                   layers), as measured: no correction for the track's angle (which
+                   would assume that the signal grows with the path length; the
+                   plot signal_vs_path tests that on the data). Its most probable
+                   value (MPV) comes from a fit of a Moyal function (close to the
+                   Landau shape of energy loss) from 0.75 x the peak up. Per
+                   channel: the signal of that end for a track through the paddle's
+                   centre, MIP x sqrt(gA / gB) for A and MIP / sqrt(gA / gB) for B
+                   (a fit of the hits within L / 4 of the centre if the attenuation
+                   was not measured). With fewer than min_hits track hits, all
+                   two-end hits are used (and the summary says so). The threshold
+                   of each channel is then also given in units of its muon peak.
     layer times  t = (tA + tB) / 2 - L / (2 v) is when the muon crossed the paddle.
-                   For events with one two-end hit in each of two layers, the
-                   time of flight should be s / c (cosmic muons have beta ~ 1;
-                   s = distance between the two hit points). The median of
-                   t(lower) - t(upper) - s / c is the offset of each layer
-                   against the top layer, or of each paddle (least squares) when
-                   every paddle has min_tof_events such events. This assumes
-                   beta = 1: beta measured later then shows the time resolution.
+                   The paddles' cable and electronics delays are NOT taken out:
+                   that would need an independent measurement (a pulser into every
+                   channel), and setting them so that the tracks have beta = 1
+                   would force the result. Only as text, the summary quotes the
+                   offsets that beta = 1 would need (the median of t(lower) -
+                   t(upper) - s / c per layer, or per paddle by least squares when
+                   every paddle has min_tof_events events); they are not applied.
 
 Outputs (in the analysis folder):
     calibration.json          the constants, with how each was found
@@ -203,8 +204,8 @@ def muon_peaks(H, E, setup, cal, thresholds):
         muon = np.array(sorted(k for k in cos_of if H["paddle"][k] == p.index
                                and ((H["flagsA"][k] | H["flagsB"][k]) & bad) == 0), dtype=np.int64)
         if len(muon) >= min_hits:
-            idx, cos = muon, np.array([cos_of[k] for k in muon])
-            sample = f"{len(muon)} hits of muons crossing two layers, x cos(zenith)"
+            idx, cos = muon, np.ones(len(muon))      # as measured: no path-length correction
+            sample = f"{len(muon)} hits of tracks (two layers), as measured"
             c["mip_sample"] = "muons"
         else:
             idx = np.where((H["paddle"] == p.index) & (H["kind"] == mc.HIT_AB) &
@@ -305,7 +306,7 @@ def tof_offsets(H, E, setup, cal):
                 i, j = idx[a], idx[b]
                 s = math.dist((x[i], y[i], z[i]), (x[j], y[j], z[j]))
                 rows.append((int(H["paddle"][i]), int(H["paddle"][j]), t[j] - t[i] - s / mc.C_CM_PER_NS))
-    out = {"n_events": len(by_event), "n_pairs": len(rows), "assumption": "beta = 1 for cosmic muons",
+    out = {"n_events": len(by_event), "n_pairs": len(rows), "assumption": "beta = 1 (quoted only, not applied)",
            "layer_offsets_ns": {name: 0.0 for name in layer_names},
            "paddle_offsets_ns": {p.name: 0.0 for p in setup.paddles}}
     if not rows:
@@ -538,20 +539,21 @@ def run(folder, setup_path=None):
         end_txt = f"{c['paddle']}-{c['end']}"
         report(f"ch{chid:<8}{end_txt:<9}{c['n_hits']:>6}{mip_txt:>12}{thr_txt:>11}{frac_txt:>9}")
     report()
-    report(f"Layer times ({tof['assumption']}): {tof['status']}")
+    report("Layer times: no time offsets applied (the paddles' cable delays would need a pulser measurement).")
     report(f"  {tof['n_events']} events with one two-end hit in each of two layers or more ({tof['n_pairs']} layer pairs)")
     if tof["n_pairs"]:
-        report(f"  before the offsets: t(lower) - t(upper) - s/c = median {tof['residual_raw_median_ns']:.3f} ns, "
+        report(f"  measured t(lower) - t(upper) - s/c: median {tof['residual_raw_median_ns']:+.3f} ns, "
                f"robust sigma {tof['residual_raw_sigma_ns']:.3f} ns")
+        report(f"  only as text, not applied: offsets that would give the tracks beta = 1 ({tof['status']}):")
         for name, value in tof["layer_offsets_ns"].items():
-            report(f"  layer {name:<10} offset {value:+.3f} ns" + ("  (reference)" if name == setup.layers[0].name else ""))
+            report(f"    layer {name:<10} {value:+.3f} ns" + ("  (reference)" if name == setup.layers[0].name else ""))
         if tof["status"].startswith("per paddle"):
             for name, value in tof["paddle_offsets_ns"].items():
-                report(f"  paddle {name:<9} offset {value:+.3f} ns")
-        report(f"  after the offsets: residual sigma {tof['residual_sigma_ns']:.3f} ns "
-               f"(robust {tof['residual_robust_sigma_ns']:.3f} ns)")
+                report(f"    paddle {name:<9} {value:+.3f} ns")
+    tof["applied"] = False
     for p in setup.paddles:
-        paddles[p.name]["time_offset_ns"] = tof["paddle_offsets_ns"][p.name]
+        paddles[p.name]["time_offset_ns"] = 0.0
+        paddles[p.name]["beta1_offset_ns"] = tof["paddle_offsets_ns"][p.name]
 
     report()
     report("offset = centre of tA - tB (cable and electronics difference of the two ends); sigma = resolution of")

@@ -65,6 +65,10 @@ class Data:
         self.P = mc.read_tree(pp, "pulses", ["channel", "entry", "ttt", "t_ns", "edge", "baseline", "height", "flags"])
         self.H = mc.read_tree(ep, "hits")
         self.Tr = mc.read_tree(tp, "tracks")
+        f = mc.open_root(tp)
+        has_points = bool(f.Get("points"))
+        f.Close()
+        self.Pts = mc.read_tree(tp, "points") if has_points else None
         cal = self.tinfo.get("calibration") or os.path.join(folder, mc.CALIB_FILE)
         self.calib = mc.read_json(cal) if os.path.isfile(cal) else {"paddles": {}}
         self.run = self.pinfo["run"]
@@ -119,8 +123,25 @@ def geometry_figure(d, row, out_dir):
     # the fitted line: x(z) = ax + bx (z - z0), y(z) = ay + by (z - z0)
     lx = T["ax"][row] + T["bx"][row] * (zz - T["z0"][row])
     ly = T["ay"][row] + T["by"][row] * (zz - T["z0"][row])
-    pts = [(T[f"x_{L.name}"][row], T[f"y_{L.name}"][row], T[f"z_{L.name}"][row], T[f"sx_{L.name}"][row],
-            T[f"sy_{L.name}"][row], L) for L in s.layers if T[f"paddle_{L.name}"][row] >= 0]
+    # every two-end hit of the track's layers at its own paddle (a track through two neighbouring
+    # paddles shows two points, one in each; the line is the fit through the layers' points)
+    pts = []
+    if d.Pts is not None:
+        for j in np.where(d.Pts["track"] == row)[0]:
+            p = s.paddles[int(d.Pts["paddle"][j])]
+            sig = mc.position_sigma(d.calib, p, s)
+            across = p.width / math.sqrt(12)
+            sx, sy = (sig, across) if p.axis == "x" else (across, sig)
+            pts.append((d.Pts["x"][j], d.Pts["y"][j], d.Pts["z"][j], sx, sy, p.layer, p, int(d.Pts["hit"][j]),
+                        d.Pts["u"][j], d.Pts["u_meas"][j]))
+    else:
+        for L in s.layers:
+            k = int(T[f"paddle_{L.name}"][row])
+            if k >= 0:
+                p = s.paddles[k]
+                pts.append((T[f"x_{L.name}"][row], T[f"y_{L.name}"][row], T[f"z_{L.name}"][row], T[f"sx_{L.name}"][row],
+                            T[f"sy_{L.name}"][row], L, p, int(T[f"hit_{L.name}"][row]), T[f"u_{L.name}"][row],
+                            T[f"u_{L.name}"][row]))
     for ax, view in ((ax_xy, "xy"), (ax_xz, "xz"), (ax_yz, "yz")):
         for p in s.paddles:
             draw_paddle(ax, p, view, mc.layer_color(p.layer.index), p.index in fired,
@@ -128,10 +149,12 @@ def geometry_figure(d, row, out_dir):
     ax_xy.plot(lx, ly, color=INK, lw=1.0, zorder=3)
     ax_xz.plot(lx, zz, color=INK, lw=1.0, zorder=3)
     ax_yz.plot(ly, zz, color=INK, lw=1.0, zorder=3)
-    for x, y, z, sx, sy, L in pts:
+    labelled = set()
+    for x, y, z, sx, sy, L, p, hit, u, um in pts:
         col = mc.layer_color(L.index)
         kw = dict(fmt="o", ms=5.5, color=col, mec=SURFACE, mew=1.2, elinewidth=1.4, capsize=0, zorder=4)
-        ax_xy.errorbar(x, y, xerr=sx, yerr=sy, label=f"{L.name} layer", **kw)
+        ax_xy.errorbar(x, y, xerr=sx, yerr=sy, label=None if L.name in labelled else f"{L.name} layer", **kw)
+        labelled.add(L.name)
         ax_xz.errorbar(x, z, xerr=sx, **kw)
         ax_yz.errorbar(y, z, xerr=sy, **kw)
     ext_x = max(abs(p.x) + 0.5 * p.size_x for p in s.paddles) + 4
@@ -150,22 +173,16 @@ def geometry_figure(d, row, out_dir):
         ax.set_ylabel("z (cm)")
     flags = mc.flag_text(int(T["flags"][row]), mc.TRACK_FLAGS)
     lines = []
-    for L in s.layers:
-        k = int(T[f"paddle_{L.name}"][row])
-        if k < 0:
-            continue
-        p = s.paddles[k]
-        i = int(T[f"hit_{L.name}"][row])
+    for x, y, z, sx, sy, L, p, i, u, um in pts:
         sig = mc.position_sigma(d.calib, p, s)
-        um = T[f"u_meas_{L.name}"][row] if f"u_meas_{L.name}" in T else T[f"u_{L.name}"][row]
-        lines.append(f"{L.name}: {p.name}  u = {T[f'u_{L.name}'][row]:+.1f} cm (measured {um:+.1f} ± {sig:.1f})  "
+        lines.append(f"{L.name}: {p.name}  u = {u:+.1f} cm (measured {um:+.1f} ± {sig:.1f})  "
                      f"hA {d.H['hA'][i]:.0f}  hB {d.H['hB'][i]:.0f} ADC  tA-tB {d.H['tdiff_ns'][i]:+.2f} ns")
     ax_xy.text(0.0, -0.13, "\n".join(lines), transform=ax_xy.transAxes, fontsize=7, color=INK2, va="top",
                linespacing=1.5)
     t_s = T["t_ns"][row] * 1e-9
     sub = (f"θ = {T['theta_deg'][row]:.1f} ± {T['sigma_theta_deg'][row]:.1f}°, φ = {T['phi_deg'][row]:.0f}°, "
-           f"path {T['s_cm'][row]:.1f} cm, tof {T['tof_ns'][row]:.2f} ns (s/c {T['tof_expected_ns'][row]:.2f}), "
-           f"1/β = {T['inv_beta'][row]:.2f}; flags: {flags}")
+           f"path {T['s_cm'][row]:.1f} cm, tof {T['tof_ns'][row]:.2f} ns (light: {T['tof_expected_ns'][row]:.2f}), "
+           f"β = {T['beta'][row]:.2f} (no time offsets); flags: {flags}")
     fig.text(0.125, 0.975, f"Event {e} of {d.short}, {t_s:.6f} s into the run", ha="left", va="top",
              fontsize=9.5, color=INK)
     fig.text(0.125, 0.94, sub, ha="left", va="top", fontsize=8, color=INK2)

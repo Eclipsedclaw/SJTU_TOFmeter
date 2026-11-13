@@ -66,6 +66,9 @@ along the paddle.
                    offsets that beta = 1 would need (the median of t(lower) -
                    t(upper) - s / c per layer, or per paddle by least squares when
                    every paddle has min_tof_events events); they are not applied.
+    timing       with pulse times from the rising-edge fit (step 1, timing = "fit") the
+                   spread of tA - tB of the same hits is also fitted with the crossings
+                   between two samples, to show what the fit gains (tdiff_sigma_cfd_ns).
 
 Outputs (in the analysis folder):
     calibration.json          the constants, with how each was found
@@ -107,6 +110,7 @@ def calibrate_paddle(p, hits, setup, shared=None):
         out["v_free_cm_per_ns"] = 2 * p.length / width
         out["v_free_err_cm_per_ns"] = out["v_free_cm_per_ns"] * math.sqrt(var_w) / width if var_w > 0 else float("nan")
         out["tdiff_sigma_free_ns"] = free["sigma"]
+        out["tdiff_sigma_free_err_ns"] = float(free["err"][2])
     if shared is not None:
         fit = mc.box_fit(td, r0, r1, half_width=p.length / shared[0]) if len(td) >= 10 else None
         how = f"fitted, signal speed shared by {shared[2]} paddles"
@@ -383,6 +387,13 @@ def run(folder, setup_path=None):
     H = mc.read_tree(events_path, "hits")
     E = mc.read_tree(events_path, "events")
     thresholds = {int(k): v.get("threshold") for k, v in pinfo.get("channels", {}).items()}
+    fit_timing = pinfo.get("pulse_settings", {}).get("timing") == "fit"
+    if fit_timing:   # the same hits timed with the crossing instead of the edge fit, for the comparison
+        P = mc.read_tree(os.path.join(folder, mc.PULSES_FILE), "pulses", ["edge", "edge_cfd"])
+        shift = (P["edge_cfd"] - P["edge"]) * mc.NS_PER_SAMPLE
+        ia, ib = H["pulseA"], H["pulseB"]
+        H["tdiff_cfd_ns"] = np.where((ia >= 0) & (ib >= 0), H["tdiff_ns"] + shift[np.maximum(ia, 0)]
+                                     - shift[np.maximum(ib, 0)], np.nan)
 
     lines = []
 
@@ -401,7 +412,8 @@ def run(folder, setup_path=None):
     all_hits = {}
     for p in setup.paddles:
         sel = (H["paddle"] == p.index) & (H["kind"] == mc.HIT_AB)
-        all_hits[p.name] = {k: H[k][sel] for k in ("tdiff_ns", "hA", "hB", "flagsA", "flagsB")}
+        all_hits[p.name] = {k: H[k][sel] for k in ("tdiff_ns", "hA", "hB", "flagsA", "flagsB", "tdiff_cfd_ns")
+                            if k in H}
 
     def one_pass(hits, label):
         """Speed (shared or not), offsets, resolution and attenuation from these hits."""
@@ -454,6 +466,13 @@ def run(folder, setup_path=None):
     for p in setup.paddles:
         paddles[p.name]["speed_hits"] = cut_note[p.name]
         paddles[p.name]["speed_cut_adc"] = first[p.name].get("speed_cut_adc")
+        td_cfd = hits[p.name].get("tdiff_cfd_ns")
+        if (td_cfd is not None and "tdiff_sigma_free_ns" in paddles[p.name]
+                and len(td_cfd) >= int(setup.calibration["min_hits"])):
+            fc = mc.box_fit(td_cfd, *fit_range(p, setup))
+            if fc is not None:
+                paddles[p.name]["tdiff_sigma_cfd_ns"] = fc["sigma"]
+                paddles[p.name]["tdiff_sigma_cfd_err_ns"] = float(fc["err"][2])
     bar.update(1, "second pass")
     tof = tof_offsets(H, E, setup, paddles)
     channels = muon_peaks(H, E, setup, paddles, thresholds)
@@ -517,6 +536,17 @@ def run(folder, setup_path=None):
     report("Speed, offset, resolution and attenuation fitted on:")
     for p in setup.paddles:
         report(f"  {p.name:<8}{paddles[p.name].get('speed_hits', '-')}")
+    if any("tdiff_sigma_cfd_ns" in paddles[p.name] for p in setup.paddles):
+        report()
+        report("Pulse times from the rising-edge fit (step 1). The same hits with the crossing between two samples")
+        report("instead (free fits of both; the two share every hit, so their difference is better known than the")
+        report("errors suggest):")
+        report(f"  {'paddle':<9}{'sigma(tA-tB) fit':>18}{'crossing':>12}{'difference':>12}")
+        for p in setup.paddles:
+            c = paddles[p.name]
+            if "tdiff_sigma_cfd_ns" in c:
+                a, b = c["tdiff_sigma_free_ns"], c["tdiff_sigma_cfd_ns"]
+                report(f"  {p.name:<9}{a:>15.3f} ns{b:>9.3f} ns{100 * (a - b) / b:>+11.1f} %")
     report()
     report("Muon peak (MIP) taken from:")
     for p in setup.paddles:

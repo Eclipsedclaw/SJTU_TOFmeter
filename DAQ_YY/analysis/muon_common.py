@@ -78,6 +78,7 @@ FLAG_SATURATED = 16        # a sample at the ADC limit: the height is a lower li
 FLAG_PILEUP = 32           # a second pulse rises on the tail
 FLAG_SLOPE = 64            # baseline window not flat (tail of an earlier pulse)
 FLAG_NOISY = 128           # baseline noise above max_baseline_rms
+FLAG_NO_FIT = 256          # timing = "fit", but no edge fit: the time is the 20 % crossing
 REJECT_MASK = FLAG_SHORT | FLAG_NO_EDGE | FLAG_NOISE | FLAG_LOW
 PULSE_FLAGS = [
     (FLAG_SHORT, "SHORT", "record too short for the baseline window or the peak search (rejected)"),
@@ -89,6 +90,8 @@ PULSE_FLAGS = [
     (FLAG_PILEUP, "PILEUP", "a second pulse rises on the tail of the first (kept)"),
     (FLAG_SLOPE, "SLOPE", "the baseline window is not flat, e.g. the tail of an earlier pulse (kept)"),
     (FLAG_NOISY, "NOISY", "baseline noise above max_baseline_rms (kept)"),
+    (FLAG_NO_FIT, "NO_FIT", "no rising-edge fit (window beyond the record, fit more than fit_max_shift from the "
+                            "crossing, or no template): the time is the 20 % crossing (kept)"),
 ]
 
 # ---- hit kinds and track flags ----
@@ -109,6 +112,13 @@ PULSE_DEFAULTS = {
     "search": [-30, 50],         # the peak is searched in trigger sample + search[0] .. + search[1]
     "smooth": 5,                 # samples averaged for the height (running mean)
     "cfd_fraction": 0.2,         # the pulse time is where the rising edge crosses this fraction of the height
+    "timing": "fit",             # "fit": the rising edge fitted with the channel's own template, the time where the
+                                 # fit reaches cfd_fraction of its height; "cfd": the crossing between two samples
+    "fit_window": [-4, 4],       # samples fitted, around the one at or before the crossing: the edge, not the top
+    "fit_max_shift": 1.5,        # samples; a fit further than this from the crossing has failed (NO_FIT)
+    "template_pulses": 5000,     # clean pulses (no flag) per channel averaged into its edge template
+    "template_min_height": 300.0,  # ADC; smaller pulses are left out of the template
+    "template_min_pulses": 50,   # fewer clean pulses: no template, the channel keeps the crossing (NO_FIT)
     "charge_window": [-5, 130],  # samples around the edge summed for the charge
     "min_height": 100.0,         # ADC; lower peaks are not pulses
     "plateau_window": [5, 45],   # samples after the peak where a real pulse stays high (flat-top test)
@@ -357,6 +367,13 @@ class Setup:
                 raise SetupError(f"{where} [pulse]: {key} must be two numbers, low first")
         if not 0.02 <= float(self.pulse["cfd_fraction"]) <= 0.95:
             raise SetupError(f"{where} [pulse]: cfd_fraction must lie in 0.02 .. 0.95")
+        if self.pulse["timing"] not in ("fit", "cfd"):
+            raise SetupError(f"{where} [pulse]: timing must be \"fit\" or \"cfd\", not {self.pulse['timing']!r}")
+        v = self.pulse["fit_window"]
+        if not (isinstance(v, (list, tuple)) and len(v) == 2 and int(v[0]) <= 0 < int(v[1])):
+            raise SetupError(f"{where} [pulse]: fit_window must be two numbers of samples, the first <= 0 < the second")
+        if not 0 < float(self.pulse["fit_max_shift"]) <= 5:
+            raise SetupError(f"{where} [pulse]: fit_max_shift must lie in 0 .. 5 samples")
 
     def paddle(self, name):
         for p in self.paddles:

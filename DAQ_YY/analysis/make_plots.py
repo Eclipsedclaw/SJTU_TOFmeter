@@ -69,6 +69,10 @@ class Context:
         self.pinfo = mc.read_info(pp)
         self.P = mc.read_tree(pp, "pulses")
         self.shapes = mc.read_tree(pp, "shapes")
+        f = mc.open_root(pp)
+        has_templates = bool(f.Get("templates"))
+        f.Close()
+        self.templates = mc.read_tree(pp, "templates") if has_templates else None
         self.einfo = mc.read_info(ep)
         self.H = mc.read_tree(ep, "hits")
         self.E = mc.read_tree(ep, "events")
@@ -106,11 +110,11 @@ class Context:
 
 # ---- drawing helpers ----
 
-def note(ax, text, loc="upper right"):
+def note(ax, text, loc="upper right", align=None):
     x, ha = (0.98, "right") if "right" in loc else (0.02, "left")
     y, va = (0.97, "top") if "upper" in loc else (0.03, "bottom")
     ax.text(x, y, text, transform=ax.transAxes, ha=ha, va=va, fontsize=7, color=INK2, linespacing=1.4,
-            bbox=dict(boxstyle="round,pad=0.45", fc=SURFACE, ec=GRID, lw=0.6), zorder=5)
+            multialignment=align or ha, bbox=dict(boxstyle="round,pad=0.45", fc=SURFACE, ec=GRID, lw=0.6), zorder=5)
 
 
 def stairs(ax, values, bins, color, label=None, weights=None, wash=True, lw=1.1):
@@ -214,6 +218,55 @@ def plot_pulse_shape(c, p):
     c.save(fig, f"pulse_shape_{p.name}")
 
 
+def plot_edge_template(c, p):
+    """The template each end's rising-edge fit uses, the samples it fits, and where its tangent starts."""
+    tm = c.templates
+    if tm is None or not len(tm["channel"]) or not np.isin(list(p.channels.values()), tm["channel"]).any():
+        return
+    ps = c.pinfo["pulse_settings"]
+    frac = float(ps["cfd_fraction"])
+    w0, w1 = int(ps["fit_window"][0]), int(ps["fit_window"][1])
+    fig, ax = figure()
+    a, b = (w0 - 1) * mc.NS_PER_SAMPLE, w1 * mc.NS_PER_SAMPLE
+    ax.axvspan(a, b, color=GRID, alpha=0.55, lw=0, label=f"samples a fit uses ({a:+.0f} .. {b:+.0f} ns)")
+    lines = []
+    for end, chid in p.channels.items():
+        sel = tm["channel"] == chid
+        if not sel.any():
+            continue
+        x, y, sp = tm["x_ns"][sel], tm["y"][sel], tm["spread"][sel]
+        col = END_COLORS[end]
+        ax.fill_between(x, y - sp, y + sp, color=col, alpha=0.12, lw=0)
+        ax.plot(x, y, color=col, lw=1.4, label=f"{end} end, ch{chid}: mean of {int(tm['n'][sel][0])} pulses")
+        i_max = int(np.argmax(y))
+        slope = np.convolve(np.gradient(y, x), np.ones(5) / 5, mode="same")
+        i = int(np.argmax(slope[:i_max + 1]))
+        t_start = x[i] - y[i] / slope[i]
+        tt = np.array([t_start, x[i] + (1.0 - y[i]) / slope[i]])
+        ax.plot(tt, y[i] + slope[i] * (tt - x[i]), color=col, lw=0.9, ls=":")
+        ax.plot(t_start, 0, "o", ms=5, color=col, mec=SURFACE, mew=1.0, zorder=4)
+        st = c.pinfo["channels"].get(str(chid), {}).get("timing") or {}
+        if st.get("status") == "fitted":
+            lines.append(f"{end}: rise 10-90 % {st['template_rise_ns']:.1f} ns, start {st['template_start_ns']:+.1f} ns; "
+                         f"fitted {100 * st['fitted'] / max(st['with_crossing'], 1):.2f} %\n"
+                         f"    fit - crossing: spread {st['fit_minus_crossing_rms_ns']:.3f} ns; "
+                         f"fit rms {st['median_fit_rms_adc']:.1f} ADC (noise {st['median_noise_adc']:.1f})")
+    ax.axhline(frac, color=MUTED, lw=0.8, ls="--", label=f"{frac:.0%} of the height: the pulse time")
+    ax.axhline(0, color=AXIS, lw=0.8)
+    ax.axvline(0, color=MUTED, lw=0.8)
+    ax.set_xlim(a - 8, b + 22)
+    ax.set_ylim(-0.12, 1.5)
+    ax.set_xlabel(f"time from the template's {frac:.0%} point, ns")
+    ax.set_ylabel("signal / pulse height")
+    ax.legend(loc="upper left")
+    if lines:
+        note(ax, "\n".join(lines), loc="lower right", align="left")
+    mc.title(ax, f"Rising-edge template, {p.name}: {c.short}",
+             f"mean edge of the clean pulses, each / its height at its {frac:.0%} crossing; band: their rms\n"
+             f"dotted: steepest tangent; its dot = start of the pulse, a fixed offset from the pulse time")
+    c.save(fig, f"edge_template_{p.name}")
+
+
 def plot_heights(c, p):
     fig, ax = figure()
     used = (c.P["flags"] & mc.REJECT_MASK) == 0
@@ -268,8 +321,10 @@ def plot_tdiff(c, p):
         ax.plot(t, curve, color=FIT_COLOR, lw=1.3, label="fit: even spread along the paddle ⊗ resolution")
         note(ax, f"signal speed v = {fmt_err(cal['v_eff_cm_per_ns'], cal.get('v_eff_err_cm_per_ns'), 1)} cm/ns\n"
                  f"offset = {fmt_err(cal['tdiff_offset_ns'], cal.get('tdiff_offset_err_ns'), 3)} ns\n"
-                 f"resolution σ = {fmt_err(cal['tdiff_sigma_ns'], cal.get('tdiff_sigma_err_ns'), 3)} ns\n"
-                 f"position σ = {cal['position_sigma_cm']:.1f} cm", loc="upper left")
+                 f"resolution σ = {fmt_err(cal['tdiff_sigma_ns'], cal.get('tdiff_sigma_err_ns'), 3)} ns"
+                 + (f"\n  ({float(c.pinfo['pulse_settings']['cfd_fraction']):.0%} crossing instead of the edge "
+                    f"fit: {cal['tdiff_sigma_cfd_ns']:.3f} ns)" if "tdiff_sigma_cfd_ns" in cal else "") +
+                 f"\nposition σ = {cal['position_sigma_cm']:.1f} cm", loc="upper left")
         v, off = cal["v_eff_cm_per_ns"], cal["tdiff_offset_ns"]
         sec = ax.secondary_xaxis("top", functions=(lambda t, v=v, off=off: -0.5 * v * (t - off),
                                                    lambda u, v=v, off=off: off - 2 * u / v))
@@ -505,9 +560,19 @@ def event_quality(c):
     return rows
 
 
+def record_chain(c):
+    """From the DAQ's records to the events: records (one per channel that crossed its threshold), trigger time
+    tags (records of one board in the same 2 ns tick share one: the DAQ's trigger count), pulses used, hits."""
+    P = c.P
+    tags = sum(len(np.unique(P["ttt"][P["board"] == b])) for b in np.unique(P["board"]))
+    return {"records": len(P["ttt"]), "tags": int(tags), "pulses": int(((P["flags"] & mc.REJECT_MASK) == 0).sum()),
+            "hits": len(c.H["kind"]), "events": len(c.E["event"])}
+
+
 def plot_event_quality(c):
     rows = event_quality(c)
     n_all = max(rows[0][1], 1)
+    ch = record_chain(c)
     fig, ax = figure(7.2, 0.42 * len(rows) + 1.5)
     y = np.arange(len(rows))[::-1]
     colors = {"step": CATEGORICAL[0], "clean": CATEGORICAL[2], "several": CATEGORICAL[1]}
@@ -525,7 +590,9 @@ def plot_event_quality(c):
                        Patch(color=colors["several"], label="tracks: several paddles of one layer")],
               loc="lower right")
     mc.title(ax, f"Event quality: {c.short}",
-             f"all {n_all} events = hits within {c.setup.events['window_ns']:g} ns; most have one end of one paddle only")
+             f"DAQ: {ch['records']} records, {ch['tags']} triggers (records in one 2 ns tick count once)\n"
+             f"→ {ch['pulses']} pulses used → {ch['hits']} hits → {n_all} events (hits within "
+             f"{c.setup.events['window_ns']:g} ns)\nmost events have one end of one paddle only")
     c.save(fig, "event_quality")
 
 
@@ -760,11 +827,14 @@ def plot_angle(c, key, name, unit_range, step_small, step_large):
 
 
 def plot_zenith(c):
-    out = plot_angle(c, "theta_deg", "zenith angle θ (degrees from the vertical)", (0, 90), 5, 10)
+    out = plot_angle(c, "theta_deg", "zenith angle θ (degrees from the vertical)", (0, 90), 5, 5)
     if out:
         fig, ax = out
+        from matplotlib.ticker import MultipleLocator
+        ax.xaxis.set_minor_locator(MultipleLocator(5))
         mc.title(ax, f"Zenith angle of the tracks: {c.short}",
-                 "the toy is reconstructed like the data (positions smeared, across a paddle at its centre)")
+                 "5° bins; the toy is reconstructed like the data\n"
+                 "(positions smeared, across a paddle at its centre)")
         c.save(fig, "zenith")
 
 
@@ -1055,6 +1125,21 @@ def headline(c):
     rej = sum(v["records"] - v["used"] for v in c.pinfo["channels"].values())
     tot = sum(v["records"] for v in c.pinfo["channels"].values())
     lines.append(f"Pulses    : {tot} waveforms, {tot - rej} used, {rej} rejected (mostly noise bursts)")
+    ps = c.pinfo["pulse_settings"]
+    if ps.get("timing") == "fit":
+        st = [v.get("timing") or {} for v in c.pinfo["channels"].values()]
+        n_fit = sum(x.get("fitted", 0) for x in st)
+        n_x = sum(x.get("with_crossing", 0) for x in st)
+        cmp = [f"{p.name} {c.calib['paddles'][p.name]['tdiff_sigma_free_ns']:.3f}/"
+               f"{c.calib['paddles'][p.name]['tdiff_sigma_cfd_ns']:.3f}" for p in s.paddles
+               if "tdiff_sigma_cfd_ns" in c.calib["paddles"].get(p.name, {})]
+        lines.append(f"Timing    : rising-edge template fit, samples {int(ps['fit_window'][0]):+d} .. "
+                     f"{int(ps['fit_window'][1]):+d} ({100 * n_fit / max(n_x, 1):.2f} % of the pulses fitted, the rest "
+                     f"keep the {float(ps['cfd_fraction']):.0%} crossing)")
+        if cmp:
+            lines.append("            σ(tA-tB) fit / crossing on the same hits, ns: " + ", ".join(cmp))
+    else:
+        lines.append(f"Timing    : {float(ps['cfd_fraction']):.0%} crossing between two samples")
     for p in s.paddles:
         e = c.einfo["paddles"].get(p.name, {})
         cal = c.calib["paddles"].get(p.name, {})
@@ -1092,6 +1177,11 @@ def headline(c):
     lines.append("")
     rows = event_quality(c)
     n_all = max(rows[0][1], 1)
+    ch = record_chain(c)
+    lines.append(f"From the DAQ: {ch['records']} records = one per channel over its threshold; {ch['tags']} triggers ="
+                 f" distinct trigger times (records in the same 2 ns tick count once)")
+    lines.append(f"  -> {ch['pulses']} pulses used -> {ch['hits']} hits (a paddle's two ends paired, or one end alone) "
+                 f"-> {ch['events']} events (hits within {c.setup.events['window_ns']:g} ns)")
     lines.append("Event quality (each step inside the one above; the indented lines split the tracks):")
     for label, n, kind in rows:
         lines.append(f"  {('  ' if kind != 'step' else '') + label:<62}{n:>8}  {100 * n / n_all:7.3f} %")
@@ -1158,6 +1248,7 @@ def run(folder, setup_path=None):
     jobs = [("pulse rates", lambda: plot_pulse_rates(c)), ("baseline noise", lambda: plot_baseline_noise(c))]
     for p in s.paddles:
         jobs += [(f"{p.name} shape", lambda p=p: plot_pulse_shape(c, p)),
+                 (f"{p.name} edge template", lambda p=p: plot_edge_template(c, p)),
                  (f"{p.name} heights", lambda p=p: plot_heights(c, p))]
         if p.both_ends:
             jobs += [(f"{p.name} tA-tB", lambda p=p: plot_tdiff(c, p)),

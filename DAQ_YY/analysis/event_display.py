@@ -14,7 +14,8 @@ analysis folder (n = the event number of events.root):
     info table                    the track's numbers and every hit's
     waveforms                     the event's records on one time axis, and their rising
                                   edges divided by the height, where the time differences
-                                  show (needs the raw ROOT file)
+                                  show, with the samples each edge fit used and the fitted
+                                  template (needs the raw ROOT file)
 
 Usage:
     python3 event_display.py                       # asks for the analysis folder; the first 10 tracks
@@ -67,7 +68,18 @@ class Data:
         tp = mc.need_file(folder, mc.TRACKS_FILE, "reconstruct.py")
         self.pinfo = mc.read_info(pp)
         self.tinfo = mc.read_info(tp)
-        self.P = mc.read_tree(pp, "pulses", ["channel", "entry", "ttt", "t_ns", "edge", "baseline", "height", "flags"])
+        f = mc.open_root(pp)
+        has_templates = bool(f.Get("templates"))
+        f.Close()
+        fit = has_templates and self.pinfo["pulse_settings"].get("timing") == "fit"
+        self.P = mc.read_tree(pp, "pulses", ["channel", "entry", "ttt", "t_ns", "edge", "baseline", "height", "flags"]
+                              + (["edge_cfd", "fit_amp"] if fit else []))
+        self.templates = {}
+        if fit:
+            tm = mc.read_tree(pp, "templates")
+            for chid in np.unique(tm["channel"]):
+                sel = tm["channel"] == chid
+                self.templates[int(chid)] = (tm["x_ns"][sel], tm["y"][sel])
         self.H = mc.read_tree(ep, "hits")
         self.Tr = mc.read_tree(tp, "tracks")
         f = mc.open_root(tp)
@@ -309,11 +321,24 @@ def draw_waveforms(d, row, ax, az):
         p = s.paddles[pi]
         h = float(d.P["height"][k])
         tp = d.P["t_ns"][k] - t_event
+        amp = float(d.P["fit_amp"][k]) if "fit_amp" in d.P else float("nan")
+        fitted = np.isfinite(amp) and chid in d.templates
+        level = frac * (amp if fitted else h)          # the pulse time is where the (fitted) edge reaches this
         ax.plot(t, y, color=col, lw=0.9, label=f"{p.name}-{end}  ch{chid}  {h:.0f} ADC")
-        ax.plot(tp, frac * h, "o", ms=5, color=col, mec=SURFACE, mew=1.2, zorder=4)
+        ax.plot(tp, level, "o", ms=5, color=col, mec=SURFACE, mew=1.2, zorder=4)
         az.plot(t, y_raw / h, "o", ms=2.6, color=col, alpha=0.45 if mhz > 0 else 0.9, mew=0)
-        az.plot(t, y / h, color=col, lw=1.2)
-        az.plot(tp, frac, "o", ms=6, color=col, mec=SURFACE, mew=1.2, zorder=5)
+        if fitted:
+            j = int(math.floor(d.P["edge_cfd"][k])) + np.arange(int(ps["fit_window"][0]), int(ps["fit_window"][1]) + 1)
+            j = j[(j >= 0) & (j < len(t))]
+            tx, ty = d.templates[chid]
+            tt = np.linspace(t[j[0]], t[j[-1]], 200)
+            az.plot(t, y / h, color=col, lw=0.8, alpha=0.75)
+            az.plot(tt, amp * np.interp(tt - tp, tx, ty, left=0.0, right=ty[-1]) / h, color=col, lw=2.2,
+                    alpha=0.5, solid_capstyle="round", zorder=3)
+            az.plot(t[j], y[j] / h, "o", ms=3.8, color=col, mec=SURFACE, mew=0.6, zorder=4)
+        else:
+            az.plot(t, y / h, color=col, lw=1.2)
+        az.plot(tp, level / h, "D" if fitted else "o", ms=6, color=col, mec=SURFACE, mew=1.2, zorder=5)
         az.axvline(tp, color=col, lw=0.7, alpha=0.6)
         times.append((p, end, tp))
     if not times:
@@ -335,8 +360,13 @@ def draw_waveforms(d, row, ax, az):
     az.axhline(0, color=AXIS, lw=0.8)
     az.set_xlabel("time from the event's first hit (ns)")
     az.set_ylabel("signal / pulse height")
-    az.set_title(f"rising edges: dots = samples (2 ns), lines = {'filtered' if mhz > 0 else 'between samples'}; "
-                 f"dashed: {frac:.0%}, where each pulse's time is taken", loc="left", fontsize=8.5, color=INK2)
+    if d.templates:
+        az.set_title(f"rising edges / height: thin = {'filtered' if mhz > 0 else 'samples'}, big dots = the samples "
+                     f"each fit uses, thick = fitted template;\n◆ = pulse time ({frac:.0%} of the fitted height); "
+                     f"faint dots = raw samples (2 ns)", loc="left", fontsize=8, color=INK2)
+    else:
+        az.set_title(f"rising edges: dots = samples (2 ns), lines = {'filtered' if mhz > 0 else 'between samples'}; "
+                     f"dashed: {frac:.0%}, where each pulse's time is taken", loc="left", fontsize=8.5, color=INK2)
     by_paddle = {}
     for p, end, tp in times:
         by_paddle.setdefault(p.name, {})[end] = tp

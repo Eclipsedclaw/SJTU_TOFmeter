@@ -90,6 +90,20 @@ baseline_end = -20           # baseline = mean of samples 0 .. trigger sample - 
 search = [-30, 50]           # peak search, samples around the trigger sample (2 x pulse_pre)
 smooth = 5                   # height = highest running mean of 5 samples
 cfd_fraction = 0.2           # pulse time: rising edge at 20 % of the height (sharpest tA - tB in run 56)
+# Pulse time from a fit of the rising edge with each channel's own template (the mean edge of its clean pulses).
+# Run 58, the same 29k muon-like hits, sigma(tA - tB) TOP1/TOP2/MID1/MID2 and of the layer time difference:
+#   crossing between two samples 0.482/0.603/0.412/0.490 ns, 0.344 ns; fit -4..+4: 0.475/0.577/0.387/0.484, 0.337 ns
+#   (template smoothed by 0.2 sample; unsmoothed 0.481/0.577/0.398/0.489; from only 50 pulses 0.480/0.573/0.390/0.492).
+#   Fit -3..+3 or -4..+3 worse (TOP1 0.51, MID2 0.52), -5..+5 and -6..+4 alike; flat top in the fit (-4..+8),
+#   a free baseline, a template re-made from the fitted times, or the height fixed to the measured one: worse.
+#   Start of the pulse (a line through the edge extrapolated to the baseline): 0.65/0.73/0.51/0.63 ns.
+#   Noise alone accounts for 0.15-0.20 ns.
+timing = "fit"               # "fit": template fit of the rising edge; "cfd": the crossing between two samples
+fit_window = [-4, 4]         # samples fitted around the one at or before the crossing (-10 .. +8 ns): the edge
+fit_max_shift = 1.5          # samples; a fit further from the crossing has failed (NO_FIT, the crossing is kept)
+template_pulses = 5000       # clean pulses per channel averaged into its template
+template_min_height = 300.0  # ADC; smaller pulses stay out of the template
+template_min_pulses = 50     # fewer clean pulses: no template, the channel keeps the crossing
 charge_window = [-5, 130]    # charge: samples from the edge - 5 to the edge + 130
 min_height = 100.0           # ADC
 plateau_window = [5, 45]     # flat-top test: samples 5-45 after the peak ...

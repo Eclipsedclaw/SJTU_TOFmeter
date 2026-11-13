@@ -18,6 +18,7 @@ Usage:
     python3 run_analysis.py run.root --calibration other_muon/calibration.json   # use these constants, skip step 3
     python3 run_analysis.py run.root --from 3  # redo steps 3-6 (after editing the setup's [calibration])
     python3 run_analysis.py run.root --from 6 --all-events   # a page for every track (off by default)
+    python3 run_analysis.py run.root --timing cfd   # pulse times from the 20 % crossing, not the edge fit
 
 Without a ROOT file on the command line the script asks for it and for the
 output folder; Enter keeps the folder shown in [brackets] (a folder named after
@@ -67,6 +68,9 @@ def main():
                     help="Low-pass filter (MHz, -3 dB) before measuring; 0 = off (default: setup [pulse])")
     ap.add_argument("--lowpass-kind", choices=("gauss", "butter"), default=None, help="Filter shape")
     ap.add_argument("--raw-timing", action="store_true", help="Pulse time from the raw samples even with the filter")
+    ap.add_argument("--timing", choices=("fit", "cfd"), default=None,
+                    help="Pulse time: fit = template fit of the rising edge, cfd = crossing between two samples "
+                         "(default: setup [pulse] timing, normally fit)")
     args = ap.parse_args()
 
     asked = args.file is None
@@ -81,7 +85,7 @@ def main():
     if args.start <= 1:
         step(1, "pulses (extract_pulses.py)")
         extract_pulses.run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
-                           args.lowpass, args.lowpass_kind, args.raw_timing)
+                           args.lowpass, args.lowpass_kind, args.raw_timing, args.timing)
     if args.start <= 2:
         step(2, "hits and events (build_events.py)")
         build_events.run(out, args.setup)

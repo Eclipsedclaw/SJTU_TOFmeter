@@ -18,6 +18,7 @@ Plots (plots/<name>.png):
     tdiff_<paddle>         tA - tB with the box fit (gives the signal speed)
     position_<paddle>      measured position along the paddle; why some lie beyond its ends
     attenuation_<paddle>   ln(hA / hB) against the position along the paddle
+    tdiff_vs_ratio_<paddle> ln(hA / hB) against tA - tB, both raw: no calibration at all
     mip_<paddle>           sqrt(hA x hB) with the muon-peak fit
     layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns and a zoom of +-10 ns
     event_types            events by the layers with a two-end hit
@@ -28,8 +29,8 @@ Plots (plots/<name>.png):
     hitmap_<layer>         where the tracks cross each layer (top view)
     zenith, azimuth        track angles against the toy expectation
     tof_residual           measured time of flight minus s / c (no time offsets applied)
-    beta                   beta of the tracks from 0 to 1, with labelled bins below 0 and at 1 and
-                           above, against the simulation of beta = 1 particles
+    beta                   beta of the tracks over its whole range, shaded where no particle going
+                           down can be, against the simulation of beta = 1 particles
     energy_deposit         the tracks' signal per paddle as measured (ADC)
     energy_deposit_sim     simulation: the energy muons lose in the paddles (MeV, known values)
     signal_vs_path         signal against the path through the paddle (1 / cos zenith): data test
@@ -327,6 +328,58 @@ def plot_attenuation(c, p):
              "hA ∝ exp(-(L/2 - u)/λ), hB ∝ exp(-(L/2 + u)/λ), so ln(hA/hB) = 2u/λ + ln(gA/gB):\n"
              "the slope gives λ (the tA - tB edges give only the speed v); dashed: the paddle's ends")
     c.save(fig, f"attenuation_{p.name}")
+
+
+def plot_tdiff_vs_ratio(c, p):
+    """Light sharing against timing with no calibration at all: ln(hA / hB) against tA - tB of
+    every two-end hit. If the light fades along the paddle, the end nearer the hit sees more
+    light and sees it earlier, so the two raw measurements must follow each other."""
+    from matplotlib.colors import LogNorm
+    from scipy.stats import spearmanr
+    sel = (c.H["paddle"] == p.index) & (c.H["kind"] == mc.HIT_AB) & (c.H["hA"] > 0) & (c.H["hB"] > 0)
+    td = c.H["tdiff_ns"][sel]
+    lr = np.log(c.H["hA"][sel] / c.H["hB"][sel])
+    if len(td) < 20:
+        return
+    fig, ax = figure(6.8, 4.8)
+    xr = np.percentile(td, [0.3, 99.7]) + np.array([-0.5, 0.5])
+    yr = np.percentile(lr, [0.3, 99.7]) + np.array([-0.3, 0.3])
+    nb = int(np.clip(math.sqrt(len(td)) / 2, 20, 70))
+    H2, xe, ye = np.histogram2d(td, lr, bins=[np.linspace(*xr, nb + 1), np.linspace(*yr, nb + 1)])
+    im = ax.pcolormesh(xe, ye, np.where(H2 > 0, H2, np.nan).T, cmap=mc.SEQUENTIAL,
+                       norm=LogNorm(vmin=1, vmax=max(H2.max(), 2)), shading="flat", rasterized=True)
+    cb = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.12)
+    cb.set_label("hits per cell", color=INK2)
+    cb.outline.set_visible(False)
+    # profile: median ln(hA/hB) in slices of tA - tB
+    pe = np.linspace(*xr, 25)
+    px, py, pyerr = [], [], []
+    for a, b in zip(pe[:-1], pe[1:]):
+        s = (td >= a) & (td < b)
+        if s.sum() >= 20:
+            med = np.median(lr[s])
+            px.append(0.5 * (a + b))
+            py.append(med)
+            pyerr.append(1.2533 * 1.4826 * np.median(np.abs(lr[s] - med)) / math.sqrt(s.sum()))
+    ax.errorbar(px, py, yerr=pyerr, fmt="o", ms=4, color=INK, mec=SURFACE, mew=1.0, elinewidth=0.9, capsize=0,
+                label="median in slices of tA - tB", zorder=4)
+    rho = spearmanr(td, lr)[0]
+    r = np.corrcoef(td, lr)[0, 1]
+    note(ax, f"{len(td)} two-end hits\nrank correlation ρ = {rho:+.3f}\nlinear correlation r = {r:+.3f}\n"
+             f"(no calibration used)", loc="upper right")
+    ax.set_xlim(*xr)
+    ax.set_ylim(*yr)
+    ax.grid(False)
+    sec = ax.secondary_yaxis("right", functions=(np.exp, lambda q: np.log(np.maximum(q, 1e-9))))
+    ticks = [t for t in (0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20) if yr[0] <= math.log(t) <= yr[1]]
+    sec.set_yticks(ticks, [f"{t:g}" for t in ticks])
+    sec.set_ylabel("hA / hB", color=INK2)
+    ax.set_xlabel("tA - tB (ns), as measured")
+    ax.set_ylabel("ln(hA / hB), as measured")
+    ax.legend(loc="lower left")
+    mc.title(ax, f"Light sharing against timing, {p.name}: {c.short}",
+             "a hit nearer end A gives A more light (up) and gives it earlier (left): both raw measurements see the position")
+    c.save(fig, f"tdiff_vs_ratio_{p.name}")
 
 
 def plot_mip(c, p):
@@ -762,57 +815,66 @@ def plot_tof(c):
 
 
 def plot_beta(c):
-    """beta = path / (c x time of flight) as measured, from 0 to 1, with labelled bins for the
-    tracks the timing puts below 0 or at 1 and above (the resolution's doing)."""
+    """beta = path / (c x time of flight) as measured, over its whole range: shaded where no
+    particle going down can be (beta > 1: faster than light; beta < 0: the lower layer first)."""
     ok = np.isfinite(c.Tr["beta"]) & np.isfinite(c.Tr["s_cm"])
     b = c.Tr["beta"][ok]
     if not len(b):
         return
     s = c.Tr["s_cm"][ok]
+    lo, hi = -1.0, 3.0
     width = 0.05 if len(b) >= 200 else 0.1
-    edges = np.arange(0, 1 + width / 2, width)
+    edges = np.arange(lo, hi + width / 2, width)
+
     def counts(values, weights=None):
-        inner, _ = np.histogram(values[(values >= 0) & (values < 1)], bins=edges,
-                                weights=None if weights is None else weights[(values >= 0) & (values < 1)])
         w = np.ones(len(values)) if weights is None else weights
-        return inner, float(w[values < 0].sum()), float(w[values >= 1].sum())
-    inner, under, over = counts(b)
-    fig, ax = figure(7.0, 4.2)
-    x_under, x_over = -2 * width, 1 + 2 * width
-    for x0 in (x_under, x_over):
-        ax.axvspan(x0 - width, x0 + width, color=GRID, alpha=0.6, lw=0)
+        inside = (values >= lo) & (values < hi)
+        k, _ = np.histogram(values[inside], bins=edges, weights=w[inside])
+        return k, float(w[values < lo].sum()), float(w[values >= hi].sum())
+
+    k, under, over = counts(b)
+    fig, ax = figure(7.4, 4.4)
+    ax.axvspan(lo - 4 * width, 0, color=GRID, alpha=0.55, lw=0)
+    ax.axvspan(1, hi + 4 * width, color=AXIS, alpha=0.35, lw=0)
+    x_under, x_over = lo - 2.5 * width, hi + 2.5 * width
     centres = 0.5 * (edges[1:] + edges[:-1])
-    allc = np.concatenate([[under], inner, [over]])
+    allc = np.concatenate([[under], k, [over]])
     allx = np.concatenate([[x_under], centres, [x_over]])
     down, up = mc.poisson_band(allc)
     m = allc > 0
-    ax.errorbar(allx[m], allc[m], yerr=[down[m], up[m]], fmt="o", ms=4, color=DATA_COLOR, mec=SURFACE, mew=1.0,
-                elinewidth=0.9, capsize=0, label=f"{len(b)} tracks (measured, no layer time offsets)", zorder=4)
+    ax.errorbar(allx[m], allc[m], yerr=[down[m], up[m]], fmt="o", ms=3.6, color=DATA_COLOR, mec=SURFACE, mew=0.8,
+                elinewidth=0.8, capsize=0, label=f"{len(b)} tracks (measured, no layer time offsets)", zorder=4)
     s_exp = resolution_tof(c)
     if np.isfinite(s_exp):   # simulation: beta = 1 particles on the same paths, measured with this resolution
         rng = np.random.default_rng(3)
         reps = 400
         ss = np.repeat(s, reps)
         tof = ss / mc.C_CM_PER_NS + rng.normal(0, s_exp, len(ss))
-        bs = ss / (mc.C_CM_PER_NS * tof)
-        si, su, so = counts(bs, np.full(len(bs), 1.0 / reps))
+        si, su, so = counts(ss / (mc.C_CM_PER_NS * tof), np.full(len(ss), 1.0 / reps))
         ax.stairs(si, edges, color=mc.EXPECTED_COLOR, lw=1.3,
                   label=f"simulation: β = 1, measured with σ(tof) = {s_exp:.2f} ns")
         for x0, val in ((x_under, su), (x_over, so)):
-            ax.plot([x0 - width, x0 + width], [val, val], color=mc.EXPECTED_COLOR, lw=1.3)
-    ax.set_xticks(list(np.round(np.arange(0, 1.01, 0.2), 1)) + [x_under, x_over],
-                  [f"{t:.1f}" for t in np.arange(0, 1.01, 0.2)] + ["< 0", "≥ 1"])
-    ax.set_xlim(x_under - 1.5 * width, x_over + 1.5 * width)
+            ax.plot([x0 - width / 2, x0 + width / 2], [val, val], color=mc.EXPECTED_COLOR, lw=1.3)
+    ax.axvline(1, color=MUTED, lw=0.9)
+    ax.axvline(0, color=MUTED, lw=0.9)
+    ticks = [-0.5, 0, 0.5, 1, 1.5, 2, 2.5]
+    ax.set_xticks(ticks + [x_under, x_over], [f"{t:g}" for t in ticks] + [f"< {lo:g}", f"> {hi:g}"])
+    ax.set_xlim(lo - 4 * width, hi + 4 * width)
     ax.set_ylim(0, None)
-    mc.headroom(ax, 1.35)
-    ax.set_xlabel("β = path / (c x time of flight); grey: tracks measured below 0 or at 1 and above")
-    ax.set_ylabel(f"tracks per {width:g} (grey bins: all of them)")
-    ax.legend(loc="upper left")
-    frac = over / len(b)
-    note(ax, f"{over:.0f} of {len(b)} tracks ({frac:.0%}) measured at β ≥ 1:\nthe time of flight ({np.median(s) / mc.C_CM_PER_NS:.2f} ns)"
-             f" is only ~{(np.median(s) / mc.C_CM_PER_NS) / s_exp:.0f} x its resolution", loc="upper right")
+    mc.headroom(ax, 1.45)
+    ytop = ax.get_ylim()[1]
+    ax.text(1 + 0.04, ytop * 0.97, "β > 1: faster than light,\nonly the time resolution", fontsize=7, color=INK2,
+            va="top")
+    ax.text(lo - 3.6 * width, ytop * 0.97, "β < 0: lower layer first\n(upward, or resolution)", fontsize=7,
+            color=INK2, va="top")
+    ax.set_xlabel(f"β = path / (c x time of flight); the outer bins hold the tracks below {lo:g} and above {hi:g}")
+    ax.set_ylabel(f"tracks per {width:g}")
+    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 0.86))
+    n_fast, n_neg = int((b > 1).sum()), int((b < 0).sum())
     mc.title(ax, f"Speed of the tracks: {c.short}",
-             "nothing can be faster than light: a track at β ≥ 1 was measured too fast by the time resolution")
+             f"{n_fast} of {len(b)} tracks ({n_fast / len(b):.0%}) measured at β > 1, {n_neg} below 0: the flight "
+             f"({np.median(s) / mc.C_CM_PER_NS:.2f} ns) is only ~{(np.median(s) / mc.C_CM_PER_NS) / s_exp:.0f} x the "
+             f"time resolution")
     c.save(fig, "beta")
 
 
@@ -1017,6 +1079,14 @@ def headline(c):
                      f"{sp['err']:.2f} cm/ns; each alone: " +
                      ", ".join(f"{p.name} {c.calib['paddles'][p.name]['v_free_cm_per_ns']:.1f}"
                                for p in s.paddles if c.calib['paddles'].get(p.name, {}).get('v_free_cm_per_ns')))
+    rhos = []
+    from scipy.stats import spearmanr
+    for p in s.paddles:
+        sel = (c.H["paddle"] == p.index) & (c.H["kind"] == mc.HIT_AB) & (c.H["hA"] > 0) & (c.H["hB"] > 0)
+        if sel.sum() >= 20:
+            rhos.append(f"{p.name} {spearmanr(c.H['tdiff_ns'][sel], np.log(c.H['hA'][sel] / c.H['hB'][sel]))[0]:+.2f}")
+    if rhos:
+        lines.append("Light/time: rank correlation of ln(hA/hB) with tA - tB, raw (no calibration): " + ", ".join(rhos))
     for w in c.calib.get("warnings", []):
         lines.append(f"WARNING   : {w}")
     lines.append("")
@@ -1093,6 +1163,7 @@ def run(folder, setup_path=None):
             jobs += [(f"{p.name} tA-tB", lambda p=p: plot_tdiff(c, p)),
                      (f"{p.name} position", lambda p=p: plot_position(c, p)),
                      (f"{p.name} attenuation", lambda p=p: plot_attenuation(c, p)),
+                     (f"{p.name} light vs timing", lambda p=p: plot_tdiff_vs_ratio(c, p)),
                      (f"{p.name} muon peak", lambda p=p: plot_mip(c, p))]
     for i, la in enumerate(s.layers):
         for lb in s.layers[i + 1:]:

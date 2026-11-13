@@ -54,7 +54,7 @@ folder (they ask for it, or take it as the first argument), for example after ch
 | 3 | `calibrate.py` | → `calibration.json` | Signal speed, offsets and resolution of tA − tB, attenuation, muon peak, layer time offsets |
 | 4 | `reconstruct.py` | → `tracks.root` | Hit points, straight tracks, angles, time of flight; toy expectation; channel-map check |
 | 5 | `make_plots.py` | → `plots/`, `analysis_summary.txt` | 30-odd plots, one per file, and the summary |
-| 6 | `event_display.py` | → `event_displays/` | Pictures of single events: the first 10 tracks and 5 with several paddles of one layer (`--events 12,57`, `--several N`) |
+| 6 | `event_display.py` | → `event_displays/` | One page per event (views, readout heights, info table, waveforms): the first 10 tracks and 5 with several paddles of one layer (`--events 12,57`, `--several N`) |
 
 The ideas behind each step (the scripts' `--help` has the details):
 
@@ -126,7 +126,8 @@ channels = { A = 10010, B = 10011 }  # DAQ_YY id = 10000 + 10 x board + channel
 - **More boards:** the boards' clocks start together in ctrlmode 3, but each board has a fixed time offset
   (up to ±5 ns, measured with [`../scripts/analyze_sync.py`](../scripts/analyze_sync.py)). Enter them under
   `[board_offsets_ns]`, e.g. `2 = 4.766`; single cable delays under `[channel_offsets_ns]`.
-- **Settings** (`[pulse]`, `[events]`, `[calibration]`, `[flux]`) are explained line by line in the file;
+- **Settings** (`[pulse]`, `[events]`, `[calibration]`, `[flux]`, `[display]` for the side of the room the
+  event pages mark) are explained line by line in the file;
   every key is optional. The geometry of the first setup is the simulation design
   (`simulation/src/DetectorConstruction.cc`): replace it with the measured values.
 
@@ -143,7 +144,7 @@ In the output folder:
 | `tracks.root` | Tree `tracks` (one per reconstructed muon); tree `toy` (the toy muons, with weights in Hz) |
 | `*_summary.txt` | The tables each step printed |
 | `plots/*.png` | One plot per file, listed below |
-| `event_displays/` | `event_<n>.png` (top and side views) and `event_<n>_waveforms.png` (all records, and the rising edges divided by their height, where the time differences show) |
+| `event_displays/` | `event_<n>.png`, one page per event: the setup from above and from two sides, each paddle end's readout box coloured by its pulse height (the light sharing at a glance), every hit at its own paddle, the fitted track as an arrow, the room's wall; an info table; the records and their rising edges divided by the height, where the time differences show |
 
 The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks->Draw("theta_deg")`.
 
@@ -155,13 +156,14 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `heights_<paddle>` | Where the thresholds cut the spectrum |
 | `tdiff_<paddle>` | A box with smeared edges; the fit gives v, offset, resolution |
 | `attenuation_<paddle>` | ln(hA/hB) rising with u (see *Reading the plots*); the right axis is hA/hB itself |
+| `tdiff_vs_ratio_<paddle>` | The same check with no calibration: raw ln(hA/hB) against raw tA − tB, 2D, with their correlation |
 | `mip_<paddle>` | The signal peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
 | `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
 | `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
 | `hitmap_<layer>`, `zenith`, `azimuth` | Where the tracks cross, and their angles against the toy |
 | `tof_residual` | Measured time of flight minus s/c, against the simulation of β = 1 with the measured resolution |
-| `beta` | β from 0 to 1, with labelled bins for tracks measured below 0 or at 1 and above |
+| `beta` | β over its whole measured range; shaded where no particle going down can be (β > 1, β < 0) |
 | `energy_deposit` | The tracks' signal per paddle as measured (ADC); each paddle has its own scale |
 | `energy_deposit_sim` | Simulation: the energy muons lose in the paddles (MeV, PDG Landau formula) |
 | `signal_vs_path` | Signal against the path through the paddle (1/cos θ): does it grow with the path? |
@@ -208,6 +210,13 @@ Map check : top layer y (timing) by middle paddle: slope -0.53 ± 0.44 (+1 expec
   halves every λ ln 2 ≈ 21 cm), its value at u = 0 the gain ratio of the ends. λ does **not** come from the
   edges of the tA − tB box: those give only the signal speed v, which sets the position scale. The fitted
   line looks S-shaped because measured positions beyond the ends come from hits near the ends.
+  `tdiff_vs_ratio_<paddle>` makes the same comparison with nothing calibrated: the raw height ratio
+  against the raw time difference. A hit nearer end A gives A more light and gives it earlier, so the two
+  must follow each other if the light fades along the paddle. Runs 56–58: rank correlation −0.89 to −0.95
+  in every paddle (−0.93 in run 58), and the medians lie on a straight line that flattens only beyond the
+  ends. The scatter of ln(hA/hB) around the attenuation line (0.24–0.27) is about what the timing's own
+  position error alone gives (2/λ × 4 cm ≈ 0.27), so the light sharing places a hit at least as well as the
+  timing; telling the two apart needs a third measurement (a third layer's track, or a source).
 - **Coincidences** (`coincidences_<a>_<b>`). Each cell: tracks measured through that paddle pair, the
   simulation's number, and their ratio. The simulation sends cosmic muons with the sea-level flux
   I = I₀ cos²θ, I₀ = 70 /(m² s sr) (PDG, muons above ~1 GeV) through the setup's paddles in straight lines,
@@ -218,9 +227,11 @@ Map check : top layer y (timing) by middle paddle: slope -0.53 ± 0.44 (+1 expec
   (27 in run 58); 24 were measured. The hit map and the event pictures show each bar's own hit; the
   track's point for the fit is their mean, weighted by the signal.
 - **β** (`beta`). β = path / (c × time of flight). The flight between the layers lasts ~1.1 ns and is
-  measured with σ ≈ 0.35 ns, so half the tracks come out at β ≥ 1: not faster than light, but measured too
-  fast. They are kept in a labelled bin, next to the simulation of β = 1 particles with the same resolution.
-  The full TOF-meter (top to bottom 70 cm) and better timing will separate slow particles.
+  measured with σ ≈ 0.35 ns, so half the tracks come out at β > 1: not faster than light, but measured too
+  fast. The plot shows every track from −1 to 3 (the outer bins hold the few beyond), shaded where no
+  particle going down can be: β > 1, and β < 0, where the lower layer fired first (a particle going up, or
+  the resolution). The simulation of β = 1 particles with the same resolution lies over the data. The full
+  TOF-meter (top to bottom 70 cm) and better timing will separate slow particles.
 - **Energy and the track angle** (`energy_deposit`, `signal_vs_path`). A minimum-ionising particle loses
   energy at a nearly constant rate per cm of path (dE/dx ≈ 2 MeV/cm in plastic), and that rate does not
   depend on the angle. The energy deposited in a slab does: a track at zenith θ crosses thickness / cos θ

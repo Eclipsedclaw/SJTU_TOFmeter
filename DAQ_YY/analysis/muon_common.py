@@ -138,6 +138,10 @@ CALIBRATION_DEFAULTS = {
     "mip_mev": 0.0,              # most probable energy loss of a vertical muon in a paddle, MeV; 0 = from its
                                  # thickness (plastic scintillator, Landau formula: 0.95 MeV for 0.6 cm)
 }
+DISPLAY_DEFAULTS = {
+    "side": "",                  # a side of the room to mark in the event pictures: "+x", "-x", "+y", "-y"
+    "side_label": "",            # its name, e.g. "wall"
+}
 FLUX_DEFAULTS = {
     "vertical_intensity": 70.0,  # muons / (m^2 s sr) at sea level above ~1 GeV (PDG review)
     "cos_power": 2.0,            # I(theta) = I0 cos^n(theta)
@@ -343,6 +347,7 @@ class Setup:
         self.events = _merge(EVENT_DEFAULTS, raw.get("events"), f"{where} [events]")
         self.calibration = _merge(CALIBRATION_DEFAULTS, raw.get("calibration"), f"{where} [calibration]")
         self.flux = _merge(FLUX_DEFAULTS, raw.get("flux"), f"{where} [flux]")
+        self.display = _merge(DISPLAY_DEFAULTS, raw.get("display"), f"{where} [display]")
         self.board_offsets = {int(k): float(v) for k, v in (raw.get("board_offsets_ns") or {}).items()}
         self.channel_offsets = {parse_channel(k, where): float(v)
                                 for k, v in (raw.get("channel_offsets_ns") or {}).items()}

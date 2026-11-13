@@ -127,6 +127,10 @@ cos_power = 2.0              # I(theta) = I0 cos^2(theta)
 toy_muons = 1000000          # toy muons per layer
 seed = 1
 
+[display]
+side = "+y"                  # marked in the event pictures, as on slide 17
+side_label = "wall"
+
 # Time offsets subtracted from every pulse time, for later runs with several boards
 # (board offsets measured by ../scripts/analyze_sync.py, e.g. board 2 runs 4.766 ns late):
 [board_offsets_ns]

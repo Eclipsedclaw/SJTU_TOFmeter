@@ -54,7 +54,7 @@ folder (they ask for it, or take it as the first argument), for example after ch
 | 3 | `calibrate.py` | → `calibration.json` | Signal speed, offsets and resolution of tA − tB, attenuation, muon peak, layer time offsets |
 | 4 | `reconstruct.py` | → `tracks.root` | Hit points, straight tracks, angles, time of flight; toy expectation; channel-map check |
 | 5 | `make_plots.py` | → `plots/`, `analysis_summary.txt` | 30-odd plots, one per file, and the summary |
-| 6 | `event_display.py` | → `event_displays/` | One page per event (views, readout heights, info table, waveforms): the first 10 tracks and 5 with several paddles of one layer (`--events 12,57`, `--several N`) |
+| 6 | `event_display.py` | → `event_displays/` | One page per event (views, readout heights, info table, waveforms): the first 10 tracks and 5 with several paddles of one layer (`--events 12,57`, `--several N`; `--all-events` for every track, off by default: ~640 pages, ~13 min, ~200 MB for a 30-minute run) |
 
 The ideas behind each step (the scripts' `--help` has the details):
 
@@ -226,6 +226,17 @@ Map check : top layer y (timing) by middle paddle: slope -0.53 ± 0.44 (+1 expec
   angle goes through both inside the 0.6 cm thickness. The simulation predicts this for 4.2 % of the tracks
   (27 in run 58); 24 were measured. The hit map and the event pictures show each bar's own hit; the
   track's point for the fit is their mean, weighted by the signal.
+- **Why √(hA·hB)** (`mip_<paddle>`, `energy_deposit`). A deposit E at position u gives
+  hA = gA·E·exp(−(L/2 − u)/λ) and hB = gB·E·exp(−(L/2 + u)/λ). In the product the two distances add up to
+  the paddle's length, whatever u is: hA·hB = gA·gB·E²·exp(−L/λ). So √(hA·hB) = √(gA·gB)·exp(−L/2λ)·E is
+  proportional to the deposit and, for a light loss that is one exponential, independent of where the
+  paddle was hit; the plain mean (hA + hB)/2 grows towards the ends like cosh(u/λ). It is a signal in
+  ADC, not an energy: the gains and the light yield are inside. In run 58 the tracks' √(hA·hB) is flat
+  within ±5 % over the middle 24 cm and 16–42 % higher in the outer 13 cm (the mean (hA + hB)/2: 23–70 %).
+  Half of that is the path: tracks hitting near an end are inclined (mean 1/cos θ 1.16 there, 1.06 at the
+  centre). The ~10 % left is largest (+26 %) where the far end has the highest threshold (TOP2's B side,
+  far end A at 0.62 of its muon signal): near an end only the larger deposits pass the far end's threshold.
+  A run with lower thresholds would tell this apart from a light loss that is not one exponential.
 - **β** (`beta`). β = path / (c × time of flight). The flight between the layers lasts ~1.1 ns and is
   measured with σ ≈ 0.35 ns, so half the tracks come out at β > 1: not faster than light, but measured too
   fast. The plot shows every track from −1 to 3 (the outer bins hold the few beyond), shaded where no

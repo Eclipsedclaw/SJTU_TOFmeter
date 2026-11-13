@@ -20,7 +20,7 @@ Usage:
     python3 event_display.py                       # asks for the analysis folder; the first 10 tracks
     python3 event_display.py FOLDER --first 20
     python3 event_display.py FOLDER --events 12,57,301
-    python3 event_display.py FOLDER --all
+    python3 event_display.py FOLDER --all            # every track (also --all-events)
     python3 event_display.py FOLDER --several 5     # also 5 tracks with several paddles of one layer
     python3 event_display.py FOLDER --no-waveforms
 """
@@ -394,7 +394,8 @@ def main():
                     help="Analysis folder with tracks.root (asked for if left out)")
     ap.add_argument("--events", default=None, help="Event numbers, e.g. 12,57,300-310")
     ap.add_argument("--first", type=int, default=10, help="The first N tracks (default 10)")
-    ap.add_argument("--all", action="store_true", help="Every track")
+    ap.add_argument("--all", "--all-events", dest="all", action="store_true",
+                    help="Every track (a 30-minute run: ~640 pages, ~13 minutes, ~200 MB)")
     ap.add_argument("--several", type=int, default=0,
                     help="Also the first N tracks with several paddles of one layer (default 0)")
     ap.add_argument("--no-waveforms", action="store_true", help="Leave out the waveforms")
@@ -420,6 +421,9 @@ def run(folder, events=None, first=10, waveforms=True, setup_path=None, several=
         rows += [int(r) for r in odd if int(r) not in rows][:several]
     out_dir = os.path.join(folder, mc.DISPLAY_DIR)
     os.makedirs(out_dir, exist_ok=True)
+    if len(rows) > 50:
+        print(f"Drawing {len(rows)} event pages: about {len(rows) * 1.2 / 60:.0f} minutes and "
+              f"{len(rows) * 0.32:.0f} MB")
     if waveforms and d.raw is None:
         print(f"Note: raw file {d.pinfo.get('raw_file')} not found: pages without waveforms")
     made = []

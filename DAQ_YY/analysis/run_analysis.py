@@ -8,7 +8,8 @@ Runs the steps one after the other on one DAQ_YY run:
     3 calibrate.py        signal speed, offsets, resolution, attenuation, muon peak -> calibration.json
     4 reconstruct.py      tracks, angles, time of flight, toy expectation -> tracks.root
     5 make_plots.py       plots/ and analysis_summary.txt
-    6 event_display.py    event_displays/ (the first 10 tracks and 5 with several paddles of one layer)
+    6 event_display.py    event_displays/ (the first 10 tracks and 5 with several paddles of one layer;
+                          --all-events: every track)
 
 Usage:
     python3 run_analysis.py                    # asks for the ROOT file and the output folder
@@ -16,6 +17,7 @@ Usage:
     python3 run_analysis.py run.root --out /path/to/folder
     python3 run_analysis.py run.root --calibration other_muon/calibration.json   # use these constants, skip step 3
     python3 run_analysis.py run.root --from 3  # redo steps 3-6 (after editing the setup's [calibration])
+    python3 run_analysis.py run.root --from 6 --all-events   # a page for every track (off by default)
 
 Without a ROOT file on the command line the script asks for it and for the
 output folder; Enter keeps the folder shown in [brackets] (a folder named after
@@ -51,7 +53,10 @@ def main():
                     help="Use this calibration.json (e.g. from a longer run) instead of calibrating this run")
     ap.add_argument("--from", dest="start", type=int, default=1, choices=range(1, 7),
                     help="First step to run (default 1); the earlier steps' files must be in the folder")
-    ap.add_argument("--events", type=int, default=10, help="Event pictures of the first N tracks (default 10, 0: none)")
+    ap.add_argument("--events", type=int, default=10, help="Event pages of the first N tracks (default 10, 0: none)")
+    ap.add_argument("--all-events", action="store_true",
+                    help="Event pages of every track (off by default: a 30-minute run gives ~640 pages, "
+                         "~13 minutes and ~200 MB)")
     ap.add_argument("--max-waveforms", type=int, default=None,
                     help="Step 1 measures only the first N waveforms of every channel (quick tests)")
     ap.add_argument("--pulse-pre", type=int, default=None, help="pulse_pre if the run has no .conf")
@@ -92,9 +97,10 @@ def main():
     if args.start <= 5:
         step(5, "plots and summary (make_plots.py)")
         make_plots.run(out, args.setup)
-    if args.start <= 6 and args.events > 0:
-        step(6, "event pictures (event_display.py)")
-        event_display.run(out, first=args.events, setup_path=args.setup, several=5)
+    if args.start <= 6 and (args.events > 0 or args.all_events):
+        step(6, "event pages (event_display.py)" + (", every track" if args.all_events else ""))
+        event_display.run(out, first=None if args.all_events else args.events, setup_path=args.setup,
+                          several=0 if args.all_events else 5)
     print(f"\nDone in {mc.clock(time.monotonic() - start)}. Results in {out}")
     print(f"Start with {os.path.join(out, 'analysis_summary.txt')}")
 

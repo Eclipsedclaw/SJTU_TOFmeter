@@ -57,6 +57,84 @@ folder (they ask for it, or take it as the first argument), for example after ch
 | 5 | `make_plots.py` | → `plots/`, `analysis_summary.txt` | 30-odd plots, one per file, and the summary |
 | 6 | `event_display.py` | → `event_displays/` | One page per event (views, readout heights, info table, waveforms): the first 10 tracks and 5 with several paddles of one layer (`--events 12,57`, `--several N`; `--all-events` for every track, off by default: ~640 pages, ~13 min, ~200 MB for a 30-minute run) |
 
+### Block diagram
+
+Every box has an ID (1a, 3d, ...): name it to ask for a change, e.g. "in 3a, fit each edge on its own".
+Cylinders are input files; dotted arrows bring in a part of the setup file or the run's `.conf`.
+(GitHub draws the diagram; in VS Code it needs a Mermaid extension, e.g. "Markdown Preview Mermaid Support".)
+
+```mermaid
+flowchart TB
+    raw[("raw ROOT file<br/>one tree per channel, 2 ns samples")]
+    conf[("run .conf<br/>pulse polarity, thresholds")]
+    setup[("setup file setups/*.toml<br/>geometry, channel map, settings")]
+
+    subgraph S1["1 · extract_pulses.py → pulses.root"]
+        direction TB
+        s1a["1a low-pass filter<br/>butter 80 MHz, zero-phase"]
+        s1b["1b baseline and noise<br/>mean and rms of the samples up to the trigger − 20"]
+        s1c["1c height (running mean of 5), 20 % crossing,<br/>rise time, charge"]
+        s1d["1d shape tests → flags<br/>SHORT, NO_EDGE, NOISE, LOW: left out later<br/>SATURATED, PILEUP, SLOPE, NOISY: kept, marked"]
+        s1e["1e edge template of each channel<br/>mean edge of its first 5000 clean pulses"]
+        s1f["1f pulse time: template fit of the rising edge,<br/>where it reaches 20 % of the fitted height<br/>(no fit: the crossing, flag NO_FIT)<br/>minus the board and channel offsets"]
+        s1a --> s1b --> s1c --> s1d --> s1e --> s1f
+    end
+
+    subgraph S2["2 · build_events.py → events.root"]
+        direction TB
+        s2a["2a pair the A and B pulses of each paddle<br/>tA − tB within ±(L / v + 5 ns), closest first"]
+        s2b["2b hits: two-end (tA − tB, mean time, hA, hB)<br/>or one-end"]
+        s2c["2c events: every hit within 30 ns of the first"]
+        s2d["2d coincidences by chance<br/>(one layer shifted in time)"]
+        s2a --> s2b --> s2c --> s2d
+    end
+
+    subgraph S3["3 · calibrate.py → calibration.json"]
+        direction TB
+        s3a["3a box fit of tA − tB, each paddle<br/>v = 2L / (hi − lo), offset = (lo + hi) / 2, σ"]
+        s3b["3b attenuation: ln(hA / hB) against u<br/>λ and the gain ratio gA / gB"]
+        s3c["3c muon peak: √(hA·hB) of the tracks' hits,<br/>Moyal fit, as measured"]
+        s3d["3d second pass: 3a and 3b with the hits<br/>√(hA·hB) above 0.8 × the muon peak<br/>(σ also with the crossings, to compare)"]
+        s3e["3e layer time offsets that β = 1 would need<br/>quoted only, never applied"]
+        s3a --> s3b --> s3c --> s3d --> s3e
+    end
+
+    subgraph S4["4 · reconstruct.py → tracks.root"]
+        direction TB
+        s4a["4a hit point along the paddle<br/>u = −(v/2)(tA − tB − offset), error (v/2)σ<br/>as measured (tracks: points = measured)<br/>or the best estimate inside (points = inside)"]
+        s4b["4b across the paddle: its centre line, error width / √12"]
+        s4c["4c one point per layer<br/>neighbours within 5 ns merged (ADJACENT),<br/>else the biggest group (AMBIGUOUS)"]
+        s4d["4d straight lines x(z), y(z), weights 1 / σ²<br/>zenith ± error, azimuth"]
+        s4e["4e path, time of flight, β<br/>no time offsets applied"]
+        s4f["4f toy cosmic muons, I0 cos²θ, through the geometry,<br/>reconstructed the same way: expected rates and angles"]
+        s4g["4g channel-map check: data against the toy"]
+        s4a --> s4b --> s4c --> s4d --> s4e
+        s4d --> s4f --> s4g
+    end
+
+    subgraph S5["5 · make_plots.py → plots/, analysis_summary.txt"]
+        s5a["5a the plots, one per file (tracks_3d also as a GIF),<br/>from every file of steps 1-4"]
+        s5b["5b the run's summary: main numbers,<br/>then the summaries of steps 1-4"]
+        s5a --> s5b
+    end
+
+    subgraph S6["6 · event_display.py → event_displays/"]
+        s6a["6a one page per track: views with the hits and the track,<br/>info table, waveforms with the edge fits"]
+    end
+
+    raw --> S1
+    S1 --> S2 --> S3 --> S4 --> S5
+    S4 --> S6
+    raw -.->|waveforms| S6
+    conf -.->|polarity| S1
+    conf -.->|thresholds| S3
+    setup -.->|pulse section| S1
+    setup -.->|paddles, events section| S2
+    setup -.->|calibration section| S3
+    setup -.->|tracks and flux sections, geometry| S4
+    setup -.->|display section| S6
+```
+
 The ideas behind each step (the scripts' `--help` has the details):
 
 1. **Pulse.** The front end integrates the charge: a pulse rises in ~10 ns, stays flat for ~20 ns and
@@ -79,7 +157,8 @@ The ideas behind each step (the scripts' `--help` has the details):
    pulser measurement; the offsets that β = 1 would need are only quoted as text.
 4. **Track.** The position along each paddle comes from the timing; across it, the paddle's centre line
    (resolution width/√12). The measured position scatters by the resolution (about 4 cm) and so lands
-   beyond a paddle's end for muons near it; the point used is the best estimate *inside* the paddle (see
+   beyond a paddle's end for muons near it; the track goes through the points as measured, the same as the
+   hit maps show (setup `[tracks] points`; `"inside"` would use the best estimate inside the paddle, see
    *Positions beyond the paddle ends*). A straight line through the points of the layers gives the zenith θ and the
    azimuth φ of the arrival direction; the time between the layers gives the time of flight and β.
    A toy simulation (muons with I₀ cos²θ through the same geometry, reconstructed like the data) gives the
@@ -128,8 +207,8 @@ channels = { A = 10010, B = 10011 }  # DAQ_YY id = 10000 + 10 x board + channel
 - **More boards:** the boards' clocks start together in ctrlmode 3, but each board has a fixed time offset
   (up to ±5 ns, measured with [`../scripts/analyze_sync.py`](../scripts/analyze_sync.py)). Enter them under
   `[board_offsets_ns]`, e.g. `2 = 4.766`; single cable delays under `[channel_offsets_ns]`.
-- **Settings** (`[pulse]`, `[events]`, `[calibration]`, `[flux]`, `[display]` for the side of the room the
-  event pages mark) are explained line by line in the file;
+- **Settings** (`[pulse]`, `[events]`, `[calibration]`, `[tracks]` for the track points, `[flux]`, `[display]`
+  for the side of the room the event pages mark) are explained line by line in the file;
   every key is optional. The geometry of the first setup is the simulation design
   (`simulation/src/DetectorConstruction.cc`): replace it with the measured values.
 
@@ -143,10 +222,10 @@ In the output folder:
 | `pulses.root` | Tree `pulses`: one entry per waveform (channel, time, height, charge, flags, ...; `edge` = the time in samples, `edge_cfd` = the 20 % crossing, `fit_amp`/`fit_rms` = the edge fit's height and rms residual); tree `templates`: each channel's edge template; tree `shapes`: average pulse per channel |
 | `events.root` | Tree `hits` (one per hit, with its event number); tree `events` (one per event) |
 | `calibration.json` | Every constant, with how it was found; reusable for other runs (`run_analysis.py --calibration`) |
-| `tracks.root` | Tree `tracks` (one per reconstructed muon); tree `toy` (the toy muons, with weights in Hz and their true positions along the crossed paddles, `u_true_<layer>`) |
+| `tracks.root` | Tree `tracks` (one per reconstructed muon; per layer the position along the paddle the track used, `u_<layer>`, and both kinds, `u_meas_<layer>` as measured and `u_inside_<layer>` the best estimate inside); tree `points` (every two-end hit of the tracks' layers at its own paddle); tree `toy` (the toy muons, with weights in Hz and their true positions along the crossed paddles, `u_true_<layer>`) |
 | `*_summary.txt` | The tables each step printed |
 | `plots/*.png` | One plot per file, listed below |
-| `event_displays/` | `event_<n>.png`, one page per event: the setup from above and from two sides, each paddle end's readout box coloured by its pulse height (the light sharing at a glance), every hit at its own paddle with its ±1σ error as the track fit used it (an open marker where tA − tB alone puts a hit that lies beyond its paddle's end), the fitted track as an arrow, the room's wall; an info table; the records and their rising edges divided by the height, where the time differences show, with the samples each edge fit used and the fitted template |
+| `event_displays/` | `event_<n>.png`, one page per event: the setup from above and from two sides, each paddle end's readout box coloured by its pulse height (the light sharing at a glance), every hit at its own paddle as the track fit used it, with its ±1σ error (as measured, the same as the hit maps, so near an end it can lie beyond the paddle; with `[tracks] points = "inside"` the best estimate inside and an open marker where tA − tB alone puts it), the fitted track as an arrow, the room's wall; an info table; the records and their rising edges divided by the height, where the time differences show, with the samples each edge fit used and the fitted template |
 
 The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks->Draw("theta_deg")`.
 
@@ -166,8 +245,8 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
 | `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
-| `hitmap_<layer>` | Where the tracks cross the layer, each hit as measured: along its paddle from tA − tB alone (scattered by the resolution, so hits near an end can lie beyond it), across it on the centre line (not measured); strips alongside the outer paddles: the hits per cm along each paddle, tails beyond the ends included. The track fit uses the best estimate inside the paddle instead (`u_<layer>` in `tracks.root`) |
-| `tracks_3d` | Every track in 3D, for showing: its fitted straight line through the hit points it was fitted through (the points inside the paddles; across a paddle on its centre line, not measured), over the paddles and their readout ends; where many tracks overlap the bundle darkens. PNG at 300 dpi for slides, and `tracks_3d.gif`: the view turning once around the vertical (6 s, 72 frames) |
+| `hitmap_<layer>` | Where the tracks cross the layer, each hit as measured: along its paddle from tA − tB alone (scattered by the resolution, so hits near an end can lie beyond it), across it on the centre line (not measured); strips alongside the outer paddles: the hits per cm along each paddle, tails beyond the ends included. The track fit uses the same points (setup `[tracks] points = "measured"`) |
+| `tracks_3d` | Every track in 3D, for showing: its fitted straight line through the hit points it was fitted through (as measured, the same as the hit maps; across a paddle on its centre line, not measured), over the paddles and their readout ends; where many tracks overlap the bundle darkens. PNG at 300 dpi for slides, and `tracks_3d.gif`: the view turning once around the vertical (6 s, 72 frames) |
 | `zenith`, `azimuth` | The tracks' angles against the toy (5° bins) |
 | `tof_residual` | Measured time of flight minus s/c, against the simulation of β = 1 with the measured resolution |
 | `beta` | β over its whole measured range; shaded where no particle going down can be (β > 1, β < 0) |
@@ -181,12 +260,12 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 
 ```text
 Coincid.  : top+middle: 639 events = 0.355 ± 0.014 Hz (by chance 0.013)
-Tracks    : 639; zenith mean 23.5° (toy 22.8°)
+Tracks    : 639; zenith mean 24.8° (toy 24.0°)
 Expected  : 730.8 tracks for fully efficient paddles; measured / expected = 0.87 ± 0.03
-TOF       : measured tof - s/c median +0.02 ns, robust σ 0.32 ns (simulation of β = 1 with the measured
-            resolution: σ 0.34 ns) over a median path of 33.0 cm; no layer time offsets applied
-β         : median 0.98; 297 of 639 tracks measured at β ≥ 1, 5 below 0 (time resolution)
-Map check : top layer y (timing) by middle paddle: slope -0.54 ± 0.44 (+1 expected), ...
+TOF       : measured tof - s/c median +0.00 ns, robust σ 0.32 ns (simulation of β = 1 with the measured
+            resolution: σ 0.34 ns) over a median path of 33.2 cm; no layer time offsets applied
+β         : median 0.99; 312 of 639 tracks measured at β ≥ 1, 5 below 0 (time resolution)
+Map check : top layer y (timing) by middle paddle: slope -0.49 ± 0.44 (+1 expected), ...
 ```
 
 - **Event quality**: each selection step with its count and share of all events. In run 58: 80 503
@@ -382,18 +461,27 @@ ends, and that is what the data show (`position_<paddle>.png`, run 58: 7.5–8.5
 the resolution). Far beyond (more than 3σ) Gaussian smearing gives 0.01 %; there were 0.2 % without the
 filter, small pulses whose edge time the ringing had pulled, and 0.06–0.13 % with it.
 
-The track points therefore use the best estimate given that the muon crossed inside: the measurement's
-Gaussian cut to the paddle, its mean as the point and its spread as the error. It always lies inside; in a
-simulated run it and the filter together brought the position error along the paddle from 5.4 to 4.6 cm and
-the zenith error from 8.3° to 7.3°. The measured position is kept as `u_meas_<layer>` in `tracks.root`, and the flag
-OUTSIDE marks a measurement more than 3σ beyond its paddle.
+The setup's `[tracks] points` chooses the point a track goes through:
 
-The event pages draw each hit at this point with this error (±1σ along the paddle, width/√12 across), and an
-open marker where tA − tB alone puts a hit that lies beyond its paddle's end. In the toy muons of the setup
-(run 59 resolutions) these ±1σ ranges hold the true position for 68.3–68.6 % of the hits, 65–70 % near the
-ends (68.3 % is right); the full resolution σ as the error there would hold it for 86–93 %. The zenith
-error of the line fit holds the true zenith for 67–73 % of the toy tracks in each 10° range up to 45°
-(θ near 0 comes out a few degrees high: a zenith angle cannot be negative).
+- `"measured"` (the default since 2026-11-14): the measured position itself, its error the resolution σ:
+  exactly what the data show, the same points as the hit maps. Near an end the point, and so the track,
+  can lie beyond the paddle (run 59: 9.7 % of the tracks have such a point); the event pages and `tracks_3d`
+  draw it there. In the toy muons of the setup (run 59 resolutions) u ± σ holds the true position for
+  68.4 % of the hits (68.3 % is right), but for 58 % of those measured within σ of an end and 35 % of those
+  measured beyond it: those are mostly the ones the resolution scattered outwards. The zenith error holds
+  the true zenith for 68.3–70.0 % of the toy tracks in each 10° range up to 45°; the zenith comes out
+  1.1° high on average (4.5° below 10°: a zenith angle cannot be negative; simulated run +1.5 ± 8.3°).
+  The toy is reconstructed the same way, so data and expectation compare like with like.
+- `"inside"`: the best estimate given that the muon crossed inside: the measurement's Gaussian cut to the
+  paddle, its mean as the point and its spread as the error. It always lies inside and moves hits near the
+  ends inwards (run 59: the zenith of 20 % of the tracks changes by more than 2°, mean 25.0° → 23.9°). In a
+  simulated run it and the filter together brought the position error along the paddle from 5.4 to 4.6 cm
+  and the zenith error from 8.3° to 7.3°. Its ±1σ ranges hold the true position for 68.3–68.6 % of the toy
+  hits (65–70 % near the ends), the zenith error for 67–73 %. The event pages then add an open marker where
+  tA − tB alone puts a hit that lies beyond its paddle's end.
+
+`tracks.root` keeps both positions (`u_meas_<layer>`, `u_inside_<layer>`; `u_<layer>` is the one used), and the
+flag OUTSIDE marks a measurement more than 3σ beyond its paddle.
 
 ## Check the analysis with a simulated run
 
@@ -413,8 +501,9 @@ near 0. On 2026-11-13 (filter and edge fit on, no assumptions): each paddle's si
 (truth 16.0) cm/ns, λ 37.3–38.3 (38.0) cm, offsets and signal peaks within 1.1σ (the peak as measured
 equals the truth times the tracks' path factor, ×1.09–1.10), σ(tA − tB) 0.58–0.74 ns against √2 × the
 simulated jitter, 0.64 ns (the noise adds to it), positions unbiased (rms 1.1 cm across a paddle,
-4.5–4.9 cm along it), zenith −0.9 ± 7.3°. With no time offsets applied, the measured time of flight
-carries the simulated cables' delays (+0.11 ns); after them +0.02 ns remain. `--timing cfd` gives the
+5.3–5.4 cm along it as measured), zenith +1.5 ± 8.3° (2026-11-14, track points as measured; with
+`points = "inside"` 4.5–4.9 cm and −0.9 ± 7.3°). With no time offsets applied, the measured time of flight
+carries the simulated cables' delays (+0.11 ns); after them 0.00 ns remain. `--timing cfd` gives the
 same constants (see *The pulse time*).
 
 ## Reference: runs 56–59 (2026-11-12/13, board 1, thresholds 400 ADC; run 56: 600; filter and edge fit on)
@@ -431,9 +520,9 @@ same constants (see *The pulse time*).
 | σ(tA − tB), same hits, 20 % crossing | 0.43–1.12 ns | 0.46–0.62 ns | 0.42–0.61 ns | 0.45–0.56 ns |
 | Position resolution along a paddle | 4.0–9.9 cm | 3.3–5.1 cm | 2.9–4.9 cm | 3.1–4.5 cm |
 | Signal peak of the tracks √(hA·hB) | 796–982 ADC (all hits) | 671–964 ADC | 694–991 ADC | 692–945 ADC |
-| TOF − s/c, median and robust σ (no offsets) | −0.04, 0.53 ns (11 tracks) | +0.07, 0.33 ns | +0.02, 0.32 ns | +0.02, 0.33 ns |
-| Tracks measured at β ≥ 1 | 6 of 11 | 88 of 205 | 297 of 639 | 1 183 of 2 509 |
-| Zenith mean (toy) | 24.6° (22.0°) | 24.5° (22.7°) | 23.5° (22.8°) | 23.8° (22.8°) |
+| TOF − s/c, median and robust σ (no offsets) | −0.05, 0.56 ns (11 tracks) | +0.06, 0.34 ns | +0.00, 0.32 ns | −0.00, 0.33 ns |
+| Tracks measured at β ≥ 1 | 6 of 11 | 93 of 205 | 312 of 639 | 1 243 of 2 509 |
+| Zenith mean (toy), track points as measured | 29.5° (25.9°) | 26.0° (24.2°) | 24.8° (24.0°) | 25.0° (23.9°) |
 
 - The edge fit against the crossing, same hits: run 59 TOP1 −4.8 %, TOP2 −2.5 %, MID1 −4.7 %, MID2
   −2.3 %; run 58 −2.3 / −3.5 / −5.0 / −0.8 %; run 57 −9.5 / −1.6 / −2.8 / +1.6 %. Run 56 has too few hits
@@ -445,10 +534,10 @@ same constants (see *The pulse time*).
 - Thresholds were 0.38–0.62 of the muon signal at the paddle centre (run 58); TOP2-A is the highest.
 - The amplifiers clip at raw 14 600–15 100 ADC (6300–6900 above the baseline): a few dozen pulses per
   channel above ~7 muon peaks pile up there. `max_raw_adc = 14500` flags them SATURATED.
-- Map check (run 58): the middle layer follows TOP1/TOP2 as expected (slope +1.34 ± 0.44); the top layer's
-  position along its paddles does **not** follow MID1/MID2 (slopes −0.54 ± 0.44 timing, −0.10 ± 0.46
-  light; +1 excluded at 3.5 and 2.4σ). To check: are TOP1A/TOP2A (ch0, ch2) at the wall, and is BOTTOM1
-  (ch4/ch5) the middle paddle nearer the wall? Also the top hits sit 1.2 ± 0.4 cm towards −y.
+- Map check (run 58): the middle layer follows TOP1/TOP2 as expected (slope +1.36 ± 0.45); the top layer's
+  position along its paddles does **not** follow MID1/MID2 (slopes −0.49 ± 0.44 timing, −0.09 ± 0.42
+  light; +1 excluded at 3.4 and 2.6σ; run 59: −0.51 ± 0.22 and −0.46 ± 0.22). To check: are TOP1A/TOP2A (ch0, ch2) at the wall, and is BOTTOM1
+  (ch4/ch5) the middle paddle nearer the wall? Also the top hits sit 1.4 ± 0.4 cm towards −y (run 59: 1.6 ± 0.2).
 - `track_tdiff`: the middle paddles' 2-hit events are centred on the simulation (run 59: +0.00 and
   −0.05 ± 0.05 ns); both top paddles sit +0.18 and +0.22 ± 0.04 ns off, 1.4–1.8 cm towards −y (the same
   in runs 57 and 58, and like the map check's shift). Only 42 ± 1 % of the inclined tracks arrive from the

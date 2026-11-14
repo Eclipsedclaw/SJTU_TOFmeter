@@ -152,6 +152,12 @@ DISPLAY_DEFAULTS = {
     "side": "",                  # a side of the room to mark in the event pictures: "+x", "-x", "+y", "-y"
     "side_label": "",            # its name, e.g. "wall"
 }
+TRACK_DEFAULTS = {
+    "points": "measured",        # a hit's position along its paddle for the track fit: "measured" = where tA - tB
+                                 # puts it (error: the resolution; near an end it can lie beyond the paddle, as in
+                                 # the hit maps), "inside" = the best estimate inside the paddle (the measurement's
+                                 # Gaussian cut to the paddle, error: its spread); tracks.root keeps both
+}
 FLUX_DEFAULTS = {
     "vertical_intensity": 70.0,  # muons / (m^2 s sr) at sea level above ~1 GeV (PDG review)
     "cos_power": 2.0,            # I(theta) = I0 cos^n(theta)
@@ -358,6 +364,10 @@ class Setup:
         self.calibration = _merge(CALIBRATION_DEFAULTS, raw.get("calibration"), f"{where} [calibration]")
         self.flux = _merge(FLUX_DEFAULTS, raw.get("flux"), f"{where} [flux]")
         self.display = _merge(DISPLAY_DEFAULTS, raw.get("display"), f"{where} [display]")
+        self.tracks = _merge(TRACK_DEFAULTS, raw.get("tracks"), f"{where} [tracks]")
+        if self.tracks["points"] not in ("measured", "inside"):
+            raise SetupError(f"{where} [tracks]: points must be \"measured\" or \"inside\", "
+                             f"not {self.tracks['points']!r}")
         self.board_offsets = {int(k): float(v) for k, v in (raw.get("board_offsets_ns") or {}).items()}
         self.channel_offsets = {parse_channel(k, where): float(v)
                                 for k, v in (raw.get("channel_offsets_ns") or {}).items()}
@@ -929,6 +939,16 @@ def position_in_paddle(u_measured, half_length, sigma):
     return mean, std
 
 
+def track_point(u_measured, paddle, sigma, setup):
+    """Position along a paddle that a track goes through, and its error, as the setup's [tracks] points
+    says: "measured" = the measured position itself with the resolution sigma (default), "inside" = the
+    best estimate inside the paddle (position_in_paddle). Returns (u, error) arrays."""
+    um = np.asarray(u_measured, dtype=np.float64)
+    if setup.tracks["points"] == "inside":
+        return position_in_paddle(um, 0.5 * paddle.length, sigma)
+    return um, np.full_like(um, float(sigma or 0.0))
+
+
 def robust_line(x, y, rounds=5, clip=3.0):
     """Straight line y = a + b x by least squares, dropping points beyond clip x rms
     in each round. Returns dict or None."""
@@ -1087,9 +1107,9 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
     thickness are not simulated.
 
     Each muon crossing two layers or more is reconstructed as the data are: the
-    position along each crossed paddle smeared by its resolution and then taken
-    inside the paddle (position_in_paddle), the position across it set to the
-    paddle's centre, then the same line fit.
+    position along each crossed paddle smeared by its resolution (and then taken
+    inside the paddle if the setup's [tracks] points = "inside"), the position
+    across it set to the paddle's centre, then the same line fit.
 
     Returns a dict of arrays (one row per such muon) with 'weight' in Hz per muon.
     """
@@ -1156,7 +1176,7 @@ def toy_cosmics(setup, calib=None, n_per_layer=None, seed=None):
         j = p.layer.index
         utm[rowsel, j] = p.u_of(xt, yt)
         u_meas = utm[rowsel, j] + rng.normal(0, sig, rowsel.sum())
-        u, s_u = position_in_paddle(u_meas, 0.5 * p.length, sig)      # as the data's reconstruction
+        u, s_u = track_point(u_meas, p, sig, setup)                    # as the data's reconstruction
         px, py, pz = p.point(u)
         xm[rowsel, j], ym[rowsel, j], zm[rowsel, j] = px, py, pz
         along_x = p.axis == "x"

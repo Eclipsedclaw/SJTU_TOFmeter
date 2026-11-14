@@ -291,8 +291,8 @@ def hit_points(H, setup, cal):
         c = cal[p.name]
         v = c["v_eff_cm_per_ns"]
         u_meas = -0.5 * v * (H["tdiff_ns"][sel] - c["tdiff_offset_ns"])
-        # the same position estimate as reconstruct.py: inside the paddle
-        u[sel], _ = mc.position_in_paddle(u_meas, 0.5 * p.length, c.get("position_sigma_cm", 0.0))
+        # the same track point as reconstruct.py (setup [tracks] points)
+        u[sel], _ = mc.track_point(u_meas, p, c.get("position_sigma_cm", 0.0), setup)
         x[sel], y[sel], z[sel] = p.point(u[sel])
         t[sel] = H["t_ns"][sel] - 0.5 * p.length / v
     return x, y, z, u, t

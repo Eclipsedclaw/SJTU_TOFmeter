@@ -20,11 +20,14 @@ towards its A end):
                  offset from the calibration; its resolution is (v / 2) x
                  sigma(tA - tB), so near an end the measured u often lies beyond
                  the paddle (about 8 % of the hits in runs 56-58, as the resolution
-                 predicts). The muon did cross inside, so the point used is the
-                 mean of the measurement's Gaussian cut to the paddle, with that
-                 cut Gaussian's spread as its error (always inside; the measured u
-                 is kept as u_meas). Across the paddle the point is its centre line
-                 (resolution width / sqrt 12), in height its centre plane.
+                 predicts). The setup's [tracks] points chooses the point used:
+                 "measured" (default) = the measured u with the resolution as its
+                 error, as the hit maps show it; "inside" = the mean of the
+                 measurement's Gaussian cut to the paddle (the muon did cross
+                 inside), that cut Gaussian's spread as its error. Both are kept:
+                 u_meas and u_inside; u is the one used. Across the paddle the point
+                 is its centre line (resolution width / sqrt 12), in height its
+                 centre plane.
     crossing     t = (tA + tB) / 2 - L / (2 v) - the paddle's time offset
     one layer    several two-end hits in neighbouring paddles (within 5 ns) are
                  merged into one point weighted by sqrt(hA hB) (flag ADJACENT);
@@ -73,7 +76,8 @@ MERGE_DT_NS = 5.0     # hits of neighbouring paddles within this time are one po
 def hit_table(H, setup, calib):
     """Point, resolutions and crossing time of every two-end hit."""
     n = len(H["t_ns"])
-    out = {k: np.full(n, np.nan) for k in ("x", "y", "z", "u", "u_meas", "t", "sx", "sy", "uamp", "hgeo", "hmip")}
+    out = {k: np.full(n, np.nan) for k in ("x", "y", "z", "u", "u_meas", "u_inside", "t", "sx", "sy", "uamp", "hgeo",
+                                           "hmip")}
     out["outside"] = np.zeros(n, dtype=bool)
     cal = calib["paddles"]
     for p in setup.paddles:
@@ -85,9 +89,10 @@ def hit_table(H, setup, calib):
         off = c.get("tdiff_offset_ns", 0.0)
         sig_u = mc.position_sigma(calib, p, setup)
         u_meas = -0.5 * v * (H["tdiff_ns"][sel] - off)
-        # the muon crossed inside the paddle: best estimate and its error from the measurement
-        u, s_u = mc.position_in_paddle(u_meas, 0.5 * p.length, sig_u)
+        # the track point and its error (setup [tracks] points); the best estimate inside is kept either way
+        u, s_u = mc.track_point(u_meas, p, sig_u, setup)
         out["u"][sel], out["u_meas"][sel] = u, u_meas
+        out["u_inside"][sel] = mc.position_in_paddle(u_meas, 0.5 * p.length, sig_u)[0]
         out["x"][sel], out["y"][sel], out["z"][sel] = p.point(u)
         out["t"][sel] = H["t_ns"][sel] - 0.5 * p.length / v - c.get("time_offset_ns", 0.0)
         along_x = p.axis == "x"
@@ -108,7 +113,8 @@ def layer_point(idx, H, T, setup):
     """One point for the two-end hits `idx` of one layer in one event, and its flags."""
     if len(idx) == 1:
         i = idx[0]
-        return {k: T[k][i] for k in ("x", "y", "z", "sx", "sy", "u", "u_meas", "t", "uamp", "hgeo", "hmip")} | \
+        return {k: T[k][i] for k in ("x", "y", "z", "sx", "sy", "u", "u_meas", "u_inside", "t", "uamp", "hgeo",
+                                     "hmip")} | \
             {"paddle": int(H["paddle"][i]), "hit": int(H["hit"][i]), "outside": bool(T["outside"][i])}, 0, [i]
     # group neighbouring paddles that fired together
     groups = []
@@ -127,7 +133,8 @@ def layer_point(idx, H, T, setup):
     best = max(groups, key=lambda g: sum(T["hgeo"][j] for j in g))
     w = np.array([T["hgeo"][j] for j in best])
     w = w / w.sum()
-    pt = {k: float(np.sum(w * np.array([T[k][j] for j in best]))) for k in ("x", "y", "z", "u", "u_meas", "t")}
+    pt = {k: float(np.sum(w * np.array([T[k][j] for j in best]))) for k in ("x", "y", "z", "u", "u_meas", "u_inside",
+                                                                            "t")}
     for k in ("uamp", "hmip"):
         vals = np.array([T[k][j] for j in best])
         pt[k] = float(np.nansum(vals * w)) if np.isfinite(vals).any() else float("nan")
@@ -270,6 +277,8 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
     report(f"Setup           : {setup.name}")
     report(f"Calibration     : {calib_path}" + ("" if os.path.dirname(calib_path) == os.path.abspath(folder)
                                                  else f" (from run {calib.get('info', {}).get('run', '?')})"))
+    report(f"Track points    : {setup.tracks['points']} (setup [tracks] points: \"measured\" = from tA - tB as it is, "
+           f"\"inside\" = the best estimate inside the paddle)")
 
     T = hit_table(H, setup, calib)
     cand = np.where(E["n_layers_ab"] >= 2)[0]
@@ -286,9 +295,10 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
     for layer in setup.layers:
         for k in ("paddle", "hit"):
             per_layer[f"{k}_{layer.name}"] = np.full(n, -1, dtype=np.int64 if k == "hit" else np.int32)
-        for k in ("x", "y", "z", "u", "u_meas", "t", "sx", "sy", "uamp", "hgeo", "hmip"):
+        for k in ("x", "y", "z", "u", "u_meas", "u_inside", "t", "sx", "sy", "uamp", "hgeo", "hmip"):
             per_layer[f"{k}_{layer.name}"] = np.full(n, np.nan)
-    pts = {k: [] for k in ("event", "track", "layer", "paddle", "hit", "x", "y", "z", "u", "u_meas", "hgeo", "used")}
+    pts = {k: [] for k in ("event", "track", "layer", "paddle", "hit", "x", "y", "z", "u", "u_meas", "u_inside", "hgeo",
+                           "used")}
     bar = mc.Progress("Tracks", max(n, 1))
     for row, e in enumerate(cand):
         idx = by_event.get(int(e), [])
@@ -300,12 +310,14 @@ def run(folder, setup_path=None, calib_path=None, toy_muons=None):
             for i in li:      # every two-end hit of this layer, at its own paddle
                 for k, v in (("event", int(e)), ("track", row), ("layer", layer.index), ("paddle", int(H["paddle"][i])),
                              ("hit", int(H["hit"][i])), ("x", T["x"][i]), ("y", T["y"][i]), ("z", T["z"][i]),
-                             ("u", T["u"][i]), ("u_meas", T["u_meas"][i]), ("hgeo", T["hgeo"][i]),
+                             ("u", T["u"][i]), ("u_meas", T["u_meas"][i]), ("u_inside", T["u_inside"][i]),
+                             ("hgeo", T["hgeo"][i]),
                              ("used", 1 if i in used else 0)):
                     pts[k].append(v)
             cols["flags"][row] |= fl | (mc.TRACK_OUTSIDE if pt["outside"] else 0)
             cols["n_layers"][row] += 1
-            for k in ("paddle", "hit", "x", "y", "z", "u", "u_meas", "t", "sx", "sy", "uamp", "hgeo", "hmip"):
+            for k in ("paddle", "hit", "x", "y", "z", "u", "u_meas", "u_inside", "t", "sx", "sy", "uamp", "hgeo",
+                      "hmip"):
                 per_layer[f"{k}_{layer.name}"][row] = pt[k]
         bar.update(1)
     bar.close()

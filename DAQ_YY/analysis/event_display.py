@@ -8,8 +8,10 @@ analysis folder (n = the event number of events.root):
                                   end's readout as a small box coloured by its pulse
                                   height in this event (the light sharing at a glance),
                                   every hit at its own paddle with its ±1 sigma error as
-                                  the track fit used it (open marker: where tA - tB alone
-                                  puts the hit, when that is beyond the paddle's end), the
+                                  the track fit used it: as measured (setup [tracks] points
+                                  = "measured", the default; near an end it can lie beyond
+                                  the paddle), or the best estimate inside ("inside", with
+                                  an open marker where tA - tB alone puts the hit), the
                                   fitted track as an arrow (the way the particle went),
                                   and a side of the room marked if the setup's [display]
                                   names one (the wall of the first setup)
@@ -160,6 +162,27 @@ def readout_box(p, end, view, aside=0):
     return (x0, p.z - 0.5 * size, size, size), None
 
 
+def clip_segment(a, b, box):
+    """The part of the segment a -> b inside box = (x0, x1, y0, y1) (Liang-Barsky), or None. The track's
+    arrow is drawn on this part: matplotlib leaves out an arrow whose tip lies outside the axes."""
+    (xa, ya), (xb, yb) = a, b
+    dx, dy = xb - xa, yb - ya
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, xa - box[0]), (dx, box[1] - xa), (-dy, ya - box[2]), (dy, box[3] - ya)):
+        if p == 0:
+            if q < 0:
+                return None
+            continue
+        t = q / p
+        if p < 0:
+            t0 = max(t0, t)
+        else:
+            t1 = min(t1, t)
+        if t0 >= t1:
+            return None
+    return (xa + t0 * dx, ya + t0 * dy), (xa + t1 * dx, ya + t1 * dy)
+
+
 def outer_side(p):
     """+1 or -1: the side across the paddle away from the other paddles of its layer."""
     others = [q.y if p.axis == "x" else q.x for q in p.layer.paddles if q is not p]
@@ -168,17 +191,18 @@ def outer_side(p):
 
 
 def hit_points(d, row):
-    """Every two-end hit of the track's layers at its own paddle: (x, y, z, sx, sy, paddle, hit, u, u_meas),
-    with the errors the track fit used."""
+    """Every two-end hit of the track's layers at its own paddle: (x, y, z, sx, sy, paddle, hit, u, u_meas):
+    the point and its errors as the track fit used them (setup [tracks] points: as measured, or the best
+    estimate inside the paddle), and where tA - tB alone puts the hit."""
     s = d.setup
     T = d.Tr
     pts = []
     if d.Pts is not None:
         for j in np.where(d.Pts["track"] == row)[0]:
             p = s.paddles[int(d.Pts["paddle"][j])]
-            # along the paddle (reconstruct.py): the measurement's Gaussian cut to the paddle, smaller
-            # than the resolution near an end; across: the paddle's width / sqrt 12
-            _, s_u = mc.position_in_paddle(d.Pts["u_meas"][j], 0.5 * p.length, mc.position_sigma(d.calib, p, s))
+            # along the paddle as reconstruct.py: the resolution ("measured"), or the spread of the
+            # measurement's Gaussian cut to the paddle ("inside"); across: the paddle's width / sqrt 12
+            _, s_u = mc.track_point(d.Pts["u_meas"][j], p, mc.position_sigma(d.calib, p, s), s)
             across = p.width / math.sqrt(12)
             sx, sy = (float(s_u), across) if p.axis == "x" else (across, float(s_u))
             pts.append((d.Pts["x"][j], d.Pts["y"][j], d.Pts["z"][j], sx, sy, p, int(d.Pts["hit"][j]),
@@ -199,7 +223,8 @@ def draw_views(d, row, axes, heights, norm):
     T = d.Tr
     e = int(T["event"][row])
     pts = hit_points(d, row)
-    # a hit that tA - tB alone puts beyond its paddle's end is drawn there too; that end's label moves aside
+    # a hit that tA - tB alone puts beyond its paddle's end is drawn there (the hit itself, or with
+    # [tracks] points = "inside" an open marker); that end's label moves aside
     beyond = {(p.index, "A" if um > 0 else "B") for x, y, z, sx, sy, p, hit, u, um in pts
               if np.isfinite(um) and abs(um) > 0.5 * p.length}
     ab = {}
@@ -237,25 +262,43 @@ def draw_views(d, row, axes, heights, norm):
         # the track: a line through the detector with an arrow the way the particle went (down)
         if view == "xy":
             start, stop = (lx[0], ly[0]), (lx[1], ly[1])
+            box = (-ext + 0.3, ext - 0.3, -ext + 0.3, ext - 0.3)
         elif view == "xz":
             start, stop = (lx[0], zz[0]), (lx[1], zz[1])
+            box = (-ext + 0.3, ext - 0.3, z_lo + 0.3, z_hi - 0.3)
         else:
             start, stop = (ly[0], zz[0]), (ly[1], zz[1])
-        ax.annotate("", xy=stop, xytext=start, zorder=6,
-                    arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.3, mutation_scale=11, shrinkA=0, shrinkB=0))
+            box = (-ext + 0.3, ext - 0.3, z_lo + 0.3, z_hi - 0.3)
+        seg = clip_segment(start, stop, box)        # the part in view (a steep track leaves it)
+        if seg is not None:
+            ax.annotate("", xy=seg[1], xytext=seg[0], zorder=6, annotation_clip=False,
+                        arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.3, mutation_scale=11, shrinkA=0, shrinkB=0))
     ax_xy, ax_xz, ax_yz = axes
-    seen = set()
-    shown = {"o": False, "edge": False}
+    seen = {}
+    shown = {"o": False, "edge": False, "hit_edge": False}
+    lim = ext - VIEW_MARGIN
     for x, y, z, sx, sy, p, hit, u, um in pts:
         col = mc.layer_color(p.layer.index)
+        seen.setdefault(p.layer.name, col)
         kw = dict(fmt="o", ms=6.5, color=col, mec=SURFACE, mew=1.4, elinewidth=1.6, capsize=0, zorder=7)
-        ax_xy.errorbar(x, y, xerr=sx, yerr=sy, label=None if p.layer.name in seen else f"{p.layer.name} layer hit", **kw)
-        seen.add(p.layer.name)
-        ax_xz.errorbar(x, z, xerr=sx, **kw)
-        ax_yz.errorbar(y, z, xerr=sy, **kw)
-        if np.isfinite(um) and abs(um) > 0.5 * p.length:     # the timing alone puts it beyond the paddle's end
-            c = p.x if p.axis == "x" else p.y
-            lim = ext - VIEW_MARGIN
+        c = p.x if p.axis == "x" else p.y
+        hp = c + p.a_sign * u                                # the hit point along the paddle's axis
+        if abs(hp) > lim:          # measured beyond the view: a triangle at its edge in the views along the paddle
+            shown["hit_edge"] = True
+            edge = math.copysign(lim, hp)
+            mk = dict(ms=7, color=col, mec=SURFACE, mew=1.2, ls="none", zorder=7)
+            ax_xy.plot(*((edge, y) if p.axis == "x" else (x, edge)),
+                       marker=(">" if hp > 0 else "<") if p.axis == "x" else ("^" if hp > 0 else "v"), **mk)
+        else:
+            ax_xy.errorbar(x, y, xerr=sx, yerr=sy, **kw)
+        for side, h, err, along in ((ax_xz, x, sx, p.axis == "x"), (ax_yz, y, sy, p.axis == "y")):
+            if along and abs(hp) > lim:
+                side.plot(math.copysign(lim, hp), z, marker=">" if hp > 0 else "<", ms=7, color=col, mec=SURFACE,
+                          mew=1.2, ls="none", zorder=7)
+            else:
+                side.errorbar(h, z, xerr=err, **kw)
+        # [tracks] points = "inside": the point lies inside; mark where tA - tB alone put it beyond the end
+        if np.isfinite(um) and abs(um - u) > 1e-6 and abs(um) > 0.5 * p.length:
             pos = c + p.a_sign * um
             pulled = abs(pos) > lim                          # further out than the view: drawn at its edge
             pos = min(max(pos, -lim), lim)
@@ -292,14 +335,16 @@ def draw_views(d, row, axes, heights, norm):
     ax_xy.set_xlabel("x (cm)")
     ax_xy.set_ylabel("y (cm)")
     ax_xy.grid(False)
-    handles, labels = ax_xy.get_legend_handles_labels()
     from matplotlib.lines import Line2D
-    for show, marker, text in ((shown["o"] or shown["edge"], "o", "from tA - tB alone (beyond the end)"),
-                               (shown["edge"], ">", "the same, beyond the view")):
+    handles = [Line2D([], [], marker="o", ms=6.5, color=col, mec=SURFACE, mew=1.4, ls="none", label=f"{name} layer hit")
+               for name, col in seen.items()]
+    for show, marker, filled, text in ((shown["hit_edge"], ">", True, "hit beyond the view, at its edge"),
+                                       (shown["o"] or shown["edge"], "o", False, "from tA - tB alone (beyond the end)"),
+                                       (shown["edge"], ">", False, "the same, beyond the view")):
         if show:
-            handles.append(Line2D([], [], marker=marker, ms=5.5, mfc="none", mec=INK2, mew=1.2, ls="none"))
-            labels.append(text)
-    ax_xy.legend(handles, labels, loc="lower left", fontsize=7)
+            handles.append(Line2D([], [], marker=marker, ms=5.5, ls="none", mew=1.2, label=text,
+                                  **(dict(color=INK2, mec=SURFACE) if filled else dict(mfc="none", mec=INK2))))
+    ax_xy.legend(handles=handles, loc="lower left", fontsize=7)
     ax_xy.set_title("seen from above", loc="left", fontsize=8.5, color=INK2)
     for ax, lab, name in ((ax_xz, "x (cm)", "seen from the side (from -y)"), (ax_yz, "y (cm)", "seen from the side (from +x)")):
         ax.set_xlim(-ext, ext)
@@ -326,14 +371,17 @@ def info_table(d, row, ax, pts, norm):
             ("β (no time offsets)", f"{T['beta'][row]:.2f}"),
             ("track flags", fl)]
     lines = [f"{k:<21}{v}" for k, v in rows]
-    lines += ["", f"{'hit':<6}{'u ± σ cm':>11}{'meas.':>7}{'hA':>6}{'hB':>6}{'tA-tB':>7}"]
+    inside = s.tracks["points"] == "inside"
+    lines += ["", f"{'hit':<6}{'u ± σ cm':>11}" + (f"{'meas.':>7}" if inside else "") + f"{'hA':>6}{'hB':>6}{'tA-tB':>7}"]
     for x, y, z, sx, sy, p, i, u, um in pts:
         su = sx if p.axis == "x" else sy
-        lines.append(f"{p.name:<6}{f'{u:+.1f} ± {su:.1f}':>11}{um:>+7.1f}{d.H['hA'][i]:>6.0f}{d.H['hB'][i]:>6.0f}"
-                     f"{d.H['tdiff_ns'][i]:>+7.2f}")
-    lines += ["", "u ± σ: along the paddle, + towards end A:", "   best estimate inside the paddle and",
-              "   its error, as the track fit used them", "meas.: from tA - tB alone",
-              "hA, hB: pulse heights (ADC)", "tA-tB in ns"]
+        lines.append(f"{p.name:<6}{f'{u:+.1f} ± {su:.1f}':>11}" + (f"{um:>+7.1f}" if inside else "") +
+                     f"{d.H['hA'][i]:>6.0f}{d.H['hB'][i]:>6.0f}{d.H['tdiff_ns'][i]:>+7.2f}")
+    lines += [""] + (["u ± σ: along the paddle, + towards end A:", "   best estimate inside the paddle and",
+                      "   its error, as the track fit used them", "meas.: from tA - tB alone"] if inside else
+                     ["u ± σ: along the paddle, + towards end A:", "   from tA - tB as measured, and the",
+                      "   resolution (as the track fit used them)"]) + \
+        ["hA, hB: pulse heights (ADC)", "tA-tB in ns"]
     ax.text(0.0, 1.0, "\n".join(lines), transform=ax.transAxes, ha="left", va="top", fontsize=7.4, color=INK,
             family="monospace", linespacing=1.45)
     cax = ax.inset_axes([0.02, 0.05, 0.9, 0.035])
@@ -477,10 +525,16 @@ def event_page(d, row, out_dir, waveforms=True):
                           f"{T['s_cm'][row]:.1f} cm, time of flight {T['tof_ns'][row]:.2f} ns, β {T['beta'][row]:.2f}"
                           f"  ·  arrow: the fitted track, the way the particle went",
              ha="left", va="top", fontsize=8.5, color=INK2)
+    if s.tracks["points"] == "inside":
+        bars = ("bars: ±1σ of each hit as the track fit used it (along the paddle: from the timing, cut to the "
+                "paddle, so smaller near an end; across: width / √12)  ·  open marker: where tA - tB alone puts "
+                "a hit that lies beyond its paddle's end")
+    else:
+        bars = ("each hit as measured, as in the hit maps: along the paddle from tA - tB (near an end it can lie "
+                "beyond the paddle), across on the centre line  ·  bars: ±1σ as the track fit used them (along: "
+                "the resolution; across: width / √12)")
     mc.footer(fig, f"{d.run}  ·  setup {s.name}  ·  filled: paddle seen at both ends (dashed outline: one end)\n"
-                   f"bars: ±1σ of each hit as the track fit used it (along the paddle: from the timing, cut to the "
-                   f"paddle, so smaller near an end; across: width / √12)  ·  open marker: where tA - tB alone puts "
-                   f"a hit that lies beyond its paddle's end")
+                   + bars)
     path = os.path.join(out_dir, f"event_{e}.png")
     mc.save_figure(fig, path)
     return path

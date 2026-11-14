@@ -679,8 +679,9 @@ def plot_position(c, p):
     ax.set_ylabel("hits per bin")
     ax.legend(loc="upper right")
     mc.title(ax, f"Measured position along {p.name}: {c.short}",
-             "grey: beyond the paddle's ends, reached only through the time resolution; tracks use the "
-             "best estimate inside the paddle")
+             "grey: beyond the paddle's ends, reached only through the time resolution; tracks use "
+             + ("the best estimate inside the paddle" if c.setup.tracks["points"] == "inside" else
+                "these positions as they are"))
     c.save(fig, f"position_{p.name}")
 
 
@@ -999,8 +1000,8 @@ def plot_hitmap(c, layer):
     """Where the tracks cross the layer, each hit as measured: along its paddle at the position from tA - tB
     alone (u_meas; the time resolution scatters it by sigma_u, so hits near an end can lie beyond it), across
     the paddle on its centre line (not measured). A track through two neighbouring paddles of the layer shows
-    each paddle's own hit (never a point between them). The track fit uses the best estimate inside the
-    paddle instead (tracks.root u_<layer>)."""
+    each paddle's own hit (never a point between them). The track fit uses the same points (setup [tracks]
+    points = "measured"; with "inside" the best estimate inside the paddle, tracks.root u_inside)."""
     fig, ax = figure(6.4, 6.4)
     for p in c.setup.paddles:
         outline(ax, p, mc.layer_color(layer.index), fill=True, lw=1.0) if p.layer is layer else \
@@ -1116,7 +1117,8 @@ def box_faces(cx, cy, cz, sx, sy, sz):
 
 def plot_tracks_3d(c, frames=72, fps=12):
     """Every track in 3D: its fitted straight line and the hit point of each layer it was fitted through
-    (the points the track fit used, inside the paddles), over the paddles and their readout ends.
+    (the points the track fit used: as measured, as in the hit maps, unless the setup's [tracks] points =
+    "inside"), over the paddles and their readout ends.
     tracks_3d.png (300 dpi, for slides) and tracks_3d.gif (the view turning once around the vertical)."""
     from matplotlib import animation
     from matplotlib.colors import to_rgba
@@ -1131,6 +1133,9 @@ def plot_tracks_3d(c, frames=72, fps=12):
     readout = 2.0                                                    # cm, as on the event pages
     layers = sorted(s.layers, key=lambda L: L.z)                     # bottom first
     reach = max(max(abs(p.x) + 0.5 * p.size_x, abs(p.y) + 0.5 * p.size_y) for p in s.paddles) + readout + 6.0
+    hits = np.array([T[f"{q}_{L.name}"][ok] for L in s.layers for q in ("x", "y")])
+    if np.isfinite(hits).any():                                      # measured points can lie beyond the ends
+        reach = max(reach, float(np.nanmax(np.abs(hits))) + 1.0)
     z_lo, z_hi = layers[0].z - 8.0, layers[-1].z + 8.0
     a_x, b_x, a_y, b_y, z0 = (T[k][ok] for k in ("ax", "bx", "ay", "by", "z0"))
 
@@ -1188,8 +1193,11 @@ def plot_tracks_3d(c, frames=72, fps=12):
     ax.tick_params(labelsize=7, colors=INK2, pad=1)
     ax.view_init(elev=22, azim=-58)
     fig.text(0.04, 0.975, f"All {n} tracks of {c.short}", ha="left", va="top", fontsize=11, color=INK)
-    fig.text(0.04, 0.937, "each line: a track's straight-line fit; each dot: a hit point it went through\n"
-                          "(along the paddle from the timing, across it on the paddle's centre line)",
+    fig.text(0.04, 0.937, "each line: a track's straight-line fit through its hit points (dots), "
+                          + ("the best estimate inside\nthe paddle along it, across it on the paddle's centre line"
+                             if s.tracks["points"] == "inside" else
+                             "as measured:\nalong the paddle from tA - tB (near an end some lie beyond it), "
+                             "across it on the paddle's centre line"),
              ha="left", va="top", fontsize=7.5, color=INK2, linespacing=1.4)
     handles = [Line2D([], [], color=INK2, lw=0.9, alpha=0.8, label="fitted tracks")] + \
         [Line2D([], [], ls="none", marker="o", ms=4, color=mc.layer_color(L.index), label=f"{L.name} layer hit points")

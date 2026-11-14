@@ -135,6 +135,15 @@ tdiff_sigma_ns = 0.6         # used until calibrate.py measures it
 min_hits = 50                # fewer two-end hits: keep the defaults
 min_tof_events = 20          # events per paddle for per-paddle time offsets
 
+[tracks]
+# The point each track goes through in a paddle, along it (across: the centre line):
+#   "measured" = where tA - tB puts the hit, error = the resolution, exactly as the hit maps show it; near an
+#                end it can lie beyond the paddle (run 59: 9.7 % of the tracks have such a point)
+#   "inside"   = the best estimate inside the paddle (the measurement's Gaussian cut to the paddle), error = its
+#                spread; moves hits near the ends inwards (run 59: 20 % of the tracks change zenith by > 2 deg,
+#                mean zenith 25.0 -> 23.9 deg). tracks.root keeps both positions (u_meas, u_inside; u = the one used).
+points = "measured"
+
 [flux]
 vertical_intensity = 70.0    # muons / (m^2 s sr), sea level, above ~1 GeV (PDG review)
 cos_power = 2.0              # I(theta) = I0 cos^2(theta)

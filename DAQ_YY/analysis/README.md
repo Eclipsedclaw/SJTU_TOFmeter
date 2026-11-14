@@ -146,7 +146,7 @@ In the output folder:
 | `tracks.root` | Tree `tracks` (one per reconstructed muon); tree `toy` (the toy muons, with weights in Hz and their true positions along the crossed paddles, `u_true_<layer>`) |
 | `*_summary.txt` | The tables each step printed |
 | `plots/*.png` | One plot per file, listed below |
-| `event_displays/` | `event_<n>.png`, one page per event: the setup from above and from two sides, each paddle end's readout box coloured by its pulse height (the light sharing at a glance), every hit at its own paddle, the fitted track as an arrow, the room's wall; an info table; the records and their rising edges divided by the height, where the time differences show, with the samples each edge fit used and the fitted template |
+| `event_displays/` | `event_<n>.png`, one page per event: the setup from above and from two sides, each paddle end's readout box coloured by its pulse height (the light sharing at a glance), every hit at its own paddle with its ±1σ error as the track fit used it (an open marker where tA − tB alone puts a hit that lies beyond its paddle's end), the fitted track as an arrow, the room's wall; an info table; the records and their rising edges divided by the height, where the time differences show, with the samples each edge fit used and the fitted template |
 
 The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks->Draw("theta_deg")`.
 
@@ -386,6 +386,13 @@ Gaussian cut to the paddle, its mean as the point and its spread as the error. I
 simulated run it and the filter together brought the position error along the paddle from 5.4 to 4.6 cm and
 the zenith error from 8.3° to 7.3°. The measured position is kept as `u_meas_<layer>` in `tracks.root`, and the flag
 OUTSIDE marks a measurement more than 3σ beyond its paddle.
+
+The event pages draw each hit at this point with this error (±1σ along the paddle, width/√12 across), and an
+open marker where tA − tB alone puts a hit that lies beyond its paddle's end. In the toy muons of the setup
+(run 59 resolutions) these ±1σ ranges hold the true position for 68.3–68.6 % of the hits, 65–70 % near the
+ends (68.3 % is right); the full resolution σ as the error there would hold it for 86–93 %. The zenith
+error of the line fit holds the true zenith for 67–73 % of the toy tracks in each 10° range up to 45°
+(θ near 0 comes out a few degrees high: a zenith angle cannot be negative).
 
 ## Check the analysis with a simulated run
 

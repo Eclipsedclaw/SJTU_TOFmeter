@@ -261,6 +261,8 @@ sh condor/beam_steel_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/
   prints the commands that would run failed jobs again (`--no-beam` for failed decay jobs only).
 - To analyse, sync the folder into the work folder's `output/czt/`, then:
   `root -l -b -q 'analysis/beam_steel_trace_spectrum.C("output/czt/beam_steel_czt_trace")'`.
+  Then the peaks, named and fitted (from the ROOT file that macro writes, in seconds):
+  `root -l -b -q 'analysis/beam_steel_peak_fit.C("output/czt/beam_steel_czt_trace")'`.
 
 ## Following the jobs
 

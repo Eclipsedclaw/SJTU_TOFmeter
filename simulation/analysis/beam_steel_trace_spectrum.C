@@ -39,6 +39,8 @@
 //   trace_spectrum_after    the day after the beam: activation and the natural U, Th, K lines
 //   trace_k_region          600-800 keV, prompt: K K_alpha (713 keV) under Mo's 3d -> 2p lines (694, 718 keV)
 //   trace_u_th_region       5800-6700 keV, prompt: the K_alpha lines of U and Th
+// and beam_steel_trace_spectrum.root: every histogram per day in 0.5 keV bins (the views, each element's parts, the natural sources) and
+// the emitted lines (truth: the X-ray lines as a tree, the capture gammas per 0.1 keV), for analysis/beam_steel_peak_fit.C.
 // Only reads the run; writes into outDir. Run in the work folder, after the jobs are back (rsync):
 //   root -l -b -q 'analysis/beam_steel_trace_spectrum.C("output/czt/beam_steel_czt_trace")'
 #include <TCanvas.h>
@@ -47,6 +49,7 @@
 #include <TLatex.h>
 #include <TLegend.h>
 #include <TLine.h>
+#include <TNamed.h>
 #include <TRandom3.h>
 #include <TStyle.h>
 #include <TSystem.h>
@@ -59,11 +62,14 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
-const double kBinKeV = 2., kMaxKeV = 8000.;
-const int kBins = int(kMaxKeV / kBinKeV);
+// filled in 0.5 keV bins (the ROOT file: fine bins at low energy for the peak fit, 2026-11-11), merged into kBinKeV bins
+// for this macro's numbers and plots
+const double kFillKeV = 0.5, kBinKeV = 2., kMaxKeV = 8000.;
+const int kBins = int(kMaxKeV / kFillKeV), kMerge = int(kBinKeV / kFillKeV);
 
 void Save(TCanvas* c, const std::string& base)
 {
@@ -86,14 +92,17 @@ struct Element {   // the real steel, mass percent (U, Th, K from the arguments;
   double percent;
 };
 
-struct Sample {   // panel entries of the muons one element caught, per 2 keV
+struct Sample {   // panel entries of the muons one element caught, per 0.5 keV (2 keV after the ROOT file)
   TH1D *on = nullptr, *onX = nullptr, *prompt = nullptr, *promptX = nullptr, *after = nullptr, *afterX = nullptr;
   double events = 0.;
   std::map<long, double> lines;   // emitted target X-rays (truth): energy in 10 eV -> photons
+  TH1D* gammas = nullptr;         // emitted capture gammas (truth) per 0.1 keV (Doppler-shifted, partly continuous: no map)
   void Make(const std::string& n)
   {
     on = NewHist(n + "_on"); onX = NewHist(n + "_onx"); prompt = NewHist(n + "_prompt");
     promptX = NewHist(n + "_promptx"); after = NewHist(n + "_after"); afterX = NewHist(n + "_afterx");
+    gammas = new TH1D((n + "_gammas").c_str(), "", 100000, 0., 10000.);
+    gammas->SetDirectory(nullptr);
   }
 };
 
@@ -242,6 +251,7 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
       s.events += 1.;
       for (size_t p = 0; p < muxE->size(); ++p)
         if ((*muxSrc)[p] == 0) s.lines[std::lround((*muxE)[p] * 1e5)] += 1.;   // mux_src: 0 cascade X-ray, 1 capture gamma
+        else if ((*muxSrc)[p] == 1) s.gammas->Fill(1000. * (*muxE)[p]);
       for (size_t h = 0; h < e->size(); ++h) {
         const double eMeV = (*e)[h], tNs = std::max(0., (*t)[h]);
         if (eMeV <= 0. || tNs >= 2. * tMax) continue;
@@ -329,6 +339,40 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
   const std::vector<View> views = {{"on", on, &Sample::onX, 1.}, {"prompt", prompt, &Sample::promptX, rate * promptNs * 1e-9},
                                    {"after", after, &Sample::afterX, 1.}};
 
+  // every histogram per day (0.5 keV bins, the simulation's own errors) and the emitted lines, for beam_steel_peak_fit.C
+  {
+    TFile hf((out + "/beam_steel_trace_spectrum.root").c_str(), "RECREATE");
+    auto Put = [&](const TH1D* h, const std::string& name, double w) { TH1D* c = Copy(h, name, w); c->Write(); delete c; };
+    for (const auto& [h, name] : std::vector<std::pair<TH1D*, const char*>>{{on, "view_on"}, {prompt, "view_prompt"},
+         {after, "view_after"}, {nobeam, "view_nobeam"}, {accidental, "accidental_prompt"}, {natural, "natural"}})
+      Put(h, name, 1.);
+    for (const Element& el : steel)   // day_<El>_gammas: the emitted capture gammas per day per 0.1 keV
+      for (const TH1D* h : {samples[el.z].on, samples[el.z].onX, samples[el.z].prompt, samples[el.z].promptX, samples[el.z].after,
+                            samples[el.z].afterX, samples[el.z].gammas})
+        Put(h, std::string("day_") + h->GetName(), wDay[el.z]);
+    for (const TH1D* h : {other.on, other.onX, other.prompt, other.promptX, other.after, other.afterX}) Put(h, std::string("day_") + h->GetName(), wOther);
+    for (const Source& so : sources) Put(so.h, so.h->GetName(), 1.);
+    int lz = 0;
+    double lkeV = 0., perCapture = 0., perDay = 0.;
+    TTree lt("lines", "emitted cascade X-ray lines (truth): photons per captured muon and per day");
+    lt.Branch("z", &lz); lt.Branch("e_keV", &lkeV); lt.Branch("per_capture", &perCapture); lt.Branch("per_day", &perDay);
+    for (const Element& el : steel)
+      for (const auto& [key, n] : samples[el.z].lines) {
+        lz = el.z; lkeV = key / 100.; perCapture = n / samples[el.z].events; perDay = perCapture * share[el.z] * nDay;
+        if (perCapture >= 1e-5) lt.Fill();
+      }
+    lt.Write();
+    TNamed("settings", Form("sigma1MeV %g threshold %g promptNs %g rate %g seconds %g panel %s composition %s", sigma1MeV, threshold,
+                            promptNs, rate, seconds, panelName.c_str(), simComposition.c_str())).Write();
+  }
+  // from here on kBinKeV bins: the fine bins merged (the same contents as filling 2 keV bins directly)
+  std::vector<Sample*> allSamples = {&other};
+  for (auto& [z, s] : samples) allSamples.push_back(&s);
+  for (Sample* s : allSamples)
+    for (TH1D* h : {s->on, s->onX, s->prompt, s->promptX, s->after, s->afterX}) h->Rebin(kMerge);
+  for (Source& so : sources) so.h->Rebin(kMerge);
+  for (TH1D* h : {natural, on, prompt, after, nobeam, accidental}) h->Rebin(kMerge);
+
   // numbers
   double entriesOn = 0.;
   for (int b = 1; b <= on->GetNbinsX(); ++b) entriesOn += on->GetBinContent(b);
@@ -356,6 +400,10 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
   snprintf(line, sizeof line, "  panel entries per day, beam on: %.4g (%.4g /s; %.3g per pixel and second: a second entry within "
            "+-100 ns %.2f%%, within +-1 us %.1f%%; no pile-up simulated)\n", entriesOn, entriesOn / seconds, perPixel,
            100. * (1. - std::exp(-2. * perPixel * 100e-9)), 100. * (1. - std::exp(-2. * perPixel * 1e-6)));
+  txt << line;
+  const double entriesAfter = WindowSum(after, 0., kMaxKeV), entriesNat = WindowSum(natural, 0., kMaxKeV);
+  snprintf(line, sizeof line, "  panel entries per day, the day after the beam: %.4g (%.3g /s); no beam, the plate's U, Th, K alone: "
+           "%.4g (%.3g /s; the room's background not simulated)\n", entriesAfter, entriesAfter / seconds, entriesNat, entriesNat / seconds);
   txt << line;
   csv << "kind,element,line_keV,yield_per_capture,view,window_lo,window_hi,S,B,S_over_sqrt_SplusB,contrast,fraction,fraction_3sigma\n";
 
@@ -444,8 +492,8 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
     return h;
   };
   auto Spectrum = [&](const std::string& tag, TH1D* total, TH1D* Sample::*xpart, TH1D* Sample::*allpart, double natScale,
-                      const std::string& title, double lo, double hi, int rebin, bool logY, bool withAccidentals,
-                      double headroom) {
+                      const std::string& title, double lo, double hi, int rebin, bool withAccidentals, double headroom,
+                      double depth) {   // log y from the total's maximum / depth (down to U, Th) to its maximum x headroom
     TH1D* t = Copy(total, tag + "_total", 1., rebin);
     std::vector<TH1D*> parts;
     std::vector<std::string> labels;
@@ -466,45 +514,45 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
     nat->SetLineColor(kYellow + 3); nat->SetLineWidth(2);
     parts.push_back(nat); labels.push_back(withAccidentals ? "natural U, Th, K decays within the window" : "natural U, Th, K decays");
     auto c = new TCanvas(("c_" + tag).c_str(), "", 1100, 750);
-    if (logY) c->SetLogy();
+    c->SetLogy();
     c->SetLeftMargin(0.11); c->SetRightMargin(0.03); c->SetTopMargin(0.08);
     t->SetTitle((title + ";energy in one pixel (keV);" + Form("entries per %g keV in one day", rebin * kBinKeV)).c_str());
     t->GetXaxis()->SetRangeUser(lo, hi);
     t->SetLineColor(kBlack); t->SetLineWidth(2);
-    double ymin = 1e300;
-    for (int b = t->FindBin(lo); b <= t->FindBin(hi); ++b) if (t->GetBinContent(b) > 0.) ymin = std::min(ymin, t->GetBinContent(b));
-    if (logY) { t->SetMaximum(t->GetMaximum() * headroom); t->SetMinimum(std::max(1e-3, ymin * 1e-4)); }
-    else { t->SetMinimum(0.); t->SetMaximum(1.35 * t->GetMaximum()); }
+    const double top = t->GetMaximum();   // within lo-hi
+    t->SetMaximum(top * headroom); t->SetMinimum(top / depth);
     t->Draw("hist");
     for (TH1D* h : parts) { h->GetXaxis()->SetRangeUser(lo, hi); h->Draw("hist same"); }
     t->Draw("hist same");
-    auto leg = new TLegend(0.56, 0.52, 0.97, 0.91);
-    leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextSize(0.023);
+    auto leg = new TLegend(0.13, 0.73, 0.97, 0.91);   // two columns over the top, the curves below
+    leg->SetNColumns(2); leg->SetMargin(0.12); leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextSize(0.022);
     double sum = 0.;
     for (int b = t->FindBin(lo); b <= t->FindBin(hi); ++b) sum += t->GetBinContent(b);
     leg->AddEntry(t, Form("all entries (%s in %g-%g keV)", Sci(sum).c_str(), lo, hi), "l");
     for (size_t i = 0; i < parts.size(); ++i) leg->AddEntry(parts[i], labels[i].c_str(), "l");
     leg->Draw();
-    return std::make_pair(c, t);
+    return std::make_tuple(c, t, parts);   // parts: the groups' X-rays (as groups), then beam, (accidentals,) natural
   };
   auto Mark = [&](TH1D* t, double e, const char* text, int color, double yFactor) {
+    const double y = t->GetBinContent(t->FindBin(e)) * yFactor;
+    if (y <= 0.) return;   // an empty bin (low statistics): no label
     TLatex tex; tex.SetTextSize(0.026); tex.SetTextAlign(21); tex.SetTextColor(color);
-    tex.DrawLatex(e, t->GetBinContent(t->FindBin(e)) * yFactor, text);
+    tex.DrawLatex(e, y, text);
   };
 
   // 1. beam on, no timing
   {
-    auto [c, t] = Spectrum("on", on, &Sample::onX, &Sample::on, 1., Form("One day at %s: 1 cm steel with U, Th, K, %s (no timing)",
-                           beamText.c_str(), panel), 20., 7000., 4, true, false, 300.);
+    auto [c, t, parts] = Spectrum("on", on, &Sample::onX, &Sample::on, 1., Form("One day at %s: 1 cm steel with U, Th, K, %s (no timing)",
+                                  beamText.c_str(), panel), 20., 7000., 4, false, 3000., 2e9);
     Mark(t, 1257.2, "Fe K_{#alpha}", kRed, 3.);
     Mark(t, 2707.5, "Mo K_{#alpha}", kMagenta + 1, 3.);
     Save(c, out + "/trace_spectrum_on");
   }
   // 2. prompt window
   {
-    auto [c, t] = Spectrum("prompt", prompt, &Sample::promptX, &Sample::prompt, rate * promptNs * 1e-9,
-                           Form("One day at %s, tagged beam: hits within %g ns of their muon (1 cm steel with U, Th, K, %s)",
-                                beamText.c_str(), promptNs, panel), 20., 7000., 4, true, true, 300.);
+    auto [c, t, parts] = Spectrum("prompt", prompt, &Sample::promptX, &Sample::prompt, rate * promptNs * 1e-9,
+                                  Form("One day at %s, tagged beam: hits within %g ns of their muon (1 cm steel with U, Th, K, %s)",
+                                       beamText.c_str(), promptNs, panel), 20., 7000., 4, true, 3000., 2e9);
     Mark(t, 1257.2, "Fe K_{#alpha}", kRed, 3.);
     Mark(t, 2707.5, "Mo K_{#alpha}", kMagenta + 1, 3.);
     Save(c, out + "/trace_spectrum_prompt");
@@ -528,9 +576,9 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
     t->GetXaxis()->SetRangeUser(20., 3000.);
     t->SetLineColor(kBlack); t->SetLineWidth(2);
     t->SetMaximum(t->GetMaximum() * 300.); t->SetMinimum(0.3);
-    t->Draw("hist"); act->Draw("hist same");
+    t->Draw("hist");
     for (TH1D* h : nat) h->Draw("hist same");
-    t->Draw("hist same");
+    act->SetLineStyle(2); act->Draw("hist same");   // dashed over the total: the activation is nearly all of it
     auto leg = new TLegend(0.50, 0.68, 0.97, 0.91);
     leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextSize(0.026);
     leg->AddEntry(t, "all entries (beam off)", "l");
@@ -539,27 +587,29 @@ void beam_steel_trace_spectrum(const char* dir, const char* outDir = "", double 
       leg->AddEntry(nat[i], Form("%s (%.3g Bq)", sources[i].name, sources[i].activity), "l");
     leg->Draw();
     for (const NaturalLine& nl : naturalLines)
-      if (nl.e == 609.32 || nl.e == 1460.82 || nl.e == 2614.51) Mark(t, nl.e, Form("%.0f %s", nl.e, nl.nuclide), colors[nl.source], 4.);
+      if (nl.e == 609.32 || nl.e == 1460.82 || nl.e == 2614.51)   // on their own chain's curve
+        Mark(nat[nl.source], nl.e, Form("%.0f %s", nl.e, nl.nuclide), colors[nl.source], 3.);
     Save(c, out + "/trace_spectrum_after");
   }
-  // 4. and 5. the regions of the impurities' K lines, prompt window, linear
+  // 4. and 5. the regions of the impurities' K lines, prompt window
   for (int region = 0; region < 2; ++region) {
     const bool kRegion = region == 0;
     const double lo = kRegion ? 600. : 5800., hi = kRegion ? 800. : 6700.;
     const int rebin = kRegion ? 1 : 4;
-    auto [c, t] = Spectrum(kRegion ? "kreg" : "ureg", prompt, &Sample::promptX, &Sample::prompt, rate * promptNs * 1e-9,
-                           Form("One day at %s, tagged beam, hits within %g ns: %s (%s)", beamText.c_str(), promptNs,
-                                kRegion ? "K K_{#alpha} under Mo 3d #rightarrow 2p" : "the K_{#alpha} lines of U and Th", panel),
-                           lo, hi, rebin, true, true, 3e4);
+    auto [c, t, parts] = Spectrum(kRegion ? "kreg" : "ureg", prompt, &Sample::promptX, &Sample::prompt, rate * promptNs * 1e-9,
+                                  Form("One day at %s, tagged beam, hits within %g ns: %s (%s)", beamText.c_str(), promptNs,
+                                       kRegion ? "K K_{#alpha} under Mo 3d #rightarrow 2p" : "the K_{#alpha} lines of U and Th", panel),
+                                  lo, hi, rebin, true, 150., kRegion ? 2e4 : 2e6);
+    // the impurities' labels on their own X-rays (parts as the groups: Fe Cr Ni Mo Mn, C...S, K 6, Th 7, U 8)
     if (kRegion) {
-      Mark(t, 712.7, "K K_{#alpha} 712.7", kOrange + 1, 12.);
+      Mark(parts[6], 712.7, "K K_{#alpha} 712.7", kOrange + 1, 2.);
       Mark(t, 694.4, "Mo 694.4", kMagenta + 1, 1.6);
       Mark(t, 718.4, "Mo 718.4", kMagenta + 1, 1.6);
     } else {
-      Mark(t, 6133., "U K_{#alpha2}", kViolet, 3.);
-      Mark(t, 6420., "U K_{#alpha1}", kViolet, 3.);
-      Mark(t, 6103.6, "Th K_{#alpha2}", kAzure + 1, 8.);
-      Mark(t, 6367.7, "Th K_{#alpha1}", kAzure + 1, 8.);
+      Mark(parts[8], 6133., "U K_{#alpha2}", kViolet, 4.);
+      Mark(parts[8], 6420., "U K_{#alpha1}", kViolet, 4.);
+      Mark(parts[7], 6103.6, "Th K_{#alpha2}", kAzure + 1, 40.);
+      Mark(parts[7], 6367.7, "Th K_{#alpha1}", kAzure + 1, 40.);
     }
     Save(c, out + (kRegion ? "/trace_k_region" : "/trace_u_th_region"));
   }

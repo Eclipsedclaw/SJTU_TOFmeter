@@ -1118,7 +1118,9 @@ def box_faces(cx, cy, cz, sx, sy, sz):
 def plot_tracks_3d(c, frames=72, fps=12):
     """Every track in 3D: its fitted straight line and the hit point of each layer it was fitted through
     (the points the track fit used: as measured, as in the hit maps, unless the setup's [tracks] points =
-    "inside"), over the paddles and their readout ends.
+    "inside"), over the paddles and their readout ends. The tracks with a hit beyond a paddle's end (not
+    possible for a real muon: the resolution put the hit there) are drawn lighter than the others, in a pale
+    colour under them: visible where they run alone, never the eye-catcher.
     tracks_3d.png (300 dpi, for slides) and tracks_3d.gif (the view turning once around the vertical)."""
     from matplotlib import animation
     from matplotlib.colors import to_rgba
@@ -1137,11 +1139,17 @@ def plot_tracks_3d(c, frames=72, fps=12):
     if np.isfinite(hits).any():                                      # measured points can lie beyond the ends
         reach = max(reach, float(np.nanmax(np.abs(hits))) + 1.0)
     z_lo, z_hi = layers[0].z - 8.0, layers[-1].z + 8.0
-    a_x, b_x, a_y, b_y, z0 = (T[k][ok] for k in ("ax", "bx", "ay", "by", "z0"))
+    beyond = np.zeros(n, dtype=bool)                                 # tracks with a hit beyond its paddle's end
+    for L in s.layers:
+        k = T[f"paddle_{L.name}"][ok].astype(int)
+        half = np.array([0.5 * s.paddles[i].length if i >= 0 else np.inf for i in k])
+        beyond |= np.abs(np.nan_to_num(T[f"u_{L.name}"][ok], nan=0.0)) > half
+    n_out = int(beyond.sum())
 
-    def segments(za, zb):
-        """The tracks between the heights za < zb, cut to the drawn volume |x|, |y| <= reach."""
-        lo, hi = np.full(n, za), np.full(n, zb)
+    def segments(za, zb, sel):
+        """The tracks sel between the heights za < zb, cut to the drawn volume |x|, |y| <= reach."""
+        a_x, b_x, a_y, b_y, z0 = (v[sel] for v in (T["ax"][ok], T["bx"][ok], T["ay"][ok], T["by"][ok], T["z0"][ok]))
+        lo, hi = np.full(len(z0), za), np.full(len(z0), zb)
         for a, b in ((a_x, b_x), (a_y, b_y)):
             with np.errstate(divide="ignore", invalid="ignore"):
                 t1, t2 = z0 + (-reach - a) / b, z0 + (reach - a) / b
@@ -1156,12 +1164,19 @@ def plot_tracks_3d(c, frames=72, fps=12):
     fig = plt.figure(figsize=(7.2, 6.6))
     ax = fig.add_axes([0.0, 0.02, 1.0, 0.88], projection="3d", computed_zorder=False)
     # light lines, the more transparent the more tracks: where many overlap the bundle darkens
-    lines = dict(colors=INK2, linewidths=0.4, alpha=float(np.clip(3.0 / math.sqrt(n), 0.03, 0.5)))
+    alpha = float(np.clip(5.0 / math.sqrt(n), 0.05, 0.5))
+    lines = dict(colors=INK2, linewidths=0.4, alpha=alpha)
+    # the tracks with a hit beyond a paddle's end: the third palette colour mixed half with the background, at
+    # 2.4 x the alpha, so each line is lighter than a normal one (run 59: L* 94 against 93; background 99)
+    out_col = to_rgba(tuple(0.5 * a + 0.5 * b for a, b in zip(to_rgba(CATEGORICAL[2])[:3], to_rgba(SURFACE)[:3])))
+    out_lines = dict(colors=out_col, linewidths=0.4, alpha=min(2.4 * alpha, 0.6))
     # drawn from the bottom up: what is higher is nearer to a camera above the setup
     heights = [z_lo] + [L.z for L in layers] + [z_hi]
     order = 1
     for i, (za, zb) in enumerate(zip(heights[:-1], heights[1:])):
-        ax.add_collection3d(Line3DCollection(segments(za, zb), zorder=order, **lines))
+        if n_out:                                                    # under the others in the same height range
+            ax.add_collection3d(Line3DCollection(segments(za, zb, beyond), zorder=order, **out_lines))
+        ax.add_collection3d(Line3DCollection(segments(za, zb, ~beyond), zorder=order, **lines))
         order += 1
         if i == len(layers):
             break
@@ -1200,6 +1215,8 @@ def plot_tracks_3d(c, frames=72, fps=12):
                              "across it on the paddle's centre line"),
              ha="left", va="top", fontsize=7.5, color=INK2, linespacing=1.4)
     handles = [Line2D([], [], color=INK2, lw=0.9, alpha=0.8, label="fitted tracks")] + \
+        ([Line2D([], [], color=out_col, lw=1.4, label=f"tracks with a hit beyond a paddle end ({n_out})")]
+         if n_out else []) + \
         [Line2D([], [], ls="none", marker="o", ms=4, color=mc.layer_color(L.index), label=f"{L.name} layer hit points")
          for L in reversed(layers)] + \
         [Line2D([], [], ls="none", marker="s", ms=6, mfc=to_rgba(MUTED, 0.55), mec=INK2, mew=0.5, label="readout ends")]

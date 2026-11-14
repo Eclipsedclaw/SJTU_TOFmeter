@@ -27,6 +27,8 @@ Plots (plots/<name>.png):
     coincidences_<a>_<b>   events per paddle pair, measured and expected
     rates_vs_time          hit rate per layer and coincidence rate over the run
     hitmap_<layer>         where the tracks cross each layer (top view)
+    tracks_3d              every track in 3D: its fitted line and the hit points it went through, over the
+                           paddles (PNG at 300 dpi, and tracks_3d.gif: the view turning once around)
     zenith, azimuth        track angles against the toy expectation
     tof_residual           measured time of flight minus s / c (no time offsets applied)
     beta                   beta of the tracks over its whole range, shaded where no particle going
@@ -1104,6 +1106,106 @@ def plot_hitmap(c, layer):
     c.save(fig, f"hitmap_{layer.name}")
 
 
+def box_faces(cx, cy, cz, sx, sy, sz):
+    """The six faces of a box (centre, sizes) for a Poly3DCollection."""
+    xs, ys, zs = (cx - sx / 2, cx + sx / 2), (cy - sy / 2, cy + sy / 2), (cz - sz / 2, cz + sz / 2)
+    k = [(xs[i], ys[j], zs[m]) for i in (0, 1) for j in (0, 1) for m in (0, 1)]      # index 4i + 2j + m
+    return [[k[a] for a in f] for f in ((0, 1, 3, 2), (4, 5, 7, 6), (0, 1, 5, 4), (2, 3, 7, 6), (0, 2, 6, 4),
+                                        (1, 3, 7, 5))]
+
+
+def plot_tracks_3d(c, frames=72, fps=12):
+    """Every track in 3D: its fitted straight line and the hit point of each layer it was fitted through
+    (the points the track fit used, inside the paddles), over the paddles and their readout ends.
+    tracks_3d.png (300 dpi, for slides) and tracks_3d.gif (the view turning once around the vertical)."""
+    from matplotlib import animation
+    from matplotlib.colors import to_rgba
+    from matplotlib.lines import Line2D
+    from matplotlib.ticker import MultipleLocator
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
+    s, T = c.setup, c.Tr
+    ok = np.isfinite(T["ax"]) & np.isfinite(T["bx"]) & np.isfinite(T["ay"]) & np.isfinite(T["by"])
+    n = int(ok.sum())
+    if not n:
+        return
+    readout = 2.0                                                    # cm, as on the event pages
+    layers = sorted(s.layers, key=lambda L: L.z)                     # bottom first
+    reach = max(max(abs(p.x) + 0.5 * p.size_x, abs(p.y) + 0.5 * p.size_y) for p in s.paddles) + readout + 6.0
+    z_lo, z_hi = layers[0].z - 8.0, layers[-1].z + 8.0
+    a_x, b_x, a_y, b_y, z0 = (T[k][ok] for k in ("ax", "bx", "ay", "by", "z0"))
+
+    def segments(za, zb):
+        """The tracks between the heights za < zb, cut to the drawn volume |x|, |y| <= reach."""
+        lo, hi = np.full(n, za), np.full(n, zb)
+        for a, b in ((a_x, b_x), (a_y, b_y)):
+            with np.errstate(divide="ignore", invalid="ignore"):
+                t1, t2 = z0 + (-reach - a) / b, z0 + (reach - a) / b
+            steep = np.abs(b) < 1e-9
+            lo = np.maximum(lo, np.where(steep, -np.inf, np.minimum(t1, t2)))
+            hi = np.minimum(hi, np.where(steep, np.inf, np.maximum(t1, t2)))
+        k = hi > lo
+        ends = [np.stack([a_x[k] + b_x[k] * (zz - z0[k]), a_y[k] + b_y[k] * (zz - z0[k]), zz], axis=1)
+                for zz in (lo[k], hi[k])]
+        return np.stack(ends, axis=1)
+
+    fig = plt.figure(figsize=(7.2, 6.6))
+    ax = fig.add_axes([0.0, 0.02, 1.0, 0.88], projection="3d", computed_zorder=False)
+    # light lines, the more transparent the more tracks: where many overlap the bundle darkens
+    lines = dict(colors=INK2, linewidths=0.4, alpha=float(np.clip(3.0 / math.sqrt(n), 0.03, 0.5)))
+    # drawn from the bottom up: what is higher is nearer to a camera above the setup
+    heights = [z_lo] + [L.z for L in layers] + [z_hi]
+    order = 1
+    for i, (za, zb) in enumerate(zip(heights[:-1], heights[1:])):
+        ax.add_collection3d(Line3DCollection(segments(za, zb), zorder=order, **lines))
+        order += 1
+        if i == len(layers):
+            break
+        L = layers[i]
+        col = mc.layer_color(L.index)
+        for p in L.paddles:
+            ax.add_collection3d(Poly3DCollection(box_faces(p.x, p.y, p.z, p.size_x, p.size_y, p.thickness),
+                                                 facecolor=to_rgba(col, 0.16), edgecolor=to_rgba(col, 0.9),
+                                                 linewidths=0.6, zorder=order))
+            for sign in (1, -1):                                     # the readout at both ends
+                off = sign * (0.5 * p.length + 0.5 * readout)
+                cx, cy = (p.x + off, p.y) if p.axis == "x" else (p.x, p.y + off)
+                sx, sy = (readout, p.width) if p.axis == "x" else (p.width, readout)
+                ax.add_collection3d(Poly3DCollection(box_faces(cx, cy, p.z, sx, sy, p.thickness),
+                                                     facecolor=to_rgba(MUTED, 0.55), edgecolor=to_rgba(INK2, 0.8),
+                                                     linewidths=0.5, zorder=order))
+        x, y, z = (T[f"{q}_{L.name}"][ok] for q in ("x", "y", "z"))
+        m = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        ax.scatter(x[m], y[m], z[m], s=4, color=col, alpha=0.7, linewidths=0, depthshade=False, zorder=order + 1)
+        order += 2
+    ax.set_xlim(-reach, reach)
+    ax.set_ylim(-reach, reach)
+    ax.set_zlim(z_lo, z_hi)
+    ax.set_box_aspect((2 * reach, 2 * reach, z_hi - z_lo), zoom=1.02)     # true proportions
+    for axis, name in ((ax.xaxis, "x"), (ax.yaxis, "y"), (ax.zaxis, "z")):
+        axis.set_pane_color(to_rgba(SURFACE, 0.0))
+        axis.set_label_text(f"{name} (cm)", color=INK2, fontsize=8)
+        axis.set_major_locator(MultipleLocator(10))
+    ax.tick_params(labelsize=7, colors=INK2, pad=1)
+    ax.view_init(elev=22, azim=-58)
+    fig.text(0.04, 0.975, f"All {n} tracks of {c.short}", ha="left", va="top", fontsize=11, color=INK)
+    fig.text(0.04, 0.937, "each line: a track's straight-line fit; each dot: a hit point it went through\n"
+                          "(along the paddle from the timing, across it on the paddle's centre line)",
+             ha="left", va="top", fontsize=7.5, color=INK2, linespacing=1.4)
+    handles = [Line2D([], [], color=INK2, lw=0.9, alpha=0.8, label="fitted tracks")] + \
+        [Line2D([], [], ls="none", marker="o", ms=4, color=mc.layer_color(L.index), label=f"{L.name} layer hit points")
+         for L in reversed(layers)] + \
+        [Line2D([], [], ls="none", marker="s", ms=6, mfc=to_rgba(MUTED, 0.55), mec=INK2, mew=0.5, label="readout ends")]
+    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.985, 0.875), fontsize=7.5, frameon=False)
+    fig.text(0.01, 0.008, c.footer, ha="left", va="bottom", fontsize=6.5, color=MUTED)
+    png, gif = (os.path.join(c.plots, f"tracks_3d.{x}") for x in ("png", "gif"))
+    fig.savefig(png, dpi=300, bbox_inches="tight")
+    anim = animation.FuncAnimation(fig, lambda k: ax.view_init(elev=22, azim=-58 + 360.0 * k / frames),
+                                   frames=frames, blit=False)
+    anim.save(gif, writer=animation.PillowWriter(fps=fps), dpi=150)
+    plt.close(fig)
+    c.made += [png, gif]
+
+
 def plot_angle(c, key, name, unit_range, step_small, step_large):
     ok = np.isfinite(c.Tr[key])
     vals = c.Tr[key][ok]
@@ -1568,7 +1670,7 @@ def run(folder, setup_path=None):
     if c.has_tracks and len(c.Tr["event"]):
         for layer in s.layers:
             jobs.append((f"{layer.name} hit map", lambda layer=layer: plot_hitmap(c, layer)))
-        jobs += [("zenith", lambda: plot_zenith(c)), ("azimuth", lambda: plot_azimuth(c)),
+        jobs += [("3D tracks", lambda: plot_tracks_3d(c)), ("zenith", lambda: plot_zenith(c)), ("azimuth", lambda: plot_azimuth(c)),
                  ("time of flight", lambda: plot_tof(c)), ("beta", lambda: plot_beta(c)),
                  ("energy (simulation)", lambda: sim_mpv(c)), ("energy deposit", lambda: plot_energy_deposit(c)),
                  ("energy simulation", lambda: plot_energy_sim(c)), ("signal vs path", lambda: plot_signal_vs_path(c))]

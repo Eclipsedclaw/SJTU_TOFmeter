@@ -63,6 +63,10 @@ Every box has an ID (1a, 3d, ...): name it to ask for a change, e.g. "in 3a, fit
 Cylinders are input files; dotted arrows bring in a part of the setup file or the run's `.conf`.
 (GitHub draws the diagram; in VS Code it needs a Mermaid extension, e.g. "Markdown Preview Mermaid Support".)
 
+**For a slide:** [docs/pipeline.png](docs/pipeline.png) (also [.svg](docs/pipeline.svg) and [.pdf](docs/pipeline.pdf),
+16:9) shows the same boxes and IDs with short labels, drawn by [docs/pipeline_diagram.py](docs/pipeline_diagram.py)
+(matplotlib only: `python3 docs/pipeline_diagram.py`). When a box changes, change it in both places.
+
 ```mermaid
 flowchart TB
     raw[("raw ROOT file<br/>one tree per channel, 2 ns samples")]
@@ -132,6 +136,7 @@ flowchart TB
     setup -.->|paddles, events section| S2
     setup -.->|calibration section| S3
     setup -.->|tracks and flux sections, geometry| S4
+    setup -.->|geometry| S5
     setup -.->|display section| S6
 ```
 

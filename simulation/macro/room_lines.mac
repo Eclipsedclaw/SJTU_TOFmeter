@@ -1,0 +1,38 @@
+### Room background of the steel study, the walls' and ceiling's share through the lead, one job (2026-11-20; run
+### locally, an estimate). The setup of macro/room_decay.mac (the beam run's, with the 30 cm concrete floor). Photons
+### of one energy rmEnergy (keV), a strong uncollided gamma line of the room's concrete (K-40 1460.8, Bi-214 1120.3 and
+### 1764.5, Tl-208 2614.5 keV), start on a sphere of 95 cm radius around the lead castle (centre 0 0 50.5 cm; the
+### castle's corners are 92.7 cm from it) and go inward with a cosine law: inside the sphere that is an isotropic
+### field, the room's field from every direction above the floor (the sphere's points in the floor are refused by
+### /gps/pos/confine WorldPhys). Every such photon has to cross 10 cm of lead (the castle's only opening is its
+### bottom, on the floor). Only events with energy in the panel are written (/EventFilter 7).
+### The job macro sets the aliases bmSeed, bmEvents, bmDir, bmFile, bmPanel, bmPanelZ and rmEnergy, the target's
+### /tof/target/composition and density, then executes this.
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 1 cm
+/tof/target/position 0 0 33.0 cm
+/control/execute macro/panel_{bmPanel}.mac
+/tof/czt/position 0 0 {bmPanelZ} cm
+/tof/blocks/add Floor G4_CONCRETE 0 0 -15 420 420 30 cm
+/update
+/OutputFormat 1
+/EventFilter 7
+/OutputDirectory {bmDir}
+/OutputFile {bmFile}
+/gun/seed {bmSeed}
+/GeneralParticleSource 1
+/gps/particle gamma
+/gps/pos/type Surface
+/gps/pos/shape Sphere
+/gps/pos/centre 0 0 50.5 cm
+/gps/pos/radius 95 cm
+/gps/pos/confine WorldPhys
+/gps/ang/type cos
+/gps/ene/type Mono
+/gps/ene/mono {rmEnergy} keV
+/process/em/auger false
+/process/em/augerCascade false
+/run/verbose 1
+/run/printProgress 1000000
+/run/beamOn {bmEvents}

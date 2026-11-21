@@ -5,6 +5,8 @@
 # in the build directory (the job's initialdir; the cluster's filesystem is shared, so nothing is transferred).
 #   band beam:  mu- of the beam into the steel plate on the pixel panel (macro/beam_steel_lyso.mac)
 #   band decay: one natural radioactivity of the plate, a nuclide with its whole chain (macro/beam_steel_decay.mac)
+# It runs any band's job macro the same way, so condor/room_background_submit.sh (2026-11-20, the room background:
+# bands floor, radon, cosmic) uses it too.
 # The environment is the submitting shell's (getenv), with the setup file sourced on top if given. TOFmeter's output goes
 # to <dir>/<band>/log/job<k>.log. A process that ran to its end leaves <dir>/<band>/log/job<k>.done and is not run again.
 # Its end means the log's "Number of events processed : <events>" and a non-empty output <dir>/<band>/<file>.root, with

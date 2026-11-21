@@ -1,0 +1,41 @@
+### Room background of the steel study, cosmic rays, one job (2026-11-20; condor/room_background_submit.sh, band
+### cosmic). The setup of macro/room_decay.mac (the beam run's, with the 30 cm concrete floor): every cosmic-ray species
+### of the EXPACS table at sea level (data/expacs_spectrum.txt: neutrons, protons, He, mu+-, e+-, photons, ions; open
+### sky, no building above) from a 2 x 2 m plane at 105 cm, just above the lead roof (91-101 cm), downward within 80 deg
+### of the vertical: muons with the zenith shape of Guan et al., the others cos^2 (as macro/cosmic_expacs.mac).
+### Thermal neutrons need more than the physics list's 10 us neutron time cut to reach the panel. The run tree's
+### live_time is the time the events stand for. Only events with energy in the panel are written (/EventFilter 7).
+### The job macro sets the aliases bmSeed, bmEvents, bmDir, bmFile, bmPanel and bmPanelZ, the target's
+### /tof/target/composition and density, then executes this. Needs TOFmeter --preinit macro/preinit_lyso.mac (as the
+### decays: radioactive decay and fluorescence, so the cosmic rays' activation decays too).
+/tof/det/worldSize 420 420 300 cm
+/tof/det/stack false
+/tof/target/size 20 20 1 cm
+/tof/target/position 0 0 33.0 cm
+/control/execute macro/panel_{bmPanel}.mac
+/tof/czt/position 0 0 {bmPanelZ} cm
+/tof/blocks/add Floor G4_CONCRETE 0 0 -15 420 420 30 cm
+/update
+/OutputFormat 1
+/EventFilter 7
+/OutputDirectory {bmDir}
+/OutputFile {bmFile}
+/gun/seed {bmSeed}
+/physics_engine/neutron/timeLimit 10 ms
+/GeneralParticleSource 2
+/tof/cosmic/model expacs
+/tof/cosmic/species all
+/tof/cosmic/angular all 2 mu+ guan mu- guan
+/tof/cosmic/planeCenter 0 0 105 cm
+/tof/cosmic/halfX 100 cm
+/tof/cosmic/halfY 100 cm
+/tof/cosmic/thetaMax 80 deg
+/tof/cosmic/energyMin 0 GeV
+/tof/cosmic/energyMax 1000 GeV
+# Auger electrons off, as in the beam and decay jobs; fluorescence stays on
+/process/em/auger false
+/process/em/augerCascade false
+# verbose 1: the log ends with "Number of events processed : <bmEvents>", which the job script looks for
+/run/verbose 1
+/run/printProgress 100000
+/run/beamOn {bmEvents}

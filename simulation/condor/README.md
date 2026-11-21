@@ -15,6 +15,7 @@ place fit together process by process.
 | `muonic_xray_czt_status.sh` | Progress of a folder's jobs: bars overall, per band and per running job; exposure, failed jobs, time left. |
 | `beam_xray_submit.sh`, `beam_xray_job.sh`, `beam_xray_check.sh` | (2026-11-07) The same three for the beam study of Al in Si (`macro/beam_xray_lyso.mac`): a mu- beam into the target on the LYSO panel. See "The beam study" below. |
 | `beam_steel_submit.sh`, `beam_steel_job.sh`, `beam_steel_check.sh` | (2026-11-10) The same three for the steel study with U, Th and K: a mu- beam into a 1 cm steel plate on the CZT plane (band `beam`, `macro/beam_steel_lyso.mac`) and the plate's natural radioactivity (band `decay`, `macro/beam_steel_decay.mac`). See "The steel study" below. |
+| `room_background_submit.sh`, `room_background_check.sh` | (2026-11-20) The steel study's room background, in the beam run's setup on a 30 cm concrete floor: the floor's natural decays (band `floor`), radon in the lead castle's air (`radon`) and sea-level cosmic rays (`cosmic`); the jobs run `beam_steel_job.sh`. See "The steel study's room background" below. |
 
 CMake copies this folder's scripts (`*.sh`, `*.C`) into the build directory (`<build>/condor/`); run `cmake` again
 after changing a file here.
@@ -263,6 +264,42 @@ sh condor/beam_steel_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/
   `root -l -b -q 'analysis/beam_steel_trace_spectrum.C("output/czt/beam_steel_czt_trace")'`.
   Then the peaks, named and fitted (from the ROOT file that macro writes, in seconds):
   `root -l -b -q 'analysis/beam_steel_peak_fit.C("output/czt/beam_steel_czt_trace")'`.
+
+## The steel study's room background (`room_background_*.sh`, 2026-11-20)
+
+For the TOF-trigger ON/OFF subtraction at 50 ppm U, Th and K (`analysis/beam_steel_onoff.C`): the room's background in
+the setup the steel beam run had (the plate on the CZT plane inside TOFmeter's default setup: a 10 cm lead roof and four
+10 cm lead walls, open at the bottom), now standing on a 30 cm concrete floor (`G4_CONCRETE`, -30..0 cm), with
+`--preinit macro/preinit_lyso.mac`. Three bands, one folder, a fixed table of 127 processes (`<band>/log/plan.txt`):
+- `floor` (98 processes, seeds 11100000 + k, `macro/room_decay.mac`): U-238, Th-232, K-40 and U-235, each nucleus with its
+  whole chain, in five regions of the floor: `inner` (x and y within +-55 cm, under the castle) and the ring around it out
+  to +-100 cm (`px`, `nx`, `py`, `ny`). At the analysis's default activities (K-40 400, U-238 40, Th-232 30 Bq/kg) that is
+  ~0.1 day of the inner region and ~0.02 day of the ring.
+- `radon` (4 processes of 8 x 10^5, seeds 11200000 + k): Rn-222 with its short-lived daughters in the castle's air, ~1 day
+  at 50 Bq/m3.
+- `cosmic` (25 processes of 3.25 x 10^6, seeds 11300000 + k, `macro/room_cosmic.mac`): every EXPACS species at sea level,
+  0.25 day.
+- Speed (local test 2026-11-20, Geant4 11.2.2): U-238 and Th-232 chains ~2040 /s, K-40 ~25000 /s, radon ~140 /s, cosmic
+  rays ~450 /s: ~1.6-2 h per job, ~210 core-hours in all. Memory ~150-570 MB per job.
+- Folder `output/beam_steel_czt_room` (with `--storage`, under `<path>/output/`).
+
+```sh
+cd <build>
+sh condor/room_background_submit.sh --test --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup ~/tof_setup_c7.sh --os-major 7    # 6 jobs of 2e4 events
+sh condor/room_background_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/beam_steel_czt_room_condor_test
+sh condor/room_background_submit.sh --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup ~/tof_setup_c7.sh --os-major 7    # the 127 jobs
+sh condor/room_background_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/beam_steel_czt_room
+```
+
+- New macros only (no new code), so after bringing the sources over, `cmake .` in the build directory is enough.
+- The check script follows the rules of the others, per band (exit code 0, a non-empty `<band>/<band>_<k>.root`, the
+  log's end without an error) and lists what each job simulates with `--all`. It is read-only; the submit command it
+  prints submits every process without a `.done` marker.
+- To analyse, sync the folder into the work folder's `output/czt/`, then (the walls' estimate runs locally with
+  `macro/room_lines.mac` into `output/czt/beam_steel_czt_room_walls/lines`):
+  `root -l -b -q 'analysis/room_background_spectrum.C("output/czt/beam_steel_czt_room", "", "output/czt/beam_steel_czt_room_walls/lines")'`
+  and then
+  `root -l -b -q 'analysis/beam_steel_onoff.C("output/czt/beam_steel_czt_trace/analysis_50ppm/beam_steel_trace_spectrum.root", "output/czt/beam_steel_czt_room/analysis/room_background_spectrum.root")'`.
 
 ## Following the jobs
 

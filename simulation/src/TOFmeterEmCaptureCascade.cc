@@ -45,6 +45,7 @@
 //  - November 2026: measured K_alpha and L_alpha energies for Cr, Fe, Ni as an option
 //    (SetMeasuredEnergies, /tof/physics/muonXrayEnergies measured); the default is unchanged.
 //    2026-11-10: also C, N, Si, P, S, K, Mn, Mo, Th, U, with their fine-structure lines and Dirac levels from n = 3.
+//    2026-11-23: every other element from H to Mo too (the muonic X-ray library; scripts/muonic_lines.py --cpp).
 //
 //-----------------------------------------------------------------------------
 
@@ -124,7 +125,7 @@ struct MuFPChannel {
 
 // The emitted energies (/tof/physics/muonXrayEnergies): false (default) the pure hydrogenic (point-nucleus) levels
 // for every element; true, for the elements of kMeasuredLines (2026-11-09 Cr, Fe, Ni; 2026-11-10 the steel study's
-// C, N, Si, P, S, K, Mn, Mo, Th, U):
+// C, N, Si, P, S, K, Mn, Mo, Th, U; 2026-11-23 every other element from H to Mo, for the muonic X-ray library):
 //   - the levels from n = 3 up from the Dirac equation of a point nucleus with the reduced mass (the circular orbit's
 //     j = n - 1/2 and n - 3/2, averaged with 2j + 1), times 1.0047 for the vacuum polarisation (Fe's 3d5/2 -> 2p3/2;
 //     it gives 208Pb's 4f -> 3d at 938.1 and 973.7 keV, measured 938.0 and 971.9, and 238U's 5g -> 4f at 544.3 keV,
@@ -149,6 +150,12 @@ G4bool gMeasuredEnergies = false;
 // anchors come back within 1-7 keV (K lines) and 0.1-3 keV (L lines) where neighbours are close. Th's and U's L lines
 // from the 2p levels' nuclear-size shifts that the K_alpha splitting gives (calibrated on 208Pb's L lines), +-1-2%;
 // their M lines from the Dirac levels. Cr was 1090.0 keV (one value) until 2026-11-10.
+// The rows marked 2026-11-23 (scripts/muonic_lines.py --cpp): measured where marked (Measday Table 3.4: O, Na, Al, Cl,
+// Ca, Y); the others the point-nucleus Dirac lines times the ratio measured/point through the four nearest anchors
+// (Lagrange in Z of log(1 - ratio)): left-out anchors come back within 0.5 keV up to Ca and within 1.3, 3.5, 5.1 and
+// 3.1 keV for Fe, Ni, Y, Mo (K lines), 0.13 keV (L lines); H to B the point-nucleus lines (within 0.02%). The rows of
+// 2026-11-10 stay as they were, so that the steel runs remain comparable: by the four-anchor ratio they would be
+// P -0.6, S -1.3, Cr -3.2, Mn -2.4 keV lower (K lines).
 struct MeasuredLineSet {
   G4int z;
   G4double ka[2];   // 2p3/2 -> 1s, 2p1/2 -> 1s
@@ -156,16 +163,47 @@ struct MeasuredLineSet {
   G4double ma[3];   // 4f7/2 -> 3d5/2, 4f5/2 -> 3d3/2, 4f5/2 -> 3d5/2 (0: from the levels, one line)
 };
 const MeasuredLineSet kMeasuredLines[] = {
+  { 1, {   1.90,    1.90}, {   0.35,    0.35,    0.35}, {}},                         // H (2026-11-23, point Dirac)
+  { 2, {   8.21,    8.21}, {   1.52,    1.52,    1.52}, {}},                         // He (2026-11-23, point Dirac)
+  { 3, {  18.69,   18.69}, {   3.46,    3.46,    3.46}, {}},                         // Li (2026-11-23, point Dirac)
+  { 4, {  33.35,   33.35}, {   6.18,    6.18,    6.18}, {}},                         // Be (2026-11-23, point Dirac)
+  { 5, {  52.22,   52.21}, {   9.68,    9.69,    9.68}, {}},                         // B (2026-11-23, point Dirac)
   { 6, {  75.26,   75.25}, {  13.96,   13.97,   13.96}, {}},                         // C
   { 7, { 102.41,  102.39}, {  19.03,   19.05,   19.03}, {}},                         // N
+  { 8, { 133.55,  133.51}, {  24.90,   24.94,   24.90}, {}},                         // O (2026-11-23, K, L measured)
+  { 9, { 168.60,  168.54}, {  31.56,   31.62,   31.56}, {}},                         // F (2026-11-23)
+  {10, { 207.43,  207.34}, {  38.99,   39.08,   38.98}, {}},                         // Ne (2026-11-23)
+  {11, { 250.27,  250.14}, {  47.22,   47.35,   47.21}, {}},                         // Na (2026-11-23, K measured)
+  {12, { 296.73,  296.54}, {  56.23,   56.40,   56.21}, {}},                         // Mg (2026-11-23)
+  {13, { 346.91,  346.65}, {  66.03,   66.27,   66.00}, {}},                         // Al (2026-11-23, K measured)
   {14, { 400.29,  399.94}, {  76.61,   76.93,   76.57}, {}},                         // Si
   {15, { 457.49,  457.03}, {  88.00,   88.43,   87.95}, {}},                         // P
   {16, { 517.63,  517.04}, { 100.17,  100.72,  100.11}, {}},                         // S
+  {17, { 578.85,  578.10}, { 113.16,  113.86,  113.08}, {}},                         // Cl (2026-11-23, K measured)
+  {18, { 644.65,  643.73}, { 126.95,  127.83,  126.85}, {}},                         // Ar (2026-11-23)
   {19, { 713.07,  711.92}, { 141.48,  142.57,  141.36}, {}},                         // K
+  {20, { 784.15,  782.70}, { 156.83,  158.17,  156.68}, {}},                         // Ca (2026-11-23, K, L measured)
+  {21, { 857.79,  856.00}, { 173.01,  174.63,  172.83}, {}},                         // Sc (2026-11-23)
+  {22, { 933.56,  931.39}, { 189.96,  191.91,  189.75}, {}},                         // Ti (2026-11-23)
+  {23, {1011.44, 1008.85}, { 207.72,  210.02,  207.46}, {}},                         // V (2026-11-23)
   {24, {1094.46, 1091.45}, { 226.23,  228.93,  225.92}, {}},                         // Cr
   {25, {1175.60, 1172.06}, { 245.57,  248.74,  245.21}, {}},                         // Mn
   {26, {1257.19, 1253.06}, { 265.30,  268.90,  264.87}, {}},                         // Fe
+  {27, {1343.59, 1338.81}, { 286.64,  290.91,  286.14}, {}},                         // Co (2026-11-23)
   {28, {1431.83, 1426.31}, { 308.23,  313.04,  307.66}, {}},                         // Ni
+  {29, {1521.10, 1514.78}, { 330.88,  336.51,  330.22}, {}},                         // Cu (2026-11-23)
+  {30, {1611.17, 1603.96}, { 354.19,  360.59,  353.43}, {}},                         // Zn (2026-11-23)
+  {31, {1702.09, 1693.90}, { 378.31,  385.56,  377.45}, {}},                         // Ga (2026-11-23)
+  {32, {1793.50, 1784.25}, { 403.21,  411.38,  402.23}, {}},                         // Ge (2026-11-23)
+  {33, {1885.29, 1874.89}, { 428.89,  438.07,  427.78}, {}},                         // As (2026-11-23)
+  {34, {1977.42, 1965.78}, { 455.38,  465.64,  454.12}, {}},                         // Se (2026-11-23)
+  {35, {2069.59, 2056.61}, { 482.62,  494.05,  481.21}, {}},                         // Br (2026-11-23)
+  {36, {2161.97, 2147.55}, { 510.67,  523.35,  509.09}, {}},                         // Kr (2026-11-23)
+  {37, {2254.33, 2238.39}, { 539.47,  553.50,  537.71}, {}},                         // Rb (2026-11-23)
+  {38, {2346.80, 2329.22}, { 569.05,  584.52,  567.10}, {}},                         // Sr (2026-11-23)
+  {39, {2439.40, 2420.10}, { 599.40,  616.40,  597.23}, {}},                         // Y (2026-11-23, K, L measured)
+  {40, {2532.95, 2511.83}, { 630.51,  649.12,  628.10}, {}},                         // Zr (2026-11-23)
+  {41, {2626.49, 2603.45}, { 662.37,  682.69,  659.72}, {}},                         // Nb (2026-11-23)
   {42, {2720.05, 2694.97}, { 694.36,  718.37,  691.44}, {}},                         // Mo
   {90, {6367.65, 6103.60}, {2949.06, 3148.50, 2883.54}, {1133.82, 1186.38, 1120.51}},  // Th
   {92, {6420.00, 6133.00}, {3060.37, 3275.56, 2988.56}, {1185.82, 1243.45, 1171.27}},  // U

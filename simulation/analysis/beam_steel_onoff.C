@@ -28,13 +28,16 @@
 //   onoff_off_spectrum    OFF by part: the beam, the plate's natural U, Th, K, the room's parts
 //   onoff_on_spectrum     ON by part: the muons' own prompt hits (the plate's X-rays, the rest), the accidentals
 //   onoff_subtracted      ON - s OFF with the X-rays of U, Th and K
-//   onoff_residual_k      the simulated day minus the steel's spectrum at K L_alpha 141.8 and K K_alpha 712.7 keV
-//                         (two pads of the same day)
-//   onoff_residual_u_th   the same at U 295.4 / Th 282.6 keV and at the K_alpha lines of U and Th, 6.0-6.5 MeV
+//   onoff_residual_k_lalpha, _k_kalpha, _u_th_6to5, _u_th_kalpha (2026-11-21: one line region per plot, cleaned up)
+//                         the simulated day minus the steel's own spectrum (points) against the expected X-rays of U,
+//                         Th and K (stacked) at K L_alpha 141.8, K K_alpha 712.7, Th 282.6 + U 295.4 keV (n = 6 -> 5)
+//                         and the K_alpha lines of Th and U near 6.4 MeV; bins of about one resolution sigma
 //   onoff_lines           every U, Th, K line: z per day and S/B in the three spectra (two pads)
 // Only reads the two files; writes into outDir. Run in the work folder:
 //   root -l -b -q 'analysis/beam_steel_onoff.C("output/czt/beam_steel_czt_trace/analysis_50ppm/beam_steel_trace_spectrum.root", "output/czt/beam_steel_czt_room/analysis/room_background_spectrum.root")'
+#include <TBox.h>
 #include <TCanvas.h>
+#include <TColor.h>
 #include <TFile.h>
 #include <TGraph.h>
 #include <TH1D.h>
@@ -447,79 +450,100 @@ void beam_steel_onoff(const char* traceFile, const char* roomFile = "", const ch
                                           ppmText.c_str()),
                  sub, parts);
   }
-  // the simulated day around the lines: two pads per plot
-  auto ResidualPad = [&](const std::string& tag, double lo, double hi, int rebin, const std::vector<std::tuple<TH1D*, std::string, int>>& sig,
-                         const std::vector<const XLine*>& marks) {
-    TH1D* r = Clone(resid, tag + "_r", 1., rebin);
-    TH1D* e = Clone(expected, tag + "_e", 1., rebin);
-    TH1D* m = Clone(model, tag + "_m", 1e-3, rebin);   // 0.1% of the steel's spectrum
-    r->GetXaxis()->SetRangeUser(lo, hi);
-    double ymax = 0., ymin = 0.;   // from the day and the expected X-rays (the 0.1% curve may leave the frame)
-    for (int b = r->FindBin(lo); b <= r->FindBin(hi); ++b) {
-      ymax = std::max({ymax, r->GetBinContent(b) + r->GetBinError(b), e->GetBinContent(b)});
-      ymin = std::min(ymin, r->GetBinContent(b) - r->GetBinError(b));
-    }
-    r->SetMaximum(ymin + (ymax - ymin) * 2.1); r->SetMinimum(ymin - 0.05 * (ymax - ymin));
-    r->SetTitle(Form(";energy in one pixel (keV);entries per %g keV in one day", rebin * 0.5));
-    r->SetMarkerStyle(20); r->SetMarkerSize(0.6); r->SetLineColor(kBlack); r->SetMarkerColor(kBlack);
-    r->GetYaxis()->SetTitleOffset(1.25); r->GetYaxis()->SetMaxDigits(3);
-    r->Draw("e1");
-    m->SetLineColor(kGray + 1); m->SetLineStyle(2); m->SetLineWidth(2);
-    m->GetXaxis()->SetRangeUser(lo, hi);
-    m->Draw("hist same");
-    auto leg = new TLegend(0.12, 0.70, 0.97, 0.90);
-    leg->SetNColumns(2); leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextSize(0.035);
-    leg->AddEntry(r, "one day: (ON - s OFF) - the steel's own spectrum", "lep");
-    leg->AddEntry(m, "0.1% of the steel's own spectrum", "l");
-    for (const auto& [h, label, color] : sig) {
-      TH1D* x = Clone(h, tag + "_" + label, 1., rebin);
-      x->GetXaxis()->SetRangeUser(lo, hi);
-      x->SetLineColor(color); x->SetLineWidth(2);
-      x->Draw("hist same");
-      leg->AddEntry(x, (label + " (expected)").c_str(), "l");
-    }
-    r->Draw("e1 same");
-    TLine zero(lo, 0., hi, 0.);
-    zero.SetLineColor(kGray + 2); zero.DrawClone();
-    leg->Draw();
-    TLatex tex;
-    tex.SetNDC(); tex.SetTextSize(0.032); tex.SetTextAlign(13);
-    double y = 0.66;
-    for (const XLine* x : marks) {
-      const double ex = WindowSum(resid, x->lo, x->hi), sg = std::sqrt(WindowSum(var, x->lo, x->hi));
-      tex.DrawLatex(0.14, y, Form("%s %.1f keV: excess %s #pm %s (%.1f#sigma); expected %s (%s's own %s); B %s, S/B %.1e", x->el.c_str(),
-                                  x->e, Sci(ex).c_str(), Sci(sg).c_str(), ex / sg, Sci(WindowSum(expected, x->lo, x->hi)).c_str(), x->el.c_str(),
-                                  Sci(x->S[2]).c_str(), Sci(x->B[2]).c_str(), x->B[2] > 0. ? x->S[2] / x->B[2] : 0.));
-      y -= 0.05;
-    }
-  };
+  // the simulated day around the lines, one plot per file (2026-11-21, cleaned up): the day's ON - s OFF minus the
+  // steel's own spectrum (points: on average the X-rays of U, Th and K alone, plus the day's noise) against those X-rays
+  // (stacked, the plot's own element on top), in bins of about one resolution sigma; the counting windows shaded
   auto Find = [&](const std::string& el, double e) -> const XLine* {
     const XLine* best = nullptr;
     for (const XLine& x : xlines) if (x.el == el && (!best || std::fabs(x.e - e) < std::fabs(best->e - e))) best = &x;
     return best;
   };
-  {
-    auto c = new TCanvas("c_res_k", "", 1100, 1100);
-    c->Divide(1, 2);
-    c->cd(1); gPad->SetLeftMargin(0.11); gPad->SetRightMargin(0.03);
-    ResidualPad("rk1", 120., 165., 2, {{xK, "K muonic X-rays", kOrange + 1}}, {Find("K", 141.8)});
-    TLatex t; t.SetNDC(); t.SetTextSize(0.04); t.SetTextAlign(13);
-    t.DrawLatex(0.11, 0.985, Form("A simulated day, ON - s OFF minus the steel's own spectrum (%s): K L_{#alpha} and K_{#alpha}", ppmText.c_str()));
-    c->cd(2); gPad->SetLeftMargin(0.11); gPad->SetRightMargin(0.03);
-    ResidualPad("rk2", 680., 745., 4, {{xK, "K muonic X-rays", kOrange + 1}}, {Find("K", 712.7)});
-    Save(c, out + "/onoff_residual_k");
-  }
-  {
-    auto c = new TCanvas("c_res_uth", "", 1100, 1100);
-    c->Divide(1, 2);
-    c->cd(1); gPad->SetLeftMargin(0.11); gPad->SetRightMargin(0.03);
-    ResidualPad("ru1", 262., 316., 2, {{xTh, "Th muonic X-rays", kAzure + 1}, {xU, "U muonic X-rays", kViolet}}, {Find("Th", 282.6), Find("U", 295.4)});
-    TLatex t; t.SetNDC(); t.SetTextSize(0.04); t.SetTextAlign(13);
-    t.DrawLatex(0.11, 0.985, Form("A simulated day, ON - s OFF minus the steel's own spectrum (%s): U and Th", ppmText.c_str()));
-    c->cd(2); gPad->SetLeftMargin(0.11); gPad->SetRightMargin(0.03);
-    ResidualPad("ru2", 5980., 6560., 24, {{xTh, "Th muonic X-rays", kAzure + 1}, {xU, "U muonic X-rays", kViolet}}, {Find("Th", 6367.7), Find("U", 6420.)});
-    Save(c, out + "/onoff_residual_u_th");
-  }
+  const std::map<int, std::tuple<TH1D*, std::string, int, int>> xrays = {   // Z: X-rays, element, line and fill colour
+      {19, {xK, "K", kOrange + 1, kOrange - 9}}, {90, {xTh, "Th", kAzure + 1, kAzure - 9}}, {92, {xU, "U", kViolet, kViolet - 9}}};
+  const int windowColor = TColor::GetColor("#e6e6e6");
+  auto ResidualPlot = [&](const std::string& file, const std::string& title, double lo, double hi, int rebin,
+                          const std::vector<int>& order, const std::vector<std::pair<const XLine*, std::string>>& marks) {
+    auto c = new TCanvas(("c_" + file).c_str(), "", 1100, 750);
+    c->SetLeftMargin(0.12); c->SetRightMargin(0.03); c->SetTopMargin(0.07);
+    TH1D* r = Clone(resid, file + "_r", 1., rebin);
+    std::vector<TH1D*> cum;   // the expected X-rays summed from the bottom of the stack up
+    for (int z : order) {
+      const auto& [h0, el, lineColor, fillColor] = xrays.at(z);
+      TH1D* h = Clone(h0, file + "_x" + el, 1., rebin);
+      if (!cum.empty()) h->Add(cum.back());
+      h->SetLineColor(lineColor); h->SetFillColor(fillColor); h->SetLineWidth(2);
+      cum.push_back(h);
+    }
+    double ymax = 0., ymin = 0.;
+    for (int b = r->FindBin(lo + 1e-3); b <= r->FindBin(hi - 1e-3); ++b) {
+      ymax = std::max({ymax, r->GetBinContent(b) + r->GetBinError(b), cum.back()->GetBinContent(b)});
+      ymin = std::min(ymin, r->GetBinContent(b) - r->GetBinError(b));
+    }
+    // headroom: the points stay below the legend and the numbers
+    r->SetMaximum(ymin + (ymax - ymin) / (marks.size() > 1 ? 0.52 : 0.60)); r->SetMinimum(ymin - 0.05 * (ymax - ymin));
+    r->GetXaxis()->SetRangeUser(lo + 1e-3, hi - 1e-3);
+    r->SetTitle(Form(";energy in one CZT pixel (keV);counts per %g keV in one day", rebin * 0.5));
+    r->SetMarkerStyle(20); r->SetMarkerSize(1.0); r->SetLineColor(kBlack); r->SetMarkerColor(kBlack); r->SetLineWidth(2);
+    r->GetYaxis()->SetTitleOffset(1.45); r->GetYaxis()->SetMaxDigits(6);   // plain numbers: no x10^n under the title
+    r->Draw("axis");
+    auto leg = new TLegend(0.14, 0.64, 0.52, 0.91);
+    leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextSize(0.028); leg->SetMargin(0.15);
+    leg->AddEntry(r, "one day minus all backgrounds", "lep");
+    for (int i = int(cum.size()) - 1; i >= 0; --i)
+      leg->AddEntry(cum[i], ("expected: " + std::get<1>(xrays.at(order[i])) + " muonic X-rays").c_str(), "f");
+    for (std::size_t i = 0; i < marks.size(); ++i) {   // the counting windows, behind the rest
+      if (!marks[i].first) continue;
+      auto box = new TBox(marks[i].first->lo, r->GetMinimum(), marks[i].first->hi, r->GetMaximum());
+      box->SetFillColor(windowColor); box->SetFillStyle(1001);
+      box->Draw();
+      if (i == 0) leg->AddEntry(box, "counting window (#pm1.5#sigma)", "f");
+    }
+    for (int i = int(cum.size()) - 1; i >= 0; --i) cum[i]->Draw("hist same");   // the top of the stack first
+    auto zero = new TLine(lo, 0., hi, 0.);
+    zero->SetLineColor(kGray + 2); zero->SetLineStyle(2); zero->SetLineWidth(2); zero->Draw();
+    leg->AddEntry(zero, "zero = no U, Th, K", "l");
+    r->Draw("e1 same");
+    gPad->RedrawAxis();
+    leg->Draw();
+    // TLatex widens a space before a symbol: no space before #times, #kern around #pm (and #rightarrow, Arrow)
+    auto PlusMinus = [](double v, double e) {   // "(8.3 +- 1.3)x10^4", plain numbers below 10^4
+      const double big = std::max(std::fabs(v), e);
+      if (big < 1e4) return std::string(Form("%.0f #kern[-0.8]{#pm} %.0f", v, e));
+      const int p = int(std::floor(std::log10(big)));
+      return std::string(Form("(%.2g #kern[-0.8]{#pm} %.2g)#times10^{%d}", v / std::pow(10., p), e / std::pow(10., p), p));
+    };
+    TLatex tex;
+    tex.SetNDC(); tex.SetTextFont(62); tex.SetTextSize(0.034); tex.SetTextAlign(13);   // 0.032 garbles #kern and subscripts
+    tex.DrawLatex(0.12, 0.982, title.c_str());
+    tex.SetTextFont(42); tex.SetTextSize(0.03);
+    double y = 0.90;
+    std::string factors;
+    for (const auto& [x, name] : marks) {
+      if (!x) continue;
+      const double ex = WindowSum(resid, x->lo, x->hi), sg = std::sqrt(WindowSum(var, x->lo, x->hi)), e = WindowSum(expected, x->lo, x->hi);
+      const double zs = std::fabs(ex / sg) < 0.05 ? 0. : ex / sg;
+      tex.DrawLatex(0.55,y, ("#bf{" + name + "}").c_str());
+      tex.DrawLatex(0.55,y - 0.04, Form("measured %s: %.1f#sigma above zero", PlusMinus(ex, sg).c_str(), zs));
+      tex.DrawLatex(0.55,y - 0.08, Form("expected %s", Sci(e).c_str()));
+      y -= 0.13;
+      if (!factors.empty()) factors += ", ";
+      factors += Form("%.1f#times", e > 0. ? 1e-3 * WindowSum(model, x->lo, x->hi) / e : 0.);
+    }
+    tex.SetTextColor(kGray + 2); tex.SetTextSize(0.027);
+    tex.DrawLatex(0.55,y, "only valid if the steel's spectrum is known exactly:");
+    tex.DrawLatex(0.55,y - 0.037, ("a 0.1% error in it = " + factors + (marks.size() > 1 ? " the expected signals" : " the expected signal")).c_str());
+    Save(c, out + "/" + file);
+  };
+  auto Arrow = [](int a, int b) { return std::string(Form("%d#kern[0.3]{#rightarrow}#kern[0.3]{%d}", a, b)); };
+  const std::string ppmEach = fracU == fracTh && fracTh == fracK ? std::string(Form("U, Th, K %.3g ppm each", 1e6 * fracU)) : ppmText;
+  ResidualPlot("onoff_residual_k_lalpha", "K L_{#alpha} (n = " + Arrow(3, 2) + ") at 141.8 keV: one simulated day, " + ppmEach,
+               120., 166., 4, {92, 90, 19}, {{Find("K", 141.8), "K L_{#alpha}, 141.8 keV"}});
+  ResidualPlot("onoff_residual_k_kalpha", "K K_{#alpha} (n = " + Arrow(2, 1) + ") at 712.7 keV: one simulated day, " + ppmEach,
+               680., 745., 10, {92, 90, 19}, {{Find("K", 712.7), "K K_{#alpha}, 712.7 keV"}});
+  ResidualPlot("onoff_residual_u_th_6to5", "Th 282.6 and U 295.4 keV (n = " + Arrow(6, 5) + "): one simulated day, " + ppmEach,
+               272.5, 310., 5, {19, 90, 92}, {{Find("Th", 282.6), "Th, 282.6 keV"}, {Find("U", 295.4), "U, 295.4 keV"}});
+  ResidualPlot("onoff_residual_u_th_kalpha", "Th and U K_{#alpha} (n = " + Arrow(2, 1) + ") at 6.4 MeV: one simulated day, " + ppmEach,
+               5952., 6608., 32, {19, 90, 92}, {{Find("Th", 6367.7), "Th K_{#alpha}, 6367.7 keV"}, {Find("U", 6420.), "U K_{#alpha}, 6420.0 keV"}});
   // every line: z and S/B in the three spectra
   {
     const int n = xlines.size();
@@ -568,6 +592,6 @@ void beam_steel_onoff(const char* traceFile, const char* roomFile = "", const ch
   std::ofstream(out + "/beam_steel_onoff.txt") << txt.str();
   std::ofstream(out + "/beam_steel_onoff.csv") << csv.str();
   printf("%s", txt.str().c_str());
-  printf("written into %s: beam_steel_onoff.txt, .csv, .root, onoff_off_spectrum, onoff_on_spectrum, onoff_subtracted, onoff_residual_k, "
-         "onoff_residual_u_th, onoff_lines (.png, .pdf)\n", out.c_str());
+  printf("written into %s: beam_steel_onoff.txt, .csv, .root, onoff_off_spectrum, onoff_on_spectrum, onoff_subtracted, onoff_residual_k_lalpha, "
+         "onoff_residual_k_kalpha, onoff_residual_u_th_6to5, onoff_residual_u_th_kalpha, onoff_lines (.png, .pdf)\n", out.c_str());
 }

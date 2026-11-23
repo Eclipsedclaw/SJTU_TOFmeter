@@ -102,8 +102,13 @@ class TOFmeterEventAction : public G4UserEventAction
     // action), and the energy with which they first leave the volume they were born in (stepping action)
     void AddCapturePhoton(const G4Track& track, G4int source);
     void SetCapturePhotonExit(G4int trackID, G4double kinE);
+    // TOFmeter --slim (2026-11-23, the muonic X-ray library): before the event action is made, an events ntuple of the
+    // library's columns only (same names and meaning): eventID, ekin, end_x/y/z, end_ke, end_vol, cap_z, mux_e, mux_src,
+    // czt_pix, czt_src, czt_e, czt_t
+    static void SetSlim(G4bool slim) { fSlim = slim; }
 
   private:
+    static inline G4bool fSlim = false;
     struct BarSum { G4double edep = 0., time = -1., ex = 0., ey = 0., ez = 0.; };
     struct TOFTrack { G4int mask = 0, topBar = -1, midBar = -1; };  // stations crossed, first bars
     struct CapturePhoton {

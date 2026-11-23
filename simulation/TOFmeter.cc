@@ -83,17 +83,29 @@ int main(int argc,char** argv)
   if (!std::getenv("GEANT4_DATA_DIR") && std::strlen(TOF_GEANT4_DATA_DIR) > 0)
     setenv("GEANT4_DATA_DIR", TOF_GEANT4_DATA_DIR, 0);
 
-  // ./TOFmeter --preinit <file.mac> [macro]: commands of file.mac run before the kernel is
-  // initialised, for those Geant4 accepts only then (e.g. /physics_lists/em/MuonToMuons true,
-  // see macro/physics_tridents.mac); the remaining arguments work as without the option
+  // ./TOFmeter [--preinit <file.mac>] [--slim] [macro], the options in any order:
+  //   --preinit: commands of file.mac run before the kernel is initialised, for those Geant4 accepts
+  //   only then (e.g. /physics_lists/em/MuonToMuons true, see macro/physics_tridents.mac);
+  //   --slim (2026-11-23, the muonic X-ray library): the events ntuple holds only the library's columns
+  //   (TOFmeterEventAction::SetSlim), about a quarter of the full size;
+  // the remaining arguments work as without the options
   std::vector<char*> args(argv, argv + argc);
   G4String preinitMacro;
-  if (args.size() > 2 && G4String(args[1]) == "--preinit") {
-    preinitMacro = args[2];
-    args.erase(args.begin() + 1, args.begin() + 3);
-    if (!std::ifstream(preinitMacro)) {
-      G4cerr << "--preinit: cannot open " << preinitMacro << G4endl;
-      return 1;
+  G4bool slim = false;
+  while (args.size() > 1) {
+    const G4String option = args[1];
+    if (option == "--slim") {
+      slim = true;
+      args.erase(args.begin() + 1);
+    } else if (option == "--preinit" && args.size() > 2) {
+      preinitMacro = args[2];
+      args.erase(args.begin() + 1, args.begin() + 3);
+      if (!std::ifstream(preinitMacro)) {
+        G4cerr << "--preinit: cannot open " << preinitMacro << G4endl;
+        return 1;
+      }
+    } else {
+      break;
     }
   }
   argc = static_cast<int>(args.size());
@@ -132,6 +144,7 @@ int main(int argc,char** argv)
   auto gen_action = new TOFmeterPrimaryGeneratorAction();
   runManager->SetUserAction(gen_action);
   //
+  TOFmeterEventAction::SetSlim(slim);   // before the event action books its ntuple
   auto event_action = new TOFmeterEventAction;
   runManager->SetUserAction(event_action);
   //

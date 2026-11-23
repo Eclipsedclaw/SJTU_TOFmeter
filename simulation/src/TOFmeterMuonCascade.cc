@@ -28,7 +28,7 @@ TOFmeterMuonCascade::TOFmeterMuonCascade()
                               "(default 92: every element)");
   fMessenger->DeclareMethod("muonXrayEnergies", &TOFmeterMuonCascade::SetXrayEnergies,
                             "Energies of the first-principles cascade's X-rays: hydrogenic (point nucleus, default) "
-                            "or measured (fine-structure K, L lines of C, N, Si, P, S, K, Cr, Mn, Fe, Ni, Mo, Th, U); before the run's first capture")
+                            "or measured (fine-structure K, L lines of every element from H to Mo, and Th, U); before the run's first capture")
     .SetCandidates("hydrogenic measured");
 }
 
@@ -74,7 +74,7 @@ void TOFmeterMuonCascade::Print() const
   if (!fUseFirstPrinciples) G4cout << "Geant4 G4EmCaptureCascade";
   else if (fZmax >= 92) G4cout << "first-principles TOFmeterEmCaptureCascade";
   else G4cout << "first-principles TOFmeterEmCaptureCascade up to Z = " << fZmax << ", Geant4 above";
-  G4cout << (TOFmeterEmCaptureCascade::MeasuredEnergies() ? ", measured line energies (C N Si P S K Cr Mn Fe Ni Mo Th U)" : "")
+  G4cout << (TOFmeterEmCaptureCascade::MeasuredEnergies() ? ", measured line energies (Z 1-42, Th, U)" : "")
          << " (/tof/physics/muonCascade, muonCascadeZmax, muonXrayEnergies)" << G4endl;
 }
 

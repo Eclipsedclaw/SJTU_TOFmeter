@@ -16,6 +16,7 @@ place fit together process by process.
 | `beam_xray_submit.sh`, `beam_xray_job.sh`, `beam_xray_check.sh` | (2026-11-07) The same three for the beam study of Al in Si (`macro/beam_xray_lyso.mac`): a mu- beam into the target on the LYSO panel. See "The beam study" below. |
 | `beam_steel_submit.sh`, `beam_steel_job.sh`, `beam_steel_check.sh` | (2026-11-10) The same three for the steel study with U, Th and K: a mu- beam into a 1 cm steel plate on the CZT plane (band `beam`, `macro/beam_steel_lyso.mac`) and the plate's natural radioactivity (band `decay`, `macro/beam_steel_decay.mac`). See "The steel study" below. |
 | `room_background_submit.sh`, `room_background_check.sh` | (2026-11-20) The steel study's room background, in the beam run's setup on a 30 cm concrete floor: the floor's natural decays (band `floor`), radon in the lead castle's air (`radon`) and sea-level cosmic rays (`cosmic`); the jobs run `beam_steel_job.sh`. See "The steel study's room background" below. |
+| `muonic_library_submit.sh`, `muonic_library_check.sh` | (2026-11-23) The muonic X-ray library: every element from H to Mo as a pure plate, and two test alloys, 10^8 mu- each in the steel beam run's setup, each material at its own beam energy (muons stop 8.2424 mm deep in all); jobs 11-100 of each material `--slim`; the jobs run `beam_steel_job.sh`. See "The muonic X-ray library" below. |
 
 CMake copies this folder's scripts (`*.sh`, `*.C`) into the build directory (`<build>/condor/`); run `cmake` again
 after changing a file here.
@@ -300,6 +301,42 @@ sh condor/room_background_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-
   `root -l -b -q 'analysis/room_background_spectrum.C("output/czt/beam_steel_czt_room", "", "output/czt/beam_steel_czt_room_walls/lines")'`
   and then
   `root -l -b -q 'analysis/beam_steel_onoff.C("output/czt/beam_steel_czt_trace/analysis_50ppm/beam_steel_trace_spectrum.root", "output/czt/beam_steel_czt_room/analysis/room_background_spectrum.root")'`.
+
+## The muonic X-ray library (`muonic_library_*.sh`, 2026-11-23)
+
+For unmixing a compound's spectrum into its elements (the user: pure-element spectra first, "super precise", then
+solve for the components' ratios): one spectrum per material of `data/muonic_library_materials.txt`, every element
+from H to Mo as a pure 20 x 20 x 1 cm plate and the test alloys Ni80Cr20 and Fe50Ni50 (mass), in the steel beam run's
+setup (`macro/beam_steel_lyso.mac` on the CZT plane, `--preinit macro/preinit_lyso.mac`, every event written).
+- The gases as liquids (NIST's lH2, lN2, lO2, lAr, lKr, lBr; He 0.125, Ne 1.207, F 1.505, Cl 1.5625 g/cm3).
+- Every material at its own kinetic energy, tuned by `scripts/muonic_library_depth.sh` (2026-11-23): the muons stop at
+  the steel run's mean depth, 8.2424 mm below the plate's top, in every material (all 44 within 0.025 mm; 27-89 MeV/c).
+- The X-ray lines: `/tof/physics/muonXrayEnergies measured`, since 2026-11-23 for every element up to Mo
+  (`scripts/muonic_lines.py`).
+- Per material (folder `<id>_<name>`, id = Z; 101, 102 the alloys) 100 processes of 10^6 muons, seeds
+  12000000 + 1000 id + k; processes 1-10 in the full format, 11-100 `TOFmeter --slim` (a job macro line `# slim`).
+- 4400 processes. Local check runs (Geant4 11.2.2, 10^4 muons): 41-72 s per job of 10^4 including the start-up; so
+  about 20-40 min per job of 10^6 on the cluster, ~1500-3000 core-hours (1-2 days on 60 cores).
+- Size: full ~340-465, slim ~125 bytes per muon, so ~16 GB per material, ~0.7 TB in all.
+- Folder `output/muonic_library_czt` (with `--storage`, under `<path>/output/`).
+
+```sh
+cd <build>
+sh condor/muonic_library_submit.sh --test --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup ~/tof_setup_c7.sh --os-major 7    # 88 jobs of 1e4 muons: process 1 full, 2 slim
+sh condor/muonic_library_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_library_czt_condor_test
+sh condor/muonic_library_submit.sh --storage /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work --setup ~/tof_setup_c7.sh --os-major 7    # the 4400 jobs
+sh condor/muonic_library_check.sh /lustre/neutrino/zengjiancheng/SJTU_TOFmeter-work/output/muonic_library_czt
+```
+
+- New code (`--slim`, the measured lines of Z 1-42): rebuild TOFmeter (`make`) after bringing the sources over; the
+  submit script refuses a build without them.
+- `--materials Fe,Cr,...` submits only some materials; `--jobs`, `--muons` and `--full-jobs` change the plan (keep them
+  for a folder: the seeds and the full/slim split follow the process number).
+- The check script follows the rules of the others, per material (exit code 0, a non-empty `<id>_<name>/beam_<k>.root`,
+  the log's end without an error) and also checks that each job wrote the ntuple its macro asked for (slim or full).
+  It is read-only; the submit command it prints submits every process without a `.done` marker.
+- The test's depths under the cluster's Geant4: sync a few test folders back and run
+  `root -l -b -q 'analysis/muonic_library_depth.C("output/czt/muonic_library_czt_condor_test/26_Fe/beam_*.root")'`.
 
 ## Following the jobs
 

@@ -6,7 +6,8 @@
 #   band beam:  mu- of the beam into the steel plate on the pixel panel (macro/beam_steel_lyso.mac)
 #   band decay: one natural radioactivity of the plate, a nuclide with its whole chain (macro/beam_steel_decay.mac)
 # It runs any band's job macro the same way, so condor/room_background_submit.sh (2026-11-20, the room background:
-# bands floor, radon, cosmic) uses it too.
+# bands floor, radon, cosmic) and condor/muonic_library_submit.sh (2026-11-23) use it too. A job macro with a line
+# "# slim" runs TOFmeter --slim (the library's columns only).
 # The environment is the submitting shell's (getenv), with the setup file sourced on top if given. TOFmeter's output goes
 # to <dir>/<band>/log/job<k>.log. A process that ran to its end leaves <dir>/<band>/log/job<k>.done and is not run again.
 # Its end means the log's "Number of events processed : <events>" and a non-empty output <dir>/<band>/<file>.root, with
@@ -41,13 +42,14 @@ fi
 events=$(sed -n 's/^\/control\/alias bmEvents //p' "$job.mac")
 file=$(sed -n 's/^\/control\/alias bmFile //p' "$job.mac")
 preinit=$(sed -n 's/^# preinit //p' "$job.mac")
+slim=$(sed -n 's/^# slim$/--slim/p' "$job.mac" | head -n 1)
 if [ -z "$events" ] || [ -z "$file" ]; then
   echo "$job.mac has no bmEvents or bmFile alias" >&2
   exit 1
 fi
 start=$(date +%s)
-echo "$(date '+%F %T')  $band process $k: $events events on $(uname -n) in $(pwd), environment $environment${preinit:+, --preinit $preinit}"
-./TOFmeter ${preinit:+--preinit "$preinit"} "$job.mac" > "$job.log" 2>&1
+echo "$(date '+%F %T')  $band process $k: $events events on $(uname -n) in $(pwd), environment $environment${preinit:+, --preinit $preinit}${slim:+, --slim}"
+./TOFmeter ${preinit:+--preinit "$preinit"} $slim "$job.mac" > "$job.log" 2>&1
 status=$?
 s=$(($(date +%s) - start))
 geant4=$(sed -n 's/^ *Geant4 version Name: *\([^ ]*\).*/\1/p' "$job.log" | head -n 1)

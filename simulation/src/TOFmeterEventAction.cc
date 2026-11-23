@@ -64,10 +64,50 @@ TOFmeterEventAction::TOFmeterEventAction()
 {
   fStackHitWindow = 100. * ns;
 
-  // "events" ntuple: one row per event (MeV, ns, cm). Scalar columns come
-  // first and are filled in this order in EndOfEventAction.
+  fMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/tridents/", "Muon trident events");
+  fMessenger->DeclareMethod("keepForVis", &TOFmeterEventAction::KeepTridents,
+                            "Keep events for /vis/reviewKeptEvents: 0 none, 1 events with a trident, 2 events with "
+                            "a detectable trident (its three muons all crossed the top and middle TOF); resets the count");
+  fMessenger->DeclareProperty("maxKept", fMaxKept, "Stop the run when this many events have been kept (default 20)");
+  fMessenger->DeclareProperty("search", fSearch,
+                              "true: /run/beamOn N (also the Run button of the Qt toolbar) runs until N events are kept "
+                              "as keepForVis says (1 if it is 0), at most searchLimit muons; false: normal runs");
+  fMessenger->DeclareProperty("searchLimit", fSearchLimit, "Most muons one search may take (default 1000000)");
+
+  fStackMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/stack/", "Hits of the Si/YSO stack");
+  fStackMessenger->DeclarePropertyWithUnit("hitWindow", "ns", fStackHitWindow,
+                                           "One stack hit (stk_*): the deposits in one layer within this time of "
+                                           "the first one (default 100 ns)");
+
   auto analysisManager = G4AnalysisManager::Instance();
   analysisManager->SetDefaultFileType("root");
+  if (fSlim) {
+    // TOFmeter --slim (2026-11-23, the muonic X-ray library): only the columns its templates need, with the names and
+    // meaning of the full ntuple below (scalars first, filled in this order in EndOfEventAction): the event, the
+    // primary's energy and where it stopped, the element that caught it, the photons of its capture, the CZT hits
+    fNtupleId = analysisManager->CreateNtuple("events", "TOF-meter event summary, slim (TOFmeter --slim)");
+    analysisManager->CreateNtupleIColumn("eventID");
+    analysisManager->CreateNtupleDColumn("ekin");
+    analysisManager->CreateNtupleDColumn("end_x");
+    analysisManager->CreateNtupleDColumn("end_y");
+    analysisManager->CreateNtupleDColumn("end_z");
+    analysisManager->CreateNtupleDColumn("end_ke");
+    analysisManager->CreateNtupleSColumn("end_vol");
+    analysisManager->CreateNtupleIColumn("cap_z");
+    analysisManager->CreateNtupleDColumn("mux_e", fMuxE);
+    analysisManager->CreateNtupleIColumn("mux_src", fMuxSrc);
+    analysisManager->CreateNtupleIColumn("czt_pix", fCztPix);
+    analysisManager->CreateNtupleIColumn("czt_src", fCztSrc);
+    analysisManager->CreateNtupleDColumn("czt_e", fCztE);
+    analysisManager->CreateNtupleDColumn("czt_t", fCztT);
+    analysisManager->FinishNtuple();
+    G4cout << "TOFmeter --slim: the events ntuple holds eventID, ekin, end_x/y/z, end_ke, end_vol, cap_z, mux_e, "
+              "mux_src, czt_pix, czt_src, czt_e, czt_t" << G4endl;
+    return;
+  }
+
+  // "events" ntuple: one row per event (MeV, ns, cm). Scalar columns come
+  // first and are filled in this order in EndOfEventAction.
   fNtupleId = analysisManager->CreateNtuple("events", "TOF-meter event summary");
   analysisManager->CreateNtupleIColumn("eventID");
   analysisManager->CreateNtupleIColumn("pdg");        // primary
@@ -177,21 +217,6 @@ TOFmeterEventAction::TOFmeterEventAction()
   analysisManager->CreateNtupleDColumn("czt_y", fCztY);
   analysisManager->CreateNtupleDColumn("czt_z", fCztZ);
   analysisManager->FinishNtuple();
-
-  fMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/tridents/", "Muon trident events");
-  fMessenger->DeclareMethod("keepForVis", &TOFmeterEventAction::KeepTridents,
-                            "Keep events for /vis/reviewKeptEvents: 0 none, 1 events with a trident, 2 events with "
-                            "a detectable trident (its three muons all crossed the top and middle TOF); resets the count");
-  fMessenger->DeclareProperty("maxKept", fMaxKept, "Stop the run when this many events have been kept (default 20)");
-  fMessenger->DeclareProperty("search", fSearch,
-                              "true: /run/beamOn N (also the Run button of the Qt toolbar) runs until N events are kept "
-                              "as keepForVis says (1 if it is 0), at most searchLimit muons; false: normal runs");
-  fMessenger->DeclareProperty("searchLimit", fSearchLimit, "Most muons one search may take (default 1000000)");
-
-  fStackMessenger = std::make_unique<G4GenericMessenger>(this, "/tof/stack/", "Hits of the Si/YSO stack");
-  fStackMessenger->DeclarePropertyWithUnit("hitWindow", "ns", fStackHitWindow,
-                                           "One stack hit (stk_*): the deposits in one layer within this time of "
-                                           "the first one (default 100 ns)");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -577,6 +602,19 @@ void TOFmeterEventAction::EndOfEventAction(const G4Event* evt)
     }
 
     auto analysisManager = G4AnalysisManager::Instance();
+    if (fSlim) {   // TOFmeter --slim: the slim ntuple's scalar columns, in their order (the vectors are filled above)
+      G4int col = 0;
+      analysisManager->FillNtupleIColumn(fNtupleId, col++, event_id);
+      analysisManager->FillNtupleDColumn(fNtupleId, col++, ekin / MeV);
+      analysisManager->FillNtupleDColumn(fNtupleId, col++, fEndPos.x() / cm);
+      analysisManager->FillNtupleDColumn(fNtupleId, col++, fEndPos.y() / cm);
+      analysisManager->FillNtupleDColumn(fNtupleId, col++, fEndPos.z() / cm);
+      analysisManager->FillNtupleDColumn(fNtupleId, col++, fEndKinE / MeV);
+      analysisManager->FillNtupleSColumn(fNtupleId, col++, fEndVolume);
+      analysisManager->FillNtupleIColumn(fNtupleId, col++, TOFmeterMuonCascade::CaptureZ());
+      analysisManager->AddNtupleRow(fNtupleId);
+      return;
+    }
     G4int col = 0;
     analysisManager->FillNtupleIColumn(fNtupleId, col++, event_id);
     analysisManager->FillNtupleIColumn(fNtupleId, col++, pdg);

@@ -27,6 +27,7 @@ Plots (plots/<name>.png):
     coincidences_<a>_<b>   events per paddle pair, measured and expected
     rates_vs_time          hit rate per layer and coincidence rate over the run
     hitmap_<layer>         where the tracks cross each layer (top view)
+    heatmap_<layer>        TOP view heat map of the tracks' hits: cells = paddle width x position resolution
     tracks_3d              every track in 3D: its fitted line and the hit points it went through, over the
                            paddles (PNG at 300 dpi, and tracks_3d.gif: the view turning once around)
     zenith, azimuth        track angles against the toy expectation
@@ -1106,6 +1107,97 @@ def plot_hitmap(c, layer):
     c.save(fig, f"hitmap_{layer.name}")
 
 
+def plot_heatmap(c, layer):
+    """TOP view heat map of where the tracks cross the layer, each paddle's hit as measured (along the paddle from
+    tA - tB alone, as the hit maps): one column of cells per paddle, as wide as the paddle (across is not
+    measured), its length cut into round(L / sigma_u) equal cells, about one position resolution long; colour =
+    track hits per cm2 (cells differ between paddles), the count written in each cell. Hits beyond an end go into
+    one hatched cell past it. Turned like the other TOP views ([display] top_up)."""
+    from matplotlib.colors import Normalize
+    from matplotlib.cm import ScalarMappable
+    if c.Pts is not None:
+        sel = c.Pts["layer"] == layer.index
+        pad, um = c.Pts["paddle"][sel], c.Pts["u_meas"][sel]
+    else:
+        pad, um = c.Tr[f"paddle_{layer.name}"], c.Tr[f"u_meas_{layer.name}"]
+    top = mc.TopView(c.setup)
+    cells = []                                       # (page x0, y0, w, h, count, per cm2, beyond)
+    labels = []
+    for p in layer.paddles:
+        sig = c.calib["paddles"].get(p.name, {}).get("position_sigma_cm")
+        if not sig or not np.isfinite(sig):
+            continue
+        n = max(1, int(round(p.length / sig)))
+        edges = np.linspace(-0.5 * p.length, 0.5 * p.length, n + 1)    # u: + towards end A
+        step = edges[1] - edges[0]
+        u = um[(pad == p.index) & np.isfinite(um)]
+        cnt = list(np.histogram(u, bins=edges)[0])
+        spans = list(zip(edges[:-1], edges[1:]))
+        beyond = [False] * n
+        for side, k in ((-1, int((u < edges[0]).sum())), (1, int((u > edges[-1]).sum()))):
+            if k:
+                spans.append((0.5 * p.length, 0.5 * p.length + step) if side > 0 else
+                             (-0.5 * p.length - step, -0.5 * p.length))
+                cnt.append(k)
+                beyond.append(True)
+        along0, across0 = (p.x, p.y) if p.axis == "x" else (p.y, p.x)
+        for (u0, u1), k, out in zip(spans, cnt, beyond):
+            a0, a1 = sorted((along0 + p.a_sign * u0, along0 + p.a_sign * u1))
+            b0, b1 = across0 - 0.5 * p.width, across0 + 0.5 * p.width
+            corners = [(a0, b0), (a1, b1)] if p.axis == "x" else [(b0, a0), (b1, a1)]
+            (x0, y0), (x1, y1) = [top.page(*xy) for xy in corners]
+            cells.append((min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0), int(k),
+                          k / ((u1 - u0) * p.width), out))
+        tail = 0.5 * p.length + step + 1.2                  # the name past the B end and its cell
+        b_along = along0 - p.a_sign * tail
+        labels.append((top.page(*((b_along, across0) if p.axis == "x" else (across0, b_along))), p))
+    if not cells:
+        return
+    fig, ax = figure(7.6, 7.0)
+    vmax = max(cl[5] for cl in cells) or 1.0
+    norm, cmap = Normalize(0.0, vmax), mc.SEQUENTIAL
+    for x0, y0, w, h, k, dens, out in cells:
+        ax.add_patch(Rectangle((x0, y0), w, h, facecolor=cmap(norm(dens)) if k else SURFACE, edgecolor=SURFACE,
+                               lw=0.6, hatch="////" if out else None, alpha=0.75 if out else 1.0, zorder=2))
+        if k:
+            ax.text(x0 + 0.5 * w, y0 + 0.5 * h, str(k), ha="center", va="center", fontsize=5.6, zorder=3,
+                    color=SURFACE if norm(dens) > 0.55 else INK, rotation=90 if w < 1.6 < h else 0)
+    col = mc.layer_color(layer.index)
+    for q in top.paddles:
+        if q.layer.index == layer.index:
+            ax.add_patch(Rectangle((q.x - 0.5 * q.size_x, q.y - 0.5 * q.size_y), q.size_x, q.size_y, fill=False,
+                                   edgecolor=col, lw=1.0, zorder=4))
+    for (lx, ly), p in labels:
+        q = top.paddles[p.index]
+        ax.text(lx, ly, p.name, fontsize=6.5, color=INK2, ha="center", va="center", rotation=90 if q.axis == "y" else 0)
+    xs = [cl[0] for cl in cells] + [cl[0] + cl[2] for cl in cells] + [xy[0] for xy, _ in labels]
+    ys = [cl[1] for cl in cells] + [cl[1] + cl[3] for cl in cells] + [xy[1] for xy, _ in labels]
+    ext = max(map(abs, xs + ys)) + 3.0
+    side, label = top.side(c.setup.display.get("side", "")), c.setup.display.get("side_label", "")
+    if side in mc.UNIT and label:
+        sgn, band = (1 if side[0] == "+" else -1), 1.6
+        edge = sgn * ext - (band if sgn > 0 else 0)
+        if side[1] == "x":
+            ax.add_patch(Rectangle((edge, -ext), band, 2 * ext, color=AXIS, lw=0, zorder=1))
+            ax.text(edge + 0.5 * band, 0, label, rotation=90, ha="center", va="center", fontsize=7.5, color=INK)
+        else:
+            ax.add_patch(Rectangle((-ext, edge), 2 * ext, band, color=AXIS, lw=0, zorder=1))
+            ax.text(0, edge + 0.5 * band, label, ha="center", va="center", fontsize=7.5, color=INK)
+    ax.set_xlim(-ext, ext)
+    ax.set_ylim(-ext, ext)
+    ax.set_aspect("equal")
+    ax.grid(False)
+    top.label_axes(ax)
+    fig.colorbar(ScalarMappable(norm, cmap), ax=ax, shrink=0.75, pad=0.02, label="track hits per cm²")
+    n_out = sum(k for *_, k, _, out in cells if out)
+    total = sum(k for *_, k, _, _ in cells)
+    mc.title(ax, f"Heat map of the {layer.name} layer, TOP view: {c.short}",
+             f"{total} track hits as measured (along the paddle: from tA − tB); a cell = the paddle's width x about its "
+             f"position\nresolution σ; hatched: the {n_out} hits beyond an end, one cell past it"
+             + (f"; turned: {top.up} up" if top.turned else ""))
+    c.save(fig, f"heatmap_{layer.name}")
+
+
 def box_faces(cx, cy, cz, sx, sy, sz):
     """The six faces of a box (centre, sizes) for a Poly3DCollection."""
     xs, ys, zs = (cx - sx / 2, cx + sx / 2), (cy - sy / 2, cy + sy / 2), (cz - sz / 2, cz + sz / 2)
@@ -1641,6 +1733,7 @@ def run(folder, setup_path=None):
     if c.has_tracks and len(c.Tr["event"]):
         for layer in s.layers:
             jobs.append((f"{layer.name} hit map", lambda layer=layer: plot_hitmap(c, layer)))
+            jobs.append((f"{layer.name} heat map", lambda layer=layer: plot_heatmap(c, layer)))
         jobs += [("3D tracks", lambda: plot_tracks_3d(c)), ("zenith", lambda: plot_zenith(c)), ("azimuth", lambda: plot_azimuth(c)),
                  ("time of flight", lambda: plot_tof(c)), ("beta", lambda: plot_beta(c)),
                  ("energy (simulation)", lambda: sim_mpv(c)), ("energy deposit", lambda: plot_energy_deposit(c)),

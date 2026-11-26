@@ -12,13 +12,8 @@ Usage:
 
 Plots (plots/<name>.png):
     setup_top_view         TOP view of the setup file: paddle names, readout ends with channel ids, the wall
-    pulse_rates            used and rejected pulses per second, per channel
     baseline_noise         baseline noise per channel (median, 68 % and 95 % ranges)
-    pulse_shape_<paddle>   average pulse of both ends, normalised to its height
-    heights_<paddle>       pulse heights of both ends, with the DAQ thresholds
-    tdiff_<paddle>         tA - tB with the box fit (gives the signal speed)
     position_<paddle>      measured position along the paddle; why some lie beyond its ends
-    attenuation_<paddle>   ln(hA / hB) against the position along the paddle
     tdiff_vs_ratio_<paddle> ln(hA / hB) against tA - tB, both raw: no calibration at all
     mip_<paddle>           sqrt(hA x hB) with the muon-peak fit
     layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns and a zoom of +-10 ns
@@ -38,7 +33,6 @@ Plots (plots/<name>.png):
                            down can be, against the simulation of beta = 1 particles
     energy_deposit         the tracks' signal per paddle as measured (ADC)
     energy_deposit_sim     simulation: the energy muons lose in the paddles (MeV, known values)
-    signal_vs_path         signal against the path through the paddle (1 / cos zenith): data test
 """
 
 import os
@@ -56,7 +50,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 import muon_common as mc
-from muon_common import INK, INK2, MUTED, GRID, AXIS, SURFACE, CATEGORICAL, END_COLORS, FIT_COLOR
+from muon_common import INK, INK2, MUTED, GRID, AXIS, SURFACE, CATEGORICAL, FIT_COLOR
 
 DATA_COLOR = INK
 
@@ -153,28 +147,6 @@ def fmt_err(value, err, digits=2):
 
 # ---- pulse plots ----
 
-def plot_pulse_rates(c):
-    chans = sorted(int(k) for k in c.pinfo["channels"])
-    info = c.pinfo["channels"]
-    used = np.array([info[str(ch)]["used"] for ch in chans]) / c.span_s
-    rej = np.array([info[str(ch)]["records"] - info[str(ch)]["used"] for ch in chans]) / c.span_s
-    labels = [f"ch{ch}  {c.setup.channel_label(ch)}" for ch in chans]
-    fig, ax = figure(6.4, 0.32 * len(chans) + 1.3)
-    y = np.arange(len(chans))[::-1]
-    ax.barh(y, used, height=0.6, color=CATEGORICAL[0], edgecolor=SURFACE, lw=1.0, label="used")
-    ax.barh(y, rej, left=used, height=0.6, color=AXIS, edgecolor=SURFACE, lw=1.0,
-            label="rejected (noise, too low, too short, no edge)")
-    for yi, u, r in zip(y, used, rej):
-        ax.text(u + r, yi, f"  {u:.2f}" + (f" + {r:.2f}" if r > 0 else ""), va="center", fontsize=7, color=INK2)
-    ax.set_yticks(y, labels)
-    ax.set_xlabel("pulses per second")
-    ax.set_xlim(0, max(used + rej) * 1.3 if len(used) else 1)
-    ax.grid(axis="y", visible=False)
-    ax.legend(loc="lower right")
-    mc.title(ax, f"Pulses per channel: {c.short}")
-    c.save(fig, "pulse_rates")
-
-
 def plot_baseline_noise(c):
     chans = sorted(int(k) for k in c.pinfo["channels"])
     fig, ax = figure(6.4, 0.32 * len(chans) + 1.3)
@@ -200,103 +172,6 @@ def plot_baseline_noise(c):
     c.save(fig, "baseline_noise")
 
 
-def plot_pulse_shape(c, p):
-    fig, ax = figure()
-    drawn = 0
-    for end, chid in p.channels.items():
-        sel = c.shapes["channel"] == chid
-        if not sel.any():
-            continue
-        t, m = c.shapes["t_ns"][sel], c.shapes["mean"][sel]
-        ax.fill_between(t, c.shapes["p16"][sel], c.shapes["p84"][sel], color=END_COLORS[end], alpha=0.12, lw=0)
-        ax.plot(t, m, color=END_COLORS[end], lw=1.2,
-                label=f"{end} end, ch{chid} (mean of {int(c.shapes['n'][sel][0])} pulses)")
-        drawn += 1
-    ax.axvline(0, color=MUTED, lw=0.8)
-    ax.axhline(0, color=AXIS, lw=0.8)
-    ax.set_xlabel(f"time from the pulse time ({c.pinfo['pulse_settings']['cfd_fraction']:.0%} of the height), ns")
-    ax.set_ylabel("signal / pulse height")
-    mc.headroom(ax, 1.15)
-    if drawn > 1:
-        ax.legend(loc="upper right")
-    mc.title(ax, f"Average pulse shape, {p.name}: {c.short}", "line = mean, band = 16-84 % of the pulses")
-    c.save(fig, f"pulse_shape_{p.name}")
-
-
-def plot_edge_template(c, p):
-    """The template each end's rising-edge fit uses, the samples it fits, and where its tangent starts."""
-    tm = c.templates
-    if tm is None or not len(tm["channel"]) or not np.isin(list(p.channels.values()), tm["channel"]).any():
-        return
-    ps = c.pinfo["pulse_settings"]
-    frac = float(ps["cfd_fraction"])
-    w0, w1 = int(ps["fit_window"][0]), int(ps["fit_window"][1])
-    fig, ax = figure()
-    a, b = (w0 - 1) * mc.NS_PER_SAMPLE, w1 * mc.NS_PER_SAMPLE
-    ax.axvspan(a, b, color=GRID, alpha=0.55, lw=0, label=f"samples a fit uses ({a:+.0f} .. {b:+.0f} ns)")
-    lines = []
-    for end, chid in p.channels.items():
-        sel = tm["channel"] == chid
-        if not sel.any():
-            continue
-        x, y, sp = tm["x_ns"][sel], tm["y"][sel], tm["spread"][sel]
-        col = END_COLORS[end]
-        ax.fill_between(x, y - sp, y + sp, color=col, alpha=0.12, lw=0)
-        ax.plot(x, y, color=col, lw=1.4, label=f"{end} end, ch{chid}: mean of {int(tm['n'][sel][0])} pulses")
-        i_max = int(np.argmax(y))
-        slope = np.convolve(np.gradient(y, x), np.ones(5) / 5, mode="same")
-        i = int(np.argmax(slope[:i_max + 1]))
-        t_start = x[i] - y[i] / slope[i]
-        tt = np.array([t_start, x[i] + (1.0 - y[i]) / slope[i]])
-        ax.plot(tt, y[i] + slope[i] * (tt - x[i]), color=col, lw=0.9, ls=":")
-        ax.plot(t_start, 0, "o", ms=5, color=col, mec=SURFACE, mew=1.0, zorder=4)
-        st = c.pinfo["channels"].get(str(chid), {}).get("timing") or {}
-        if st.get("status") == "fitted":
-            lines.append(f"{end}: rise 10-90 % {st['template_rise_ns']:.1f} ns, start {st['template_start_ns']:+.1f} ns; "
-                         f"fitted {100 * st['fitted'] / max(st['with_crossing'], 1):.2f} %\n"
-                         f"    fit - crossing: spread {st['fit_minus_crossing_rms_ns']:.3f} ns; "
-                         f"fit rms {st['median_fit_rms_adc']:.1f} ADC (noise {st['median_noise_adc']:.1f})")
-    ax.axhline(frac, color=MUTED, lw=0.8, ls="--", label=f"{frac:.0%} of the height: the pulse time")
-    ax.axhline(0, color=AXIS, lw=0.8)
-    ax.axvline(0, color=MUTED, lw=0.8)
-    ax.set_xlim(a - 8, b + 22)
-    ax.set_ylim(-0.12, 1.5)
-    ax.set_xlabel(f"time from the template's {frac:.0%} point, ns")
-    ax.set_ylabel("signal / pulse height")
-    ax.legend(loc="upper left")
-    if lines:
-        note(ax, "\n".join(lines), loc="lower right", align="left")
-    mc.title(ax, f"Rising-edge template, {p.name}: {c.short}",
-             f"mean edge of the clean pulses, each / its height at its {frac:.0%} crossing; band: their rms\n"
-             f"dotted: steepest tangent; its dot = start of the pulse, a fixed offset from the pulse time")
-    c.save(fig, f"edge_template_{p.name}")
-
-
-def plot_heights(c, p):
-    fig, ax = figure()
-    used = (c.P["flags"] & mc.REJECT_MASK) == 0
-    allh = c.P["height"][used & np.isin(c.P["channel"], list(p.channels.values()))]
-    if not len(allh):
-        plt.close(fig)
-        return
-    top = np.percentile(allh, 99.5) * 1.15
-    bins = np.linspace(0, top, 70)
-    for end, chid in p.channels.items():
-        h = c.P["height"][used & (c.P["channel"] == chid)]
-        stairs(ax, np.clip(h, 0, top * 0.999), bins, END_COLORS[end], label=f"{end} end, ch{chid}: {len(h)} pulses")
-        thr = c.pinfo["channels"].get(str(chid), {}).get("threshold")
-        if thr is not None:
-            ax.axvline(thr, color=END_COLORS[end], lw=0.9, ls="--")
-    ax.set_yscale("log")
-    ax.set_ylim(0.7, None)
-    mc.headroom(ax, log=True)
-    ax.set_xlabel("pulse height (ADC above the baseline; the last bin holds the higher ones)")
-    ax.set_ylabel("pulses per bin")
-    ax.legend(loc="upper right")
-    mc.title(ax, f"Pulse heights, {p.name}: {c.short}", "dashed: DAQ threshold of each channel")
-    c.save(fig, f"heights_{p.name}")
-
-
 def fitted_hits(c, p, cal):
     """The paddle's two-end hits, and which of them the calibration's speed fit used."""
     sel = (c.H["paddle"] == p.index) & (c.H["kind"] == mc.HIT_AB)
@@ -304,45 +179,6 @@ def fitted_hits(c, p, cal):
     geo = np.sqrt(c.H["hA"][sel] * c.H["hB"][sel])
     used = geo > cut if cut else np.ones(sel.sum(), dtype=bool)
     return sel, used, cut
-
-
-def plot_tdiff(c, p):
-    cal = c.calib["paddles"].get(p.name, {})
-    sel, used, cut = fitted_hits(c, p, cal)
-    td = c.H["tdiff_ns"][sel]
-    r0, r1 = cal.get("tdiff_fit_range_ns", [-8, 8])
-    fig, ax = figure()
-    nb = int(np.clip(used.sum() / 4, 16, 60))
-    bins = np.linspace(r0, r1, nb + 1)
-    if cut:
-        ax.stairs(np.histogram(td, bins=bins)[0], bins, color=AXIS, lw=1.1, label=f"all {len(td)} two-end hits")
-    stairs(ax, td[used], bins, CATEGORICAL[0],
-           label=(f"{used.sum()} with sqrt(hA hB) > {cut:.0f} ADC (fitted)" if cut else f"{len(td)} two-end hits"))
-    if str(cal.get("tdiff_status", "")).startswith("fitted"):
-        t = np.linspace(r0, r1, 600)
-        width = bins[1] - bins[0]
-        curve = cal["tdiff_fit_n"] * width * mc.box_pdf(t, cal["tdiff_lo_ns"], cal["tdiff_hi_ns"],
-                                                        cal["tdiff_sigma_ns"], cal["tdiff_background"], r0, r1)
-        ax.plot(t, curve, color=FIT_COLOR, lw=1.3, label="fit: even spread along the paddle ⊗ resolution")
-        note(ax, f"signal speed v = {fmt_err(cal['v_eff_cm_per_ns'], cal.get('v_eff_err_cm_per_ns'), 1)} cm/ns\n"
-                 f"offset = {fmt_err(cal['tdiff_offset_ns'], cal.get('tdiff_offset_err_ns'), 3)} ns\n"
-                 f"resolution σ = {fmt_err(cal['tdiff_sigma_ns'], cal.get('tdiff_sigma_err_ns'), 3)} ns"
-                 + (f"\n  ({float(c.pinfo['pulse_settings']['cfd_fraction']):.0%} crossing instead of the edge "
-                    f"fit: {cal['tdiff_sigma_cfd_ns']:.3f} ns)" if "tdiff_sigma_cfd_ns" in cal else "") +
-                 f"\nposition σ = {cal['position_sigma_cm']:.1f} cm", loc="upper left")
-        v, off = cal["v_eff_cm_per_ns"], cal["tdiff_offset_ns"]
-        sec = ax.secondary_xaxis("top", functions=(lambda t, v=v, off=off: -0.5 * v * (t - off),
-                                                   lambda u, v=v, off=off: off - 2 * u / v))
-        sec.set_xlabel(f"position along the paddle u (cm, + towards the A end at {p.a_end})", color=INK2)
-    else:
-        note(ax, f"no fit: {cal.get('tdiff_status', '?')}", loc="upper left")
-    ax.set_xlabel("tA - tB (ns)")
-    ax.set_ylabel("hits per bin")
-    ax.set_ylim(0, None)
-    mc.headroom(ax)
-    ax.legend(loc="upper right")
-    mc.title(ax, f"Time difference of the two ends, {p.name}: {c.short}")
-    c.save(fig, f"tdiff_{p.name}")
 
 
 def plot_tdiff_resolution(c, p):
@@ -495,51 +331,6 @@ def plot_tdiff_resolution(c, p):
              "- Φ((t - hi)/σ)] / (hi - lo) + b / (range), Φ = the Gaussian's integral; lo, hi, σ, b are chosen to "
              "make the observed hits most likely.", ha="left", va="top", fontsize=8.2, color=INK2)
     c.save(fig, f"tdiff_resolution_{p.name}")
-
-
-def plot_attenuation(c, p):
-    """ln(hA / hB) against the position from the timing: light loses exp(-d / lambda) on its way to
-    each end, so the log of the two ends' height ratio is a straight line in u of slope 2 / lambda."""
-    cal = c.calib["paddles"].get(p.name, {})
-    sel, used, cut = fitted_hits(c, p, cal)
-    pos = (c.H["hA"][sel] > 0) & (c.H["hB"][sel] > 0)
-    v, off = cal.get("v_eff_cm_per_ns", 15.0), cal.get("tdiff_offset_ns", 0.0)
-    u = -0.5 * v * (c.H["tdiff_ns"][sel] - off)
-    lr = np.full(len(u), np.nan)
-    lr[pos] = np.log(c.H["hA"][sel][pos] / c.H["hB"][sel][pos])
-    fig, ax = figure()
-    many = len(u) > 3000
-    ms = 2.2 if many else 3.5
-    if cut:
-        ax.plot(u[~used], lr[~used], "o", ms=ms, color=AXIS, mec=SURFACE, mew=0.4,
-                label=f"sqrt(hA hB) < {cut:.0f} ADC (not fitted)")
-    ax.plot(u[used], lr[used], "o", ms=ms, color=CATEGORICAL[0], mec=SURFACE, mew=0.4,
-            label=f"{used.sum()} hits fitted")
-    if "log_ratio_slope_per_cm" in cal:
-        uu = np.linspace(-0.75 * p.length, 0.75 * p.length, 200)
-        ue = mc.expected_position(uu, 0.5 * p.length, cal.get("position_sigma_cm", 0))
-        ax.plot(uu, cal["log_ratio_offset"] + cal["log_ratio_slope_per_cm"] * ue, color=FIT_COLOR, lw=1.3,
-                label="fitted line, as it looks at a measured u")
-        lam = cal.get("attenuation_cm")
-        text = (f"attenuation length λ = {fmt_err(lam, cal.get('attenuation_err_cm'), 1)} cm\n"
-                f"(light halves every λ ln 2 = {lam * math.log(2):.0f} cm)\n" if lam else "attenuation not measured\n") + \
-            f"gain ratio A/B = {math.exp(cal['log_ratio_offset']):.2f} (at u = 0)\nscatter (rms) = {cal['log_ratio_rms']:.2f}"
-        note(ax, text, loc="upper left")
-    for edge in (-0.5 * p.length, 0.5 * p.length):
-        ax.axvline(edge, color=MUTED, lw=0.8, ls="--")
-    ax.set_xlabel(f"position along the paddle u from the timing (tA - tB), cm, + towards the A end at {p.a_end}")
-    ax.set_ylabel("ln(hA / hB): log of the two ends' height ratio")
-    mc.headroom(ax, 1.5)
-    sec = ax.secondary_yaxis("right", functions=(np.exp, lambda r: np.log(np.maximum(r, 1e-9))))
-    lo, hi = ax.get_ylim()
-    ticks = [t for t in (0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50) if lo <= math.log(t) <= hi]
-    sec.set_yticks(ticks, [f"{t:g}" for t in ticks])
-    sec.set_ylabel("hA / hB", color=INK2)
-    ax.legend(loc="upper right")
-    mc.title(ax, f"Light attenuation, {p.name}: {c.short}",
-             "hA ∝ exp(-(L/2 - u)/λ), hB ∝ exp(-(L/2 + u)/λ), so ln(hA/hB) = 2u/λ + ln(gA/gB):\n"
-             "the slope gives λ (the tA - tB edges give only the speed v); dashed: the paddle's ends")
-    c.save(fig, f"attenuation_{p.name}")
 
 
 def plot_tdiff_vs_ratio(c, p):
@@ -955,7 +746,7 @@ def plot_track_tdiff(c):
              va="top", fontsize=9.5, color=INK)
     fig.text(0.125, 1 - 0.42 / fig_h, f"{int(one.sum())} events with one two-end hit in each layer (2 hits).\n"
              "A track must cross both layers, which overlap only near the paddles'\n"
-             "centres, so the hits gather there (all hits: a flat box, tdiff_<paddle>)", ha="left", va="top",
+             "centres, so the hits gather there (all hits: a flat box, tdiff_resolution_<paddle>)", ha="left", va="top",
              fontsize=8, color=INK2)
     c.save(fig, "track_tdiff")
 
@@ -1540,59 +1331,6 @@ def plot_energy_sim(c):
     c.save(fig, "energy_deposit_sim")
 
 
-def plot_signal_vs_path(c):
-    """Does the signal grow with the path through the paddle? Each hit's signal over its paddle's most
-    probable signal, against 1 / cos(zenith) of its track: a data test of the angle correction."""
-    rows_f, rows_r = [], []
-    cos_t = np.cos(np.radians(c.Tr["theta_deg"]))
-    clean = (c.Tr["flags"] & (mc.TRACK_ADJACENT | mc.TRACK_AMBIGUOUS)) == 0
-    for p in c.setup.paddles:
-        mpv = c.calib["paddles"].get(p.name, {}).get("mip_adc")
-        if not mpv:
-            continue
-        L = p.layer.name
-        sel = clean & (c.Tr[f"paddle_{L}"] == p.index) & np.isfinite(c.Tr[f"hgeo_{L}"]) & (cos_t > 0)
-        rows_f.append(1 / cos_t[sel])
-        rows_r.append(c.Tr[f"hgeo_{L}"][sel] / mpv)
-    if not rows_f:
-        return
-    f, r = np.concatenate(rows_f), np.concatenate(rows_r)
-    if len(f) < 30:
-        return
-    edges = np.unique(np.percentile(f, np.linspace(0, 100, 9 if len(f) >= 400 else 5)))
-    xm, ym, ye = [], [], []
-    for a, b in zip(edges[:-1], edges[1:]):
-        s = (f >= a) & (f <= b)
-        if s.sum() < 10:
-            continue
-        med = np.median(r[s])
-        rs = 1.4826 * np.median(np.abs(r[s] - med))
-        xm.append(np.median(f[s]))
-        ym.append(med)
-        ye.append(1.2533 * rs / math.sqrt(s.sum()))
-    xm, ym, ye = map(np.array, (xm, ym, ye))
-    fig, ax = figure()
-    ax.errorbar(xm, ym, yerr=ye, fmt="o", ms=5, color=DATA_COLOR, mec=SURFACE, mew=1.0, elinewidth=0.9, capsize=0,
-                label=f"median of {len(f)} hits per bin (tracks, every paddle)", zorder=4)
-    w = 1 / np.maximum(ye, 1e-9) ** 2
-    a_prop = float(np.sum(w * ym * xm) / np.sum(w * xm * xm))       # ym = a x f
-    a_flat = float(np.sum(w * ym) / np.sum(w))                       # ym = a
-    chi_prop = float(np.sum(w * (ym - a_prop * xm) ** 2))
-    chi_flat = float(np.sum(w * (ym - a_flat) ** 2))
-    xx = np.linspace(1, max(xm.max(), 1.05) * 1.02, 50)
-    ax.plot(xx, a_prop * xx, color=FIT_COLOR, lw=1.3,
-            label=f"signal ∝ path length (χ² = {chi_prop:.1f} for {len(xm) - 1})")
-    ax.plot(xx, np.full_like(xx, a_flat), color=AXIS, lw=1.3,
-            label=f"no dependence on the path (χ² = {chi_flat:.1f} for {len(xm) - 1})")
-    ax.set_xlabel("1 / cos(zenith) of the track = path through the paddle / its thickness")
-    ax.set_ylabel("signal / the paddle's most probable signal")
-    mc.headroom(ax, 1.25)
-    ax.legend(loc="upper left")
-    mc.title(ax, f"Signal against the path through the paddle: {c.short}",
-             "a particle crossing at θ goes through thickness / cos θ; the reconstructed θ (error ~7°) flattens the trend")
-    c.save(fig, "signal_vs_path")
-
-
 def sim_mpv(c):
     """Most probable simulated energy loss per layer (MeV), quoted as text on the data plot."""
     sim = energy_simulation(c)
@@ -1749,16 +1487,11 @@ def run(folder, setup_path=None):
     c = Context(folder, setup_path)
     s = c.setup
     jobs = [("TOP view", lambda: c.save(mc.draw_top_view(s), "setup_top_view")),
-            ("pulse rates", lambda: plot_pulse_rates(c)), ("baseline noise", lambda: plot_baseline_noise(c))]
+            ("baseline noise", lambda: plot_baseline_noise(c))]
     for p in s.paddles:
-        jobs += [(f"{p.name} shape", lambda p=p: plot_pulse_shape(c, p)),
-                 (f"{p.name} edge template", lambda p=p: plot_edge_template(c, p)),
-                 (f"{p.name} heights", lambda p=p: plot_heights(c, p))]
         if p.both_ends:
-            jobs += [(f"{p.name} tA-tB", lambda p=p: plot_tdiff(c, p)),
-                     (f"{p.name} resolution", lambda p=p: plot_tdiff_resolution(c, p)),
+            jobs += [(f"{p.name} resolution", lambda p=p: plot_tdiff_resolution(c, p)),
                      (f"{p.name} position", lambda p=p: plot_position(c, p)),
-                     (f"{p.name} attenuation", lambda p=p: plot_attenuation(c, p)),
                      (f"{p.name} light vs timing", lambda p=p: plot_tdiff_vs_ratio(c, p)),
                      (f"{p.name} muon peak", lambda p=p: plot_mip(c, p))]
     for i, la in enumerate(s.layers):
@@ -1774,7 +1507,7 @@ def run(folder, setup_path=None):
         jobs += [("3D tracks", lambda: plot_tracks_3d(c)), ("zenith", lambda: plot_zenith(c)), ("azimuth", lambda: plot_azimuth(c)),
                  ("time of flight", lambda: plot_tof(c)), ("beta", lambda: plot_beta(c)),
                  ("energy (simulation)", lambda: sim_mpv(c)), ("energy deposit", lambda: plot_energy_deposit(c)),
-                 ("energy simulation", lambda: plot_energy_sim(c)), ("signal vs path", lambda: plot_signal_vs_path(c))]
+                 ("energy simulation", lambda: plot_energy_sim(c))]
     bar = mc.Progress("Plotting", len(jobs))
     for name, job in jobs:
         job()

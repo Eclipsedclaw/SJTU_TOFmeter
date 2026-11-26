@@ -288,15 +288,11 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 
 | Plot | Look for |
 |---|---|
-| `pulse_rates`, `baseline_noise` | Channels with many rejected (noise) pulses or a noisy baseline |
-| `pulse_shape_<paddle>` | Both ends with the same shape |
-| `edge_template_<paddle>` | The edge template of both ends, the samples a fit uses, the steepest tangent and the start of the pulse |
+| `setup_top_view` | The setup as configured, seen from above (turned as `[display] top_up`): every paddle's name, its readout ends with the channel ids, the wall |
+| `baseline_noise` | Channels with a noisy baseline (the rejected pulses per channel: the table in `pulses_summary.txt`) |
 | `position_<paddle>` | Measured position along the paddle: how many lie beyond the ends, against the smearing alone |
-| `heights_<paddle>` | Where the thresholds cut the spectrum |
-| `tdiff_<paddle>` | A box with smeared edges; the fit gives v, offset, resolution (and the resolution with the 20 % crossing instead of the edge fit) |
 | `tdiff_resolution_<paddle>` | How σ(tA − tB) is measured, step by step: the fit's parts, each edge zoomed (σ = the edge's width), the likelihood against σ (see *Reading the plots*) |
-| `track_tdiff` | tA − tB of every paddle for the 2-hit events only (one two-end hit in each layer), 2×2, against the simulation of tracks through both layers: the same shape and width means the timing works; dashed: the paddle's ends. Not a flat box: a track must cross where the layers overlap, near the paddles' centres |
-| `attenuation_<paddle>` | ln(hA/hB) rising with u (see *Reading the plots*); the right axis is hA/hB itself |
+| `track_tdiff` | tA − tB of every paddle for the 2-hit events only (one two-end hit in each layer), one panel per paddle in rows of 3, against the simulation of tracks through both layers: the same shape and width means the timing works; dashed: the paddle's ends. Not a flat box: a track must cross where the layers overlap, near the paddles' centres |
 | `tdiff_vs_ratio_<paddle>` | The same check with no calibration: raw ln(hA/hB) against raw tA − tB, 2D, with their correlation |
 | `mip_<paddle>` | The signal peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
 | `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
@@ -310,7 +306,6 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `beta` | β over its whole measured range; shaded where no particle going down can be (β > 1, β < 0) |
 | `energy_deposit` | The tracks' signal per paddle as measured (ADC); each paddle has its own scale |
 | `energy_deposit_sim` | Simulation: the energy muons lose in the paddles (MeV, PDG Landau formula) |
-| `signal_vs_path` | Signal against the path through the paddle (1/cos θ): does it grow with the path? |
 
 ## Read the results
 
@@ -365,7 +360,7 @@ Map check : top layer y (timing) by middle paddle: slope -0.49 ± 0.44 (+1 expec
   each σ. Its minimum is σ, and where −2 Δln L = 1 gives the 68 % range (run 59, TOP1: 0.460 ns, 0.451–0.469).
   The same σ, as `tdiff_sigma_ns`, sets the position resolution (v/2)·σ and the mean-time resolution σ/2.
   It assumes muons evenly along the paddle; the plateau is flat within a few % here.
-- **Attenuation** (`attenuation_<paddle>`). A hit at u (cm from the centre, + towards end A) is L/2 − u
+- **Attenuation** (numbers in `calibration_summary.txt`). A hit at u (cm from the centre, + towards end A) is L/2 − u
   from end A and L/2 + u from end B. The light reaching an end falls as exp(−distance/λ), so
   hA ∝ gA·exp(−(L/2 − u)/λ) and hB ∝ gB·exp(−(L/2 + u)/λ), and the energy deposit cancels in their ratio:
   ln(hA/hB) = 2u/λ + ln(gA/gB). The y axis is that log ratio (right axis: the ratio hA/hB itself), the x
@@ -406,11 +401,11 @@ Map check : top layer y (timing) by middle paddle: slope -0.49 ± 0.44 (+1 expec
   particle going down can be: β > 1, and β < 0, where the lower layer fired first (a particle going up, or
   the resolution). The simulation of β = 1 particles with the same resolution lies over the data. The full
   TOF-meter (top to bottom 70 cm) and better timing will separate slow particles.
-- **Energy and the track angle** (`energy_deposit`, `signal_vs_path`). A minimum-ionising particle loses
+- **Energy and the track angle** (`energy_deposit`). A minimum-ionising particle loses
   energy at a nearly constant rate per cm of path (dE/dx ≈ 2 MeV/cm in plastic), and that rate does not
   depend on the angle. The energy deposited in a slab does: a track at zenith θ crosses thickness / cos θ
-  of it, so it deposits 1/cos θ times more (1.41 times at 45°). `signal_vs_path` shows this on the data:
-  the signal rises with 1/cos θ (run 58: from 1.01 to 1.30 times the peak; "∝ path" χ² 10 for 7,
+  of it, so it deposits 1/cos θ times more (1.41 times at 45°). Its run 58 test on the data (plot `signal_vs_path`, removed
+  2026-11-26): the signal rose with 1/cos θ (from 1.01 to 1.30 times the peak; "∝ path" χ² 10 for 7,
   "no dependence" χ² 105 for 7). Without the angle the peak of the tracks is ~10 % higher and 15–25 %
   wider than for vertical tracks; the analysis quotes it as measured and leaves the angle correction to
   plots that say so.
@@ -447,7 +442,7 @@ Each pulse's time comes from a least-squares fit of its rising edge with its cha
    each pulse divided by its height and placed at its crossing, averaged in bins of 0.1 sample (0.2 ns),
    then smoothed by a Gaussian of σ = 0.2 sample (0.4 ns) so that the fit does not follow the bins' noise
    (the edge itself spans 6 samples). It comes from the run itself, so no pulse shape is assumed, and it
-   is shifted so that it crosses 20 % exactly at its zero (`edge_template_<paddle>.png`). With fewer than
+   is shifted so that it crosses 20 % exactly at its zero (tree `templates` in `pulses.root`). With fewer than
    50 clean pulses a channel keeps the crossing.
 3. Every pulse is fitted with *height × template(t − t₀)* over the 9 samples −4 … +4 around its crossing
    (−10 … +8 ns): the edge from before it starts to near 80 % of the top, not the flat top. Height and t₀
@@ -501,9 +496,8 @@ To check the fit on a run:
 - `pulses_summary.txt`: for each channel the template (pulses, 10–90 % rise, start), the share of pulses
   fitted, the median and spread of fit − crossing (+0.05 ns and 0.12–0.15 ns in run 58), and the fit's rms
   residual against the baseline noise; warnings if `fit_window` misses the edge.
-- `calibration_summary.txt`, `tdiff_<paddle>.png` and the *Timing* line of `analysis_summary.txt`:
+- `calibration_summary.txt` and the *Timing* line of `analysis_summary.txt`:
   σ(tA − tB) of the same hits with the fit and with the crossing, in every run.
-- `edge_template_<paddle>.png`: both ends' templates, the samples a fit uses, the tangent and the start.
 - `event_displays/`: in the zoom of the rising edges, the samples each fit used and the fitted template.
 
 Settings in `[pulse]`: `timing` (`"fit"` or `"cfd"`), `fit_window`, `fit_max_shift`, `template_pulses`,

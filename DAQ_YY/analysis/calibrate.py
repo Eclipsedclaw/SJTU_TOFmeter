@@ -48,8 +48,7 @@ along the paddle.
                    electrons, gammas and noise, so the peak is taken from the hits
                    of the tracks (events with one two-end hit in each of two
                    layers), as measured: no correction for the track's angle (which
-                   would assume that the signal grows with the path length; the
-                   plot signal_vs_path tests that on the data). Its most probable
+                   would assume that the signal grows with the path length). Its most probable
                    value (MPV) comes from a fit of a Moyal function (close to the
                    Landau shape of energy loss) from 0.75 x the peak up. Per
                    channel: the signal of that end for a track through the paddle's

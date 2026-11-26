@@ -236,13 +236,14 @@ Stop after a step fails twice. Don't try other commands or edit other files. Cop
 
 ## Check the recorded data
 
-The [`scripts/`](scripts/) folder has three Python scripts that check what the cards record. They read the ROOT file that `raw2root_new` (ad9694daqtrigchain repo) makes from a run's `.dat` file: one tree per channel, named `ch<id>` with id = 10000 + 10 × board + channel, so board 1 channel 0 is `ch10010`.
+The [`scripts/`](scripts/) folder has Python scripts that check what the cards record, and one that moves old runs into run folders. They read the ROOT file that `raw2root_new` (ad9694daqtrigchain repo) makes from a run's `.dat` file: one tree per channel, named `ch<id>` with id = 10000 + 10 × board + channel, so board 1 channel 0 is `ch10010`.
 
 | Script | Use it to |
 |---|---|
 | [`analyze_baseline.py`](scripts/analyze_baseline.py) | Check every channel of a pedestal run (no signal, software trigger): pedestal level and noise, stability between triggers, noise spectrum, correlated noise, missing and short waveforms |
 | [`plot_waveforms.py`](scripts/plot_waveforms.py) | Look at the raw waveforms of one channel, for example to see where short waveforms stop |
 | [`analyze_sync.py`](scripts/analyze_sync.py) | Measure how well the boards agree in time: one pulse split to several channels (self-trigger run), its rising edge compared between them |
+| [`organize_runs.py`](scripts/organize_runs.py) | Move the runs of the old flat raw data folder into a folder per run (`runNNNNN/dat`, `root`, `muon`), as the DAQ app writes them from v1.0.28: a dry run first, `--do` to move, `--undo LIST` to move back |
 | [`daqyy_common.py`](scripts/daqyy_common.py) | Code shared by the scripts. Not run on its own; keep it in the same folder |
 
 `analyze_baseline.py` and `plot_waveforms.py` keep values in ADC counts and samples (only `t2prev`, as the converter stores it, is in seconds), and both number the triggers of each board from 0, so trigger 2 means the same trigger in both. `analyze_sync.py` gives times in ns and ps.

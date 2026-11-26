@@ -23,19 +23,28 @@ python3 run_analysis.py
 ```
 
 ```text
-ROOT file (raw data of the run): /data/data/jiancheng/DAQ_yy_data/raw/run00058_file0000_20261113_132310.root
-Output folder [/data/data/jiancheng/DAQ_yy_data/raw/run00058_file0000_20261113_132310_muon]:
+The run: its folder or a ROOT file of it: /data/data/jiancheng/DAQ_yy_data/run00075
+Run files   : 2 ROOT files (run folder layout): run00075_file0000_....root, run00075_file0001_....root
+Output folder [/data/data/jiancheng/DAQ_yy_data/run00075/muon]:
 ```
 
-Tab completes paths; Enter keeps the folder in brackets, a folder named after the run next to the data
-file. To skip the questions:
+**A run is all its ROOT files**: testDAQ starts a new `.dat` every 2 GiB (about an hour of 18 paddles), the DAQ
+makes one `.root` per `.dat`, and the analysis reads them in file order as one run (the clock runs on from
+file to file). Give the run's folder (`runNNNNN/` with `dat/` and `root/`, as the DAQ app writes them from
+v1.0.28; output `runNNNNN/muon`) or any file of the run, also in the old flat folder where every run lies
+side by side (output `<first file>_muon` next to the files, as before). Tab completes paths; Enter keeps the
+folder in brackets. A run whose `.dat` files are not all converted yet stops with a message. To skip the
+questions:
 
 ```bash
-python3 run_analysis.py /path/to/run.root                 # output next to the data
+python3 run_analysis.py /data/data/jiancheng/DAQ_yy_data/run00075     # all files of the run
+python3 run_analysis.py /path/to/run00073_file0001_....root            # any file: still the whole run
+python3 run_analysis.py /path/to/run.root --files 0                    # only file 0 (a quick look; 0-2, 0,3)
 python3 run_analysis.py /path/to/run.root --out /path/to/folder
 ```
 
-The results of runs 56–59 are in `/data/data/jiancheng/DAQ_yy_data/raw/<run>_muon/`, next to their data.
+Older runs move into run folders with [`../scripts/organize_runs.py`](../scripts/organize_runs.py); the event
+pages find the ROOT files again in the run's `root/` folder.
 A 30-minute run (125 000 waveforms) takes about 2 minutes on one CPU core, a 2-hour run (497 000) about 5.
 **Passes if** the last lines
 read `Done in ...` and `Start with .../analysis_summary.txt`.

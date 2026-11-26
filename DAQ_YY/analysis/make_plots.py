@@ -1613,7 +1613,9 @@ def headline(c):
     s = c.setup
     lines = [f"Paddle muon analysis of {c.run}", "=" * (29 + len(c.run)), ""]
     conf = c.pinfo.get("conf") or {}
-    lines.append(f"Data      : {c.pinfo['raw_file']}")
+    raw = c.pinfo.get("raw_files") or [c.pinfo["raw_file"]]
+    lines.append(f"Data      : {raw[0]}" + (f" + {len(raw) - 1} more file{'s' if len(raw) > 2 else ''}: "
+                                            + ", ".join(os.path.basename(f) for f in raw[1:]) if len(raw) > 1 else ""))
     lines.append(f"Setup     : {s.name} ({len(s.paddles)} paddles, {len(s.channels)} channels, "
                  f"{len(s.layers)} layers)")
     if s.geometry_source:

@@ -538,9 +538,127 @@ class RunConf:
 
 
 def read_conf(data_path):
-    """RunConf of <run>.conf next to the data file, or None."""
-    path = os.path.splitext(data_path)[0] + ".conf"
-    return RunConf(path) if os.path.isfile(path) else None
+    """RunConf of <run>.conf next to the data file (in a run folder: in its dat folder), or None."""
+    stem = os.path.splitext(data_path)[0]
+    for path in (stem + ".conf", os.path.join(os.path.dirname(os.path.dirname(stem)), "dat",
+                                              os.path.basename(stem) + ".conf")):
+        if os.path.isfile(path):
+            return RunConf(path)
+    return None
+
+
+# =====================================================================
+# the files of a run
+# =====================================================================
+
+RUN_FILE = re.compile(r"^(run\d+)_file(\d+)_(\d{8}_\d{6})")
+
+
+def run_key(name):
+    """(run, file number, start) of a file name such as run00073_file0001_20261126_170256.root, or None."""
+    m = RUN_FILE.match(os.path.basename(name))
+    return (m.group(1), int(m.group(2)), m.group(3)) if m else None
+
+
+def number_list(text):
+    """[0, 2, 3, 4] for "0,2-4"."""
+    out = []
+    for part in str(text).replace(" ", "").split(","):
+        if part:
+            a, _, b = part.partition("-")
+            out.extend(range(int(a), int(b or a) + 1))
+    return out
+
+
+def run_files(path, only=None):
+    """The ROOT files of the run that `path` belongs to, in file order, and where its analysis goes.
+    path: a run folder (runNNNNN/ with dat/ and root/), its dat or root folder, or any .root, .dat or
+    .conf file of the run; in the old flat layout (every run in one folder) the run is the file 0 of that
+    run number and the files after it, up to the next file 0. only: the file numbers to keep. Returns a
+    namespace: files (.root, in order), first, name (the first one's name: run, file number, start),
+    missing (.dat files of the run without their .root yet), layout, out (the default analysis folder:
+    runNNNNN/muon, or in the flat layout <name>_muon next to the files, as before)."""
+    p = os.path.realpath(os.path.expanduser(path))
+    folder = p if os.path.isdir(p) else os.path.dirname(p)
+    if os.path.basename(folder) in ("dat", "root", KIND):
+        folder = os.path.dirname(folder)
+    if os.path.isdir(os.path.join(folder, "root")) or os.path.isdir(os.path.join(folder, "dat")):
+        layout = "run folder"
+        stems = {os.path.splitext(os.path.basename(f))[0] for sub in ("root", "dat")
+                 for f in glob.glob(os.path.join(folder, sub, "run*_file*.*")) if run_key(f)}
+        numbers = {run_key(s)[0] for s in stems}
+        if not os.path.isdir(p) and run_key(p):           # a file: its own run, should others lie there too
+            stems = {s for s in stems if run_key(s)[0] == run_key(p)[0]}
+        elif len(numbers) > 1:
+            sys.exit(f"ERROR: {folder} holds several runs ({', '.join(sorted(numbers))}): give one of its files")
+        where = {"root": os.path.join(folder, "root"), "dat": os.path.join(folder, "dat")}
+    else:
+        layout = "flat"
+        key = run_key(p)
+        if key is None:
+            sys.exit(f"ERROR: {p} is neither a run folder nor a file of a run (runNNNNN_fileNNNN_YYYYMMDD_HHMMSS...)")
+        same = sorted({k for k in map(run_key, os.listdir(folder)) if k and k[0] == key[0]}, key=lambda k: k[2])
+        sessions = []
+        for k in same:                                   # a file 0 starts a run of this number
+            if k[1] == 0 or not sessions:
+                sessions.append([])
+            sessions[-1].append(k)
+        session = next(s for s in sessions if key in s)
+        stems = {f"{k[0]}_file{k[1]:04d}_{k[2]}" for k in session}
+        where = {"root": folder, "dat": folder}
+    stems = sorted((s for s in stems if not s.endswith(("_events", "_" + KIND))), key=lambda s: run_key(s)[1])
+    if only is not None:
+        stems = [s for s in stems if run_key(s)[1] in set(only)]
+    roots = [os.path.join(where["root"], s + ".root") for s in stems]
+    files = [r for r in roots if os.path.isfile(r)]
+    missing = [os.path.join(where["dat"], s + ".dat") for s, r in zip(stems, roots)
+               if not os.path.isfile(r) and os.path.isfile(os.path.join(where["dat"], s + ".dat"))]
+    if not files:
+        sys.exit(f"ERROR: no ROOT file of this run in {where['root']}" + (" (files " + ", ".join(map(str, only)) + ")"
+                                                                       if only is not None else ""))
+    name = os.path.splitext(os.path.basename(files[0]))[0]
+    out = os.path.join(folder, KIND) if layout == "run folder" else os.path.join(folder, f"{name}_{KIND}")
+    return types.SimpleNamespace(files=files, first=files[0], name=name, missing=missing, layout=layout, out=out,
+                                 folder=folder)
+
+
+def check_run_files(rf, report=print):
+    """Print the run's files; stop if a .dat of it has no .root yet (still being converted)."""
+    report(f"Run files   : {len(rf.files)} ROOT file{'s' if len(rf.files) > 1 else ''} ({rf.layout} layout): "
+           + ", ".join(os.path.basename(f) for f in rf.files))
+    if rf.missing:
+        sys.exit("ERROR: no ROOT file yet for " + ", ".join(os.path.basename(m) for m in rf.missing)
+                 + " (still being converted?): wait for it, or take the converted ones with --files")
+
+
+def channel_chains(files):
+    """{channel id: TChain of its ch<id> tree through the run's ROOT files in file order}: entries count on
+    from file to file, as step 1 numbers them (the event pages read the waveforms back the same way)."""
+    chains = {}
+    for path in files:
+        f = open_root(path)
+        if f is None:
+            sys.exit(f"ERROR: cannot open {path}")
+        names = sorted({name for chans in channel_trees(f).values() for name in chans.values()})
+        f.Close()
+        for name in names:
+            chid = int(name[2:])
+            if chid not in chains:
+                chains[chid] = ROOT.TChain(name)
+            chains[chid].Add(path)
+    return chains
+
+
+def locate_raw(path, folder):
+    """A run's ROOT file where step 1 read it, or, after the run's files were moved, next to the analysis
+    folder (runNNNNN/root/ beside runNNNNN/muon, or the folder above it); None if not found."""
+    if path and os.path.isfile(path):
+        return path
+    base = os.path.basename(path or "")
+    for cand in (os.path.join(os.path.dirname(folder), "root", base), os.path.join(os.path.dirname(folder), base)):
+        if base and os.path.isfile(cand):
+            return cand
+    return None
 
 
 # =====================================================================
@@ -650,14 +768,20 @@ def short_run(name):
 
 
 def ask_data_file(given):
-    """The raw ROOT file from the command line, or asked on the terminal."""
+    """The run from the command line, or asked on the terminal: its folder or any of its ROOT files."""
+    def existing(text):
+        path = os.path.abspath(os.path.expanduser(text))
+        if not os.path.exists(path):
+            raise ValueError(f"no such file or folder: {path}")
+        return path
+
     if given:
         path = os.path.realpath(os.path.expanduser(given))
-        if not os.path.isfile(path):
-            sys.exit(f"ERROR: no such file: {path}")
+        if not os.path.exists(path):
+            sys.exit(f"ERROR: no such file or folder: {path}")
         return path
     enable_path_completion()
-    return os.path.realpath(ask("ROOT file (raw data of the run)", convert=existing_file))
+    return os.path.realpath(ask("The run: its folder or a ROOT file of it", convert=existing))
 
 
 def ask_out_folder(given, default):

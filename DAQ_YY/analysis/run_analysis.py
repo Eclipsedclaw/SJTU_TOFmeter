@@ -11,18 +11,24 @@ Runs the steps one after the other on one DAQ_YY run:
     6 event_display.py    event_displays/ (the first 10 tracks and 5 with several paddles of one layer;
                           --all-events: every track)
 
+A run is every ROOT file of it (one per .dat file of 2 GiB), read in file order as one run:
+give its folder (runNNNNN/ with dat/ and root/; output in runNNNNN/muon) or any of its files
+(also in the old flat layout, every run in one folder: output <run name>_muon next to the files).
+
 Usage:
-    python3 run_analysis.py                    # asks for the ROOT file and the output folder
-    python3 run_analysis.py run.root           # output: <run name>_muon next to run.root
+    python3 run_analysis.py                    # asks for the run and the output folder
+    python3 run_analysis.py /path/run00075     # a run folder: all its ROOT files, output run00075/muon
+    python3 run_analysis.py run.root           # any file of the run: all files of the run
+    python3 run_analysis.py run.root --files 0 # only file 0 of the run (a quick look; also 0-2, 0,3)
     python3 run_analysis.py run.root --out /path/to/folder
     python3 run_analysis.py run.root --calibration other_muon/calibration.json   # use these constants, skip step 3
     python3 run_analysis.py run.root --from 3  # redo steps 3-6 (after editing the setup's [calibration])
     python3 run_analysis.py run.root --from 6 --all-events   # a page for every track (off by default)
     python3 run_analysis.py run.root --timing cfd   # pulse times from the 20 % crossing, not the edge fit
 
-Without a ROOT file on the command line the script asks for it and for the
-output folder; Enter keeps the folder shown in [brackets] (a folder named after
-the run next to the data file), Tab completes paths. Every option is also
+Without a run on the command line the script asks for it and for the output
+folder; Enter keeps the folder shown in [brackets], Tab completes paths. A run
+whose .dat files are not all converted yet stops with a message (or use --files). Every option is also
 explained by --help of the step it belongs to. Needs muon_common.py, the
 setups/ folder and ../scripts/daqyy_common.py.
 """
@@ -47,8 +53,12 @@ import event_display
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("file", nargs="?", default=None, help="ROOT file of the run (asked for if left out)")
-    ap.add_argument("--out", default=None, help="Analysis folder (default: <run name>_muon next to the ROOT file)")
+    ap.add_argument("file", nargs="?", default=None,
+                    help="The run: its folder or any of its ROOT files (asked for if left out)")
+    ap.add_argument("--files", default=None,
+                    help="Only these files of the run, by file number, e.g. 0 or 0-2 (default: all)")
+    ap.add_argument("--out", default=None,
+                    help="Analysis folder (default: runNNNNN/muon, or <run name>_muon next to the files)")
     ap.add_argument("--setup", default=None, help="Setup file (default: the one in setups/ valid for the run's date)")
     ap.add_argument("--calibration", default=None,
                     help="Use this calibration.json (e.g. from a longer run) instead of calibrating this run")
@@ -74,9 +84,10 @@ def main():
     args = ap.parse_args()
 
     asked = args.file is None
-    path = mc.ask_data_file(args.file)
-    default = mc.default_out(path)
-    out = mc.ask_out_folder(args.out, default) if asked else mc.ask_out_folder(args.out or default, None)
+    rf = mc.run_files(mc.ask_data_file(args.file), mc.number_list(args.files) if args.files else None)
+    if args.start <= 1:
+        mc.check_run_files(rf)
+    out = mc.ask_out_folder(args.out, rf.out) if asked else mc.ask_out_folder(args.out or rf.out, None)
     start = time.monotonic()
 
     def step(n, text):
@@ -84,8 +95,8 @@ def main():
 
     if args.start <= 1:
         step(1, "pulses (extract_pulses.py)")
-        extract_pulses.run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
-                           args.lowpass, args.lowpass_kind, args.raw_timing, args.timing)
+        extract_pulses.run(rf.first, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
+                           args.lowpass, args.lowpass_kind, args.raw_timing, args.timing, files=rf.files)
     if args.start <= 2:
         step(2, "hits and events (build_events.py)")
         build_events.run(out, args.setup)

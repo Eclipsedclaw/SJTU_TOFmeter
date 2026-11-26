@@ -435,8 +435,12 @@ def process_channel(tree, chid, ref, sign, ps, max_waveforms, bar):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("file", nargs="?", default=None, help="ROOT file of the run (asked for if left out)")
-    ap.add_argument("--out", default=None, help="Analysis folder (default: <run name>_muon next to the ROOT file)")
+    ap.add_argument("file", nargs="?", default=None,
+                    help="The run: its folder or any of its ROOT files (asked for if left out)")
+    ap.add_argument("--files", default=None,
+                    help="Only these files of the run, by file number, e.g. 0 or 0-2 (default: all)")
+    ap.add_argument("--out", default=None,
+                    help="Analysis folder (default: runNNNNN/muon, or <run name>_muon next to the files)")
     ap.add_argument("--setup", default=None,
                     help="Setup file (default: the one in setups/ valid for the run's date)")
     ap.add_argument("--pulse-pre", type=int, default=None,
@@ -458,16 +462,17 @@ def main():
                          "(default: the setup's [pulse] timing, normally fit)")
     args = ap.parse_args()
     asked = args.file is None
-    path = mc.ask_data_file(args.file)
-    out = mc.ask_out_folder(args.out, mc.default_out(path)) if asked else \
-        mc.ask_out_folder(args.out or mc.default_out(path), None)
-    run(path, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
-        args.lowpass, args.lowpass_kind, args.raw_timing, args.timing)
+    rf = mc.run_files(mc.ask_data_file(args.file), mc.number_list(args.files) if args.files else None)
+    mc.check_run_files(rf)
+    out = mc.ask_out_folder(args.out, rf.out) if asked else mc.ask_out_folder(args.out or rf.out, None)
+    run(rf.first, out, args.setup, args.pulse_pre, args.polarity, args.max_waveforms,
+        args.lowpass, args.lowpass_kind, args.raw_timing, args.timing, files=rf.files)
 
 
 def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms=None,
-        lowpass_mhz=None, lowpass_kind=None, raw_timing=False, timing=None):
-    """Step 1 for one ROOT file; returns the path of pulses.root."""
+        lowpass_mhz=None, lowpass_kind=None, raw_timing=False, timing=None, files=None):
+    """Step 1 for one run: path = its first ROOT file (name, date, .conf), files = all its ROOT files in order
+    (default: path alone); entries count on from file to file. Returns the path of pulses.root."""
     setup = mc.choose_setup(setup_path, path)
     ps = dict(setup.pulse)
     if lowpass_mhz is not None:
@@ -488,13 +493,8 @@ def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms
     if ref + int(ps["baseline_end"]) < 40:
         sys.exit(f"ERROR: pulse_pre {pulse_pre} leaves fewer than 40 samples before the trigger for the "
                  f"baseline; take runs with pulse_pre >= 30")
-    root_file = mc.open_root(path)
-    if root_file is None:
-        sys.exit(f"ERROR: cannot open {path}")
-    trees = {}
-    for board, chans in mc.channel_trees(root_file).items():
-        for chn, name in chans.items():
-            trees[int(name[2:])] = name
+    files = list(files) if files else [path]
+    trees = mc.channel_chains(files)        # {channel: TChain of its tree through the run's files, in order}
     if not trees:
         sys.exit(f"ERROR: no ch<id> trees in {path}")
     os.makedirs(out, exist_ok=True)
@@ -505,7 +505,9 @@ def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms
         print(text)
         lines.append(text)
 
-    report(f"File        : {path}")
+    report(f"File        : {path}" if len(files) == 1 else
+           f"Files       : {len(files)} ROOT files of the run, in order: {path}, "
+           + ", ".join(os.path.basename(f) for f in files[1:]))
     report(f"Setup       : {setup.name} ({setup.path})")
     if conf is not None:
         report(f"Run conf    : {os.path.basename(conf.path)}: trigmode {conf.trigmode}, ctrlmode {conf.ctrlmode}, "
@@ -544,12 +546,12 @@ def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms
         report(f"WARNING     : {len(boards)} boards but ctrlmode {conf.ctrlmode}: their clocks did not start "
                f"together, so times cannot be compared across boards")
 
-    total = sum(root_file.Get(name).GetEntries() if max_waveforms is None else
-                min(root_file.Get(name).GetEntries(), max_waveforms) for name in trees.values())
+    total = sum(t.GetEntries() if max_waveforms is None else min(t.GetEntries(), max_waveforms)
+                for t in trees.values())
     bar = mc.Progress("Measuring pulses" + (" and fitting edges" if fit else ""), total * (2 if fit else 1))
     columns, shapes, per_channel, templates = [], {}, {}, {}
     for chid in sorted(trees):
-        tree = root_file.Get(trees[chid])
+        tree = trees[chid]
         if polarity is not None:
             positive = polarity == "positive"
         elif ps["polarity"] in ("positive", "negative"):
@@ -569,7 +571,6 @@ def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms
         per_channel[chid] = {"positive": positive, "threshold": conf.threshold(chid) if conf else None,
                              "records_in_file": int(tree.GetEntries()), "timing": fit_stats}
     bar.close()
-    root_file.Close()
 
     data = {k: np.concatenate([c[k] for c in columns]) for k in columns[0]}
     origin = int(data["ttt"].min()) if len(data["ttt"]) else 0
@@ -700,7 +701,7 @@ def run(path, out, setup_path=None, pulse_pre=None, polarity=None, max_waveforms
 
     info = mc.stamp("extract_pulses")
     info.update({
-        "raw_file": path, "run": mc.run_name(path), "trigger_sample": ref, "pulse_pre": pulse_pre,
+        "raw_file": path, "raw_files": files, "run": mc.run_name(path), "trigger_sample": ref, "pulse_pre": pulse_pre,
         "ttt_origin": origin, "span_ns": span_ns, "max_waveforms": max_waveforms,
         "setup": {"name": setup.name, "path": setup.path}, "pulse_settings": ps,
         "board_offsets_ns": setup.board_offsets, "channel_offsets_ns": setup.channel_offsets,

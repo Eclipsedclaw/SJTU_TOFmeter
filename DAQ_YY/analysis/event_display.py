@@ -94,15 +94,16 @@ class Data:
         self.calib = mc.read_json(cal) if os.path.isfile(cal) else {"paddles": {}}
         self.run = self.pinfo["run"]
         self.short = mc.short_run(self.run)
+        # the run's ROOT files in step 1's order (entries count on from file to file), found again if moved
         self.raw = None
-        raw = self.pinfo.get("raw_file")
-        if raw and os.path.isfile(raw):
-            self.raw = mc.open_root(raw)
+        found = [mc.locate_raw(f, folder) for f in (self.pinfo.get("raw_files") or [self.pinfo.get("raw_file")])]
+        if found and all(found):
+            self.raw = mc.channel_chains(found)
 
     def waveform(self, chid, entry):
         if self.raw is None:
             return None
-        tree = self.raw.Get(f"ch{chid}")
+        tree = self.raw.get(int(chid))
         if not tree:
             return None
         tree.GetEntry(int(entry))

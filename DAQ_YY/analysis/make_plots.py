@@ -21,6 +21,8 @@ Plots (plots/<name>.png):
     tdiff_vs_ratio_<paddle> ln(hA / hB) against tA - tB, both raw: no calibration at all
     mip_<paddle>           sqrt(hA x hB) with the muon-peak fit
     layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns and a zoom of +-10 ns
+    neighbour_times        time between the hits of two paddles side by side in one event: the paddles'
+                           own delays, and across a board boundary a check of the board offsets
     event_types            events by the layers with a two-end hit
     event_quality          selection steps: all events, a paddle at both ends, a track, one
                            paddle per layer or several paddles of one layer
@@ -813,6 +815,66 @@ def plot_layer_delay(c, la, lb):
     c.save(fig, f"layer_delay_{la.name}_{lb.name}")
 
 
+def plot_neighbour_times(c):
+    """Median t(second) - t(first) of the hits of one event in two paddles side by side (calibrate.py):
+    the paddles' own delay differences; across a board boundary, a check of the board offsets."""
+    rows = (c.calib.get("neighbours") or {}).get("pairs") or []
+    if not rows:
+        return
+    fig, ax = figure(7.8, 4.6)
+    xs, labels, x, last = [], [], 0.0, None
+    for r in rows:
+        if last is not None and r["layer"] != last:
+            ax.axvline(x + 0.25, color=AXIS, lw=0.8, ls="--")
+            x += 0.5
+        if r["layer"] != last:
+            ax.text(x, 1.0, f"{r['layer']} layer", transform=ax.get_xaxis_transform(), ha="left", va="bottom",
+                    fontsize=8, color=INK2)
+        xs.append(x)
+        labels.append(f"{r['p']}\n{r['q']}\n({r['n']})")
+        last = r["layer"]
+        x += 1.0
+    xs = np.array(xs)
+    med = np.array([r["median_ns"] for r in rows])
+    err = np.array([r["median_err_ns"] for r in rows])
+    cross = np.array([r["cross_board"] for r in rows])
+    spread = (c.calib.get("neighbours") or {}).get("same_board_spread_ns", float("nan"))
+    if np.isfinite(spread) and (~cross).any():
+        centre = float(np.mean(med[~cross]))
+        ax.axhspan(centre - spread, centre + spread, color=GRID, alpha=0.7, lw=0,
+                   label=f"same-board pairs: mean ± spread ({spread:.2f} ns), the paddles' own delays")
+    ax.axhline(0, color=MUTED, lw=0.8)
+    ax.errorbar(xs[~cross], med[~cross], yerr=err[~cross], fmt="o", ms=4.5, color=DATA_COLOR, mec=SURFACE, mew=0.8,
+                elinewidth=0.9, capsize=0, label="paddles on the same board", zorder=4)
+    subtracted = any(abs(r["offsets_subtracted_ns"]) > 0 for r in rows if r["cross_board"])
+    if cross.any():
+        ax.errorbar(xs[cross], med[cross], yerr=err[cross], fmt="D", ms=5, color=CATEGORICAL[1], mec=SURFACE,
+                    mew=0.8, elinewidth=0.9, capsize=0, zorder=5,
+                    label="on two boards " + ("(board offsets subtracted)" if subtracted
+                                              else "(no board offsets in the setup)"))
+    lo = float(np.nanmin(med - err)) if len(med) else -1.0
+    hi = float(np.nanmax(med + err)) if len(med) else 1.0
+    pad = max(0.3, 0.25 * (hi - lo))
+    ax.set_ylim(lo - pad, hi + 2.2 * pad)
+    for xi, r in zip(xs, rows):
+        if r["cross_board"]:
+            b = "|".join("+".join(str(v) for v in r[k]) for k in ("boards_p", "boards_q"))
+            raw = (f"\nwithout offsets\n{r['median_ns'] + r['offsets_subtracted_ns']:+.2f} ns"
+                   if r["offsets_subtracted_ns"] else "")
+            ax.annotate(f"boards {b}{raw}",
+                        (xi, r["median_ns"] + r["median_err_ns"]), xytext=(0, 8), textcoords="offset points",
+                        ha="center", va="bottom", fontsize=6.5, color=INK2)
+    ax.set_xticks(xs, labels, fontsize=7)
+    ax.set_xlim(xs.min() - 0.7, xs.max() + 0.7)
+    ax.set_xlabel("neighbouring paddles: first, second (events with a two-end hit in both)")
+    ax.set_ylabel("median t(second) − t(first) (ns)")
+    ax.legend(loc="upper right", fontsize=7)
+    mc.title(ax, f"Neighbouring paddles: time between their hits: {c.short}",
+             "same height, so one particle gives the same time at any speed: the paddles' delays; "
+             "across boards a check of the board offsets")
+    c.save(fig, "neighbour_times")
+
+
 def plot_track_tdiff(c):
     """tA - tB of every paddle for the hits of tracks with one paddle per layer (two layers: the events with
     exactly two two-end hits, one in each layer). A plain histogram per paddle, one row per layer, no fit.
@@ -828,20 +890,24 @@ def plot_track_tdiff(c):
     layers = [L for L in s.layers if any(p.both_ends for p in L.paddles)]
     if not layers or not sel.any():
         return
-    ncol = max(sum(p.both_ends for p in L.paddles) for L in layers)
+    ncol = min(max(sum(p.both_ends for p in L.paddles) for L in layers), 3)   # at most 3 paddles per row
+    rows_of = [math.ceil(sum(p.both_ends for p in L.paddles) / ncol) for L in layers]
+    nrow = sum(rows_of)
     half = max(p.length / c.calib["paddles"].get(p.name, {}).get("v_eff_cm_per_ns", 15.0)
                + abs(c.calib["paddles"].get(p.name, {}).get("tdiff_offset_ns", 0.0)) for L in layers for p in L.paddles)
     half = math.ceil(half + 2.0)
     width = 0.25
     bins = np.arange(-half, half + width / 2, width)
-    fig_h = 2.9 * len(layers) + 1.5
-    fig, axes = plt.subplots(len(layers), ncol, figsize=(4.6 * ncol + 0.8, fig_h), sharex=True, sharey=True,
+    fig_h = 2.9 * nrow + 1.5
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4.6 * ncol + 0.8, fig_h), sharex=True, sharey=True,
                              squeeze=False)
     fig.subplots_adjust(top=1 - 1.25 / fig_h, hspace=0.32, wspace=0.08)
     for r, L in enumerate(layers):
         paddles = [p for p in L.paddles if p.both_ends]
-        for k in range(ncol):
-            ax = axes[r, k]
+        r0 = sum(rows_of[:r])
+        for k in range(rows_of[r] * ncol):
+            row = r0 + k // ncol
+            ax = axes[row, k % ncol]
             if k >= len(paddles):
                 ax.set_visible(False)
                 continue
@@ -876,9 +942,9 @@ def plot_track_tdiff(c):
                 text += f"\n{out} beyond ±{half:g} ns"
             note(ax, text, loc="upper right", align="left")
             ax.set_title(f"{p.name} ({L.name} layer)", loc="left", fontsize=8.5, color=INK2)
-            if r == len(layers) - 1:
+            if row == nrow - 1:
                 ax.set_xlabel("tA - tB (ns)")
-            if k == 0:
+            if k % ncol == 0:
                 ax.set_ylabel(f"hits per {width:g} ns")
     axes[0, 0].set_ylim(0, None)
     mc.headroom(axes[0, 0], 1.6)
@@ -1053,11 +1119,14 @@ def plot_hitmap(c, layer):
             hists[p.index] = (edges, np.histogram(u_p, bins=edges)[0])
     cmax = max([h[1].max() for h in hists.values()] + [1])
     strip = 8.0                      # cm on the map for the highest bin
+    # labels of the paddles without a strip: just past their + end, or past 3 sigma of the hits beyond it
+    sig_u = [c.calib["paddles"].get(q.name, {}).get("position_sigma_cm") or 0.0 for q in mine]
+    gap = 0.6 if len(mine) <= 2 else 0.6 + 3.0 * max(sig_u + [0.0])
     for p in mine:
         col = mc.layer_color(layer.index)
         along0 = p.x if p.axis == "x" else p.y
         if p.index not in hists:
-            ax.text(*((p.x + 0.5 * p.size_x + 0.6, p.y) if p.axis == "x" else (p.x, p.y + 0.5 * p.size_y + 0.6)),
+            ax.text(*((p.x + 0.5 * p.size_x + gap, p.y) if p.axis == "x" else (p.x, p.y + 0.5 * p.size_y + gap)),
                     p.name, fontsize=6.5, color=INK2, ha="left" if p.axis == "x" else "center",
                     va="center" if p.axis == "x" else "bottom", rotation=0 if p.axis == "x" else 90, zorder=2)
             continue
@@ -1089,8 +1158,10 @@ def plot_hitmap(c, layer):
                 ha="center", va=("bottom" if s > 0 else "top") if p.axis == "x" else "center",
                 rotation=0 if p.axis == "x" else 90, zorder=3)
     if hists:
-        lines.append(f"strips alongside: each paddle's hits\nper {wb:g} cm along it (longest bar {cmax});\n"
-                     f"dashed: the paddle's ends")
+        who = (f"strips alongside: each paddle's hits\nper {wb:g} cm along it" if len(hists) == len(mine) else
+               "strips beside the outer paddles " + " and ".join(c.setup.paddles[i].name for i in hists)
+               + f":\ntheir hits per {wb:g} cm along them")
+        lines.append(f"{who} (longest bar {cmax});\ndashed: the paddle's ends")
     ax.set_aspect("equal")
     ax.set_xlabel("x (cm)")
     ax.set_ylabel("y (cm)")
@@ -1690,6 +1761,7 @@ def run(folder, setup_path=None):
         for lb in s.layers[i + 1:]:
             jobs.append((f"{la.name}-{lb.name} delay", lambda la=la, lb=lb: plot_layer_delay(c, la, lb)))
             jobs.append((f"{la.name}-{lb.name} pairs", lambda la=la, lb=lb: plot_coincidences(c, la, lb)))
+    jobs.append(("neighbours", lambda: plot_neighbour_times(c)))
     jobs += [("event types", lambda: plot_event_types(c)), ("event quality", lambda: plot_event_quality(c)),
              ("track tA-tB", lambda: plot_track_tdiff(c)), ("rates", lambda: plot_rates_vs_time(c))]
     if c.has_tracks and len(c.Tr["event"]):

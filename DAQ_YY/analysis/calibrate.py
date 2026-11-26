@@ -369,6 +369,68 @@ def tof_offsets(H, E, setup, cal):
     return out
 
 
+def neighbour_times(H, setup, cal):
+    """t(q) - t(p) of the two-end hits of one event in two paddles side by side (p before q in the setup).
+    Both lie at the same height, so one particle crossing both (or a shower) gives the same time whatever
+    its speed and in both directions alike: the difference is that of the paddles' own delays. Across a
+    board boundary it tests the setup's board offsets (already subtracted in step 1; nothing else is)."""
+    t = hit_points(H, setup, cal)[4]
+    by_event = {}
+    for i in np.where((H["kind"] == mc.HIT_AB) & np.isfinite(t))[0]:
+        by_event.setdefault(int(H["event"][i]), []).append(int(i))
+    dts = {}
+    for idx in by_event.values():
+        for a in range(len(idx)):
+            for b in range(a + 1, len(idx)):
+                i, j = sorted((idx[a], idx[b]), key=lambda k: int(H["paddle"][k]))
+                p, q = setup.paddles[int(H["paddle"][i])], setup.paddles[int(H["paddle"][j])]
+                if p.neighbours(q):
+                    dts.setdefault((p.index, q.index), []).append(t[j] - t[i])
+    rows = []
+    for (pi, qi), d in sorted(dts.items()):
+        p, q = setup.paddles[pi], setup.paddles[qi]
+        d = np.array(d)
+        med = float(np.median(d))
+        rsig = float(1.4826 * np.median(np.abs(d - med)))
+        boards = [sorted({mc.channel_board(c) for c in s.channels.values()}) for s in (p, q)]
+        rows.append({"p": p.name, "q": q.name, "layer": p.layer.name, "boards_p": boards[0], "boards_q": boards[1],
+                     "cross_board": boards[0] != boards[1], "n": int(len(d)), "median_ns": med,
+                     "median_err_ns": 1.2533 * rsig / math.sqrt(len(d)) if len(d) > 1 else float("nan"),
+                     "robust_sigma_ns": rsig,
+                     "offsets_subtracted_ns": 0.5 * sum(setup.time_offset(c) for c in q.channels.values())
+                     - 0.5 * sum(setup.time_offset(c) for c in p.channels.values())})
+    same = [r["median_ns"] for r in rows if not r["cross_board"] and r["n"] >= 5]
+    spread = float(np.std(same, ddof=1)) if len(same) > 2 else float("nan")
+    for r in rows:
+        if r["cross_board"]:
+            err = math.hypot(r["median_err_ns"], spread if np.isfinite(spread) else 0.0)
+            r["pull"] = r["median_ns"] / err if err > 0 else float("nan")
+    return {"pairs": rows, "same_board_spread_ns": spread}
+
+
+def report_neighbours(nb, report):
+    report("Neighbouring paddles (board offsets check): t(second) - t(first) of the two-end hits of one event in two")
+    report("paddles side by side. Same height: one particle (or a shower) gives the same time whatever its speed, so")
+    report("this is the difference of the paddles' own delays; board and channel offsets of the setup subtracted.")
+    if not nb["pairs"]:
+        report("  no events with two-end hits in neighbouring paddles")
+        return
+    report(f"  {'pair':<12}{'boards':>8}{'events':>8}{'median ns':>11}{'+-':>7}{'robust σ':>10}{'offsets ns':>12}")
+    for r in nb["pairs"]:
+        b = "|".join("+".join(str(x) for x in r[k]) for k in ("boards_p", "boards_q"))
+        report(f"  {r['p'] + '|' + r['q']:<12}{b:>8}{r['n']:>8}{r['median_ns']:>+11.3f}{r['median_err_ns']:>7.3f}"
+               f"{r['robust_sigma_ns']:>10.3f}{r['offsets_subtracted_ns']:>+12.3f}")
+    spread = nb["same_board_spread_ns"]
+    report(f"  spread of the same-board medians (the paddles' own delays): "
+           + (f"{spread:.3f} ns" if np.isfinite(spread) else "too few pairs"))
+    for r in nb["pairs"]:
+        if r["cross_board"] and np.isfinite(r.get("pull", float("nan"))):
+            verdict = "agrees" if abs(r["pull"]) < 3 else "WARNING: off, check the board offset"
+            report(f"  {r['p']}|{r['q']} (boards {'+'.join(map(str, r['boards_p']))}|"
+                   f"{'+'.join(map(str, r['boards_q']))}): {r['median_ns']:+.3f} ns = {r['pull']:+.1f} x (error and "
+                   f"same-board spread): {verdict}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder", nargs="?", default=None,
@@ -475,6 +537,7 @@ def run(folder, setup_path=None):
                 paddles[p.name]["tdiff_sigma_cfd_err_ns"] = float(fc["err"][2])
     bar.update(1, "second pass")
     tof = tof_offsets(H, E, setup, paddles)
+    neighbours = neighbour_times(H, setup, paddles)
     channels = muon_peaks(H, E, setup, paddles, thresholds)
     bar.update(1, "layer times, muon peaks")
     bar.close()
@@ -580,6 +643,8 @@ def run(folder, setup_path=None):
         if tof["status"].startswith("per paddle"):
             for name, value in tof["paddle_offsets_ns"].items():
                 report(f"    paddle {name:<9} {value:+.3f} ns")
+    report()
+    report_neighbours(neighbours, report)
     tof["applied"] = False
     for p in setup.paddles:
         paddles[p.name]["time_offset_ns"] = 0.0
@@ -597,7 +662,7 @@ def run(folder, setup_path=None):
              "speed": ({"mode": "shared", "v_eff_cm_per_ns": shared[0], "err": shared[1],
                         "err_up": shared_fit["err_up"], "err_down": shared_fit["err_down"], "paddles": shared[2]}
                        if shared is not None else {"mode": mode}),
-             "paddles": paddles, "channels": channels, "tof": tof,
+             "paddles": paddles, "channels": channels, "tof": tof, "neighbours": neighbours,
              "warnings": [calib_warning] if calib_warning else []}
     path = os.path.join(folder, mc.CALIB_FILE)
     mc.write_json(path, calib)

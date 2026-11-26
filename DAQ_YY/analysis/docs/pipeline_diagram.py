@@ -69,6 +69,7 @@ STEPS = [
         ("3c", "Muon peak", "√(hA·hB) of track hits, Moyal"),
         ("3d", "Second pass of 3a, 3b", "hits above 0.8 × muon peak"),
         ("3e", "β = 1 layer offsets", "quoted only, never applied", True),
+        ("3f", "Neighbour times", "board-offset check, quoted only", True),
     ]),
     ("4", "Tracks", "reconstruct.py", "tracks.root", "geometry, [tracks], [flux]", [
         ("4a", "Point along paddle", "u from tA − tB, as measured"),

@@ -1,0 +1,337 @@
+# Setup of the full two-layer test (2026-11-26, from run 71): nine top and nine middle
+# paddles, both ends of each read out, on boards 1-5 (36 channels).
+#   channels and geometry: 261126_TOFmeter_mapping.xlsx (SJTU_TOFmeter-work/analysis, version of
+#   2026-11-26 16:44 with geo_layer / geo_paddle / geo_side, "connected with sim and reconstruction")
+#
+# The analysis picks the setup file whose valid_from is the latest on or before a
+# run's date, so keep old files and add a new one (with a new valid_from) whenever
+# paddles, cables or positions change. Units: cm, ns. Lines after # are comments.
+
+name = "two_layer_2026-11-26"
+description = "9 top + 9 middle scintillator paddles with 2 mm gaps, both ends read out, boards 1-5 (36 channels)"
+valid_from = 2026-11-26
+geometry_source = "mapping sheet 2026-11-26 16:44 (geo_paddle = simulation bar) in the frame of simulation/src/DetectorConstruction.cc: top = station Al1 (bars along x), middle = Al2 (bars along y); paddles 40 x 4 x 0.6 cm, 2 mm between neighbours (4.2 cm apart; the simulation has 4.0 cm), layers 30 cm apart (the user); A ends at the negative end of each paddle (not in the sheet: from run 71's channel-map check); to be replaced by measured values"
+
+# Coordinates: the simulation's frame (DetectorConstruction.cc), z up; z = 0 is the centre plane
+# of the middle layer (the simulation has the scintillator centres at z = 70.1 and 40.1 cm).
+# geo_paddle k of the sheet = simulation bar k (ScintillatorPhys_Al1_k / _Al2_k, copy number k - 1),
+# its centre at -16.8 + 4.2 (k - 1) cm across the layer: y for the top layer, x for the middle one.
+# Both layers are centred on x = y = 0. Seen from above:
+#
+#                                 +y
+#                B   B   B   B   B   B   B   B   B          middle B ends (+y)
+#     P21 (9)  A ===================================== B    top, along x, y = +16.8
+#     P22 (8)  A ===================================== B    y = +12.6
+#              :                                       :
+#     P29 (1)  A ===================================== B    y = -16.8
+#                A   A   A   A   A   A   A   A   A          middle A ends (-y)
+#               P12 P13 P14 P15 P16 P17 P18 P19 P20         middle, along y: x = -16.8 ... +16.8
+#        -x  <------------------------------------------>  +x
+#
+# Which end is A is not in the sheet. Run 71's tracks fix it (channel-map check, geometry only):
+# through the middle paddle on ch10032/33 (P12, geo 1) the top hits lie towards the top A ends, and
+# through the top paddle on ch10010/11 (P29, geo 1) the middle hits lie towards the middle A ends.
+# With geo 1 at the negative side of each layer, both A ends are at the negative end (-x, -y).
+
+[[layers]]
+name = "top"
+z_cm = 30.0
+
+[[layers]]
+name = "middle"
+z_cm = 0.0
+
+# One [[paddles]] table per paddle:
+#   axis       its long direction, "x" or "y"
+#   x_cm, y_cm its centre (z_cm too if it is not at its layer's z)
+#   A_end      where the end read by channel A sits: "-x" = at negative x, ...
+#   channels   DAQ_YY channel ids: 10000 + 10 x board + channel (board 1 channel 0 = 10010)
+#   label      the name on the slide or cable, if it differs from name
+# length_cm is the scintillator's length: tA - tB spans 2 x length / v_eff.
+
+# ---- top layer (station Al1): along x, A ends at -x, geo_paddle 1 (P29, y = -16.8) ... 9 (P21) ----
+
+[[paddles]]
+name = "P29"                         # geo_paddle 1
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = -16.8
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10010, B = 10011 }  # board 1 ch0, ch1
+
+[[paddles]]
+name = "P28"                         # geo_paddle 2
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = -12.6
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10012, B = 10013 }  # board 1 ch2, ch3
+
+[[paddles]]
+name = "P27"                         # geo_paddle 3
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = -8.4
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10014, B = 10015 }  # board 1 ch4, ch5
+
+[[paddles]]
+name = "P26"                         # geo_paddle 4
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = -4.2
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10016, B = 10017 }  # board 1 ch6, ch7
+
+[[paddles]]
+name = "P25"                         # geo_paddle 5
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10020, B = 10021 }  # board 2 ch0, ch1
+
+[[paddles]]
+name = "P24"                         # geo_paddle 6
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = 4.2
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10022, B = 10023 }  # board 2 ch2, ch3
+
+[[paddles]]
+name = "P23"                         # geo_paddle 7
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = 8.4
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10024, B = 10025 }  # board 2 ch4, ch5
+
+[[paddles]]
+name = "P22"                         # geo_paddle 8
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = 12.6
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10026, B = 10027 }  # board 2 ch6, ch7
+
+[[paddles]]
+name = "P21"                         # geo_paddle 9
+layer = "top"
+axis = "x"
+x_cm = 0.0
+y_cm = 16.8
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-x"
+channels = { A = 10030, B = 10031 }  # board 3 ch0, ch1
+
+# ---- middle layer (station Al2): along y, A ends at -y, geo_paddle 1 (P12, x = -16.8) ... 9 (P20) ----
+
+[[paddles]]
+name = "P12"                         # geo_paddle 1
+layer = "middle"
+axis = "y"
+x_cm = -16.8
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10032, B = 10033 }  # board 3 ch2, ch3
+
+[[paddles]]
+name = "P13"                         # geo_paddle 2
+layer = "middle"
+axis = "y"
+x_cm = -12.6
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10034, B = 10035 }  # board 3 ch4, ch5
+
+[[paddles]]
+name = "P14"                         # geo_paddle 3
+layer = "middle"
+axis = "y"
+x_cm = -8.4
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10036, B = 10037 }  # board 3 ch6, ch7
+
+[[paddles]]
+name = "P15"                         # geo_paddle 4
+layer = "middle"
+axis = "y"
+x_cm = -4.2
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10040, B = 10041 }  # board 4 ch0, ch1
+
+[[paddles]]
+name = "P16"                         # geo_paddle 5
+layer = "middle"
+axis = "y"
+x_cm = 0.0
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10042, B = 10043 }  # board 4 ch2, ch3
+
+[[paddles]]
+name = "P17"                         # geo_paddle 6
+layer = "middle"
+axis = "y"
+x_cm = 4.2
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10044, B = 10045 }  # board 4 ch4, ch5
+
+[[paddles]]
+name = "P18"                         # geo_paddle 7
+layer = "middle"
+axis = "y"
+x_cm = 8.4
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10046, B = 10047 }  # board 4 ch6, ch7
+
+[[paddles]]
+name = "P19"                         # geo_paddle 8
+layer = "middle"
+axis = "y"
+x_cm = 12.6
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10050, B = 10051 }  # board 5 ch0, ch1
+
+[[paddles]]
+name = "P20"                         # geo_paddle 9
+layer = "middle"
+axis = "y"
+x_cm = 16.8
+y_cm = 0.0
+length_cm = 40.0
+width_cm = 4.0
+thickness_cm = 0.6
+A_end = "-y"
+channels = { A = 10052, B = 10053 }  # board 5 ch2, ch3
+
+# ---- analysis settings (every key optional; these are the defaults) ----
+# Taken over unchanged from the 2026-11-12 setup (tuned on runs 56-59 with its four paddles).
+
+[pulse]
+polarity = "conf"            # "conf": pulsePolarity of the run's .conf; or "positive" / "negative"
+baseline_end = -20           # baseline = mean of samples 0 .. trigger sample - 20
+search = [-30, 50]           # peak search, samples around the trigger sample (2 x pulse_pre)
+smooth = 5                   # height = highest running mean of 5 samples
+cfd_fraction = 0.2           # pulse time: rising edge at 20 % of the height (sharpest tA - tB in run 56)
+timing = "fit"               # "fit": template fit of the rising edge; "cfd": the crossing between two samples
+fit_window = [-4, 4]         # samples fitted around the one at or before the crossing (-10 .. +8 ns): the edge
+fit_max_shift = 1.5          # samples; a fit further from the crossing has failed (NO_FIT, the crossing is kept)
+template_pulses = 5000       # clean pulses per channel averaged into its template
+template_min_height = 300.0  # ADC; smaller pulses stay out of the template
+template_min_pulses = 50     # fewer clean pulses: no template, the channel keeps the crossing
+charge_window = [-5, 130]    # charge: samples from the edge - 5 to the edge + 130
+min_height = 100.0           # ADC
+plateau_window = [5, 45]     # flat-top test: samples 5-45 after the peak ...
+min_plateau = 0.5            # ... must stay above half the height (0 switches the test off)
+max_undershoot = 0.5         # noise test: no swing below the baseline deeper than half the height
+pileup_fraction = 0.25       # second pulse: a later rise above 25 % of the height ...
+pileup_min = 200.0           # ... and above 200 ADC
+max_baseline_slope = 100.0   # ADC
+max_baseline_rms = 60.0      # ADC (measured on the raw samples, filter or not)
+max_raw_adc = 14500          # the amplifiers clipped at raw 14600-15100 in run 58: SATURATED
+min_raw_adc = 0
+lowpass_mhz = 80.0           # low-pass filter against the ringing (run 58 scan, see the 2026-11-12 setup); 0 = off
+lowpass_kind = "butter"      # "butter": 4th order, sharp; "gauss": no overshoot; both zero-phase (no time shift)
+lowpass_timing = true        # the pulse time from the filtered waveform (false: from the raw samples)
+
+[events]
+pair_margin_ns = 5.0         # A-B pairing window: length / v_eff + 5 ns
+window_ns = 30.0             # event: hits within 30 ns of its first hit
+
+[calibration]
+v_eff_mode = "per_paddle"    # each paddle its own speed; or "shared"
+v_eff_cm_per_ns = 15.0       # used until calibrate.py measures it
+speed_min_mip = 0.8          # speed and attenuation fits: hits with sqrt(hA hB) > 0.8 x muon peak (cuts background)
+tdiff_sigma_ns = 0.6         # used until calibrate.py measures it
+min_hits = 50                # fewer two-end hits: keep the defaults
+min_tof_events = 20          # events per paddle for per-paddle time offsets
+
+[tracks]
+points = "measured"          # "measured": where tA - tB puts the hit; "inside": the best estimate inside the paddle
+
+[flux]
+vertical_intensity = 70.0    # muons / (m^2 s sr), sea level, above ~1 GeV (PDG review)
+cos_power = 2.0              # I(theta) = I0 cos^2(theta)
+toy_muons = 1000000          # toy muons per layer
+seed = 1
+
+[display]
+side = ""                    # the room's wall in this frame is not known yet: not marked ("+x", "-y", ...)
+side_label = ""
+
+# Time offsets subtracted from every pulse time. No board offsets (the user, 2026-11-26): in run 71
+# the boards' clocks agree to ~0.2 ns as recorded. The values of the sync runs of 2026-11-07
+# (b2 +4.766, b3 -4.772, b4 +5.056, b5 +4.771 ns, a split square wave into board X channel X-1) do
+# not hold for these data: neighbouring paddles on two boards (P26|P25 boards 1|2, P22|P21 2|3,
+# P14|P15 3|4, P18|P19 4|5) differ by -0.10, -0.09, +0.19, -0.17 ns without them, like paddles on
+# one board (spread 0.16 ns), and by up to 9.6 ns with them.
+# calibrate.py checks this in every run (calibration_summary.txt, plot neighbour_times).
+[board_offsets_ns]
+
+[channel_offsets_ns]
+# 10013 = 0.25

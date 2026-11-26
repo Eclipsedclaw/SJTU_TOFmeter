@@ -4,7 +4,8 @@ From the raw waveforms of a DAQ_YY run to reconstructed cosmic muons: pulses, hi
 scintillator paddle, events, calibration from the run itself, straight tracks with angles and time of
 flight, a toy-simulation expectation, plots and a summary. Made for self-trigger runs of paddles read out
 at both ends, starting with the two-layer test of 2026-11-12 (two top and two middle paddles on board 1,
-channels 0–7). Every paddle, channel, layer and board comes from a setup file, so adding channels means
+channels 0–7) and then the full two layers of 2026-11-26 (nine top and nine middle paddles on boards 1–5,
+from run 71). Every paddle, channel, layer and board comes from a setup file, so adding channels means
 editing that file, not the code.
 
 **No known muon values in the data processing.** Every number the analysis applies to the data is fitted
@@ -100,7 +101,8 @@ flowchart TB
         s3c["3c muon peak: √(hA·hB) of the tracks' hits,<br/>Moyal fit, as measured"]
         s3d["3d second pass: 3a and 3b with the hits<br/>√(hA·hB) above 0.8 × the muon peak<br/>(σ also with the crossings, to compare)"]
         s3e["3e layer time offsets that β = 1 would need<br/>quoted only, never applied"]
-        s3a --> s3b --> s3c --> s3d --> s3e
+        s3f["3f neighbouring paddles: time between their hits<br/>in one event (same height, any speed): checks<br/>the board offsets, quoted only, never applied"]
+        s3a --> s3b --> s3c --> s3d --> s3e --> s3f
     end
 
     subgraph S4["4 · reconstruct.py → tracks.root"]
@@ -190,6 +192,23 @@ Coordinates of the first setup, seen from above (slide 17, the wall at the top):
             TOP1B(ch1)  TOP2B(ch3)
 ```
 
+[`setups/two_layer_2026-11-26.toml`](setups/two_layer_2026-11-26.toml) (from run 71) has nine paddles per
+layer on boards 1–5, from the mapping sheet `261126_TOFmeter_mapping.xlsx`. It uses the simulation's frame
+(`simulation/src/DetectorConstruction.cc`): the sheet's `geo_paddle` k is simulation bar k, the top layer
+(station Al1) runs along x, the middle one (Al2) along y, and the paddles are 4.2 cm apart (2 mm gaps):
+
+```text
+                                 +y
+                B   B   B   B   B   B   B   B   B          middle B ends (+y)
+     P21 (9)  A ===================================== B    top, along x, y = +16.8
+              :                                       :
+     P29 (1)  A ===================================== B    y = -16.8
+                A   A   A   A   A   A   A   A   A          middle A ends (-y)
+               P12 P13 P14 P15 P16 P17 P18 P19 P20         middle, along y: x = -16.8 ... +16.8
+```
+
+The sheet does not say which end is A; run 71's channel-map check (box 4g) puts both at the negative end.
+
 One `[[paddles]]` table per paddle:
 
 ```toml
@@ -209,9 +228,14 @@ channels = { A = 10010, B = 10011 }  # DAQ_YY id = 10000 + 10 x board + channel
 - **More paddles:** add `[[paddles]]` tables; more layers: add `[[layers]]` (sorted by `z_cm`, top first).
   Paddles of one layer side by side are recognised as neighbours (a muon crossing both is merged into one
   point).
-- **More boards:** the boards' clocks start together in ctrlmode 3, but each board has a fixed time offset
-  (up to ±5 ns, measured with [`../scripts/analyze_sync.py`](../scripts/analyze_sync.py)). Enter them under
-  `[board_offsets_ns]`, e.g. `2 = 4.766`; single cable delays under `[channel_offsets_ns]`.
+- **More boards:** the boards' clocks start together in ctrlmode 3. A fixed time offset per board goes under
+  `[board_offsets_ns]` (ns subtracted from its pulse times, e.g. `2 = 4.766`), a single cable delay under
+  `[channel_offsets_ns]`. The pulser sync runs of 2026-11-07 ([`../scripts/analyze_sync.py`](../scripts/analyze_sync.py))
+  gave up to ±5 ns, but they do **not** hold for the paddle data: in run 71 the boards agree to ~0.2 ns as
+  recorded, so the 2026-11-26 setup has no board offsets. Step 3 checks this in every run (box 3f): two
+  neighbouring paddles lie at the same height, so a particle crossing both gives the same time at any speed,
+  and a pair on two boards must look like a pair on one board (`calibration_summary.txt`, plot
+  `neighbour_times`).
 - **Settings** (`[pulse]`, `[events]`, `[calibration]`, `[tracks]` for the track points, `[flux]`, `[display]`
   for the side of the room the event pages mark) are explained line by line in the file;
   every key is optional. The geometry of the first setup is the simulation design
@@ -248,6 +272,7 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `tdiff_vs_ratio_<paddle>` | The same check with no calibration: raw ln(hA/hB) against raw tA − tB, 2D, with their correlation |
 | `mip_<paddle>` | The signal peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
 | `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
+| `neighbour_times` | Pairs of paddles side by side: their time difference in one event; pairs on two boards like the others (board offsets right) |
 | `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
 | `hitmap_<layer>` | Where the tracks cross the layer, each hit as measured: along its paddle from tA − tB alone (scattered by the resolution, so hits near an end can lie beyond it), across it on the centre line (not measured); strips alongside the outer paddles: the hits per cm along each paddle, tails beyond the ends included. The track fit uses the same points (setup `[tracks] points = "measured"`) |

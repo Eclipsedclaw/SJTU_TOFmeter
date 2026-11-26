@@ -207,7 +207,26 @@ layer on boards 1–5, from the mapping sheet `261126_TOFmeter_mapping.xlsx`. It
                P12 P13 P14 P15 P16 P17 P18 P19 P20         middle, along y: x = -16.8 ... +16.8
 ```
 
-The sheet does not say which end is A; run 71's channel-map check (box 4g) puts both at the negative end.
+The top A ends are at the wall (−x); run 71's channel-map check (box 4g) puts both layers' A ends at the
+negative end. `[display] top_up = "-x"` turns the TOP views (event pages, `setup_top_view`) so the wall is
+on top; a turn, never a mirror, so they stay views from above.
+
+### Changing the setup: the spreadsheet
+
+The hardware lives in a spreadsheet next to the setup file, e.g.
+[`setups/two_layer_2026-11-26.xlsx`](setups/two_layer_2026-11-26.xlsx): sheet `channels` (the mapping sheet:
+board, IP, channel, paddle ID, side, geo_layer, geo_paddle, geo_side, optional measured x/y/z and cable
+delays), sheet `layers` (z, direction, A end, pitch, first position, paddle size), sheet `setup` (name,
+valid_from, wall, top_up, board offsets, notes); sheet `help` explains every column. For a new setup:
+
+```bash
+cp setups/two_layer_2026-11-26.xlsx setups/my_new_setup.xlsx   # edit rows; new name and valid_from
+python3 setup_from_xlsx.py setups/my_new_setup.xlsx             # writes setups/<name>.toml + <name>_top_view.png
+```
+
+Look at the TOP view before analysing. The analysis settings (`[pulse]` … `[flux]`) are copied, comments
+included, from the previous setup file and can still be edited in the TOML; re-running the script with
+`--force` keeps them.
 
 One `[[paddles]]` table per paddle:
 

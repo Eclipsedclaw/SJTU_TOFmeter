@@ -11,6 +11,7 @@ Usage:
     python3 make_plots.py /path/to/run00056_..._muon
 
 Plots (plots/<name>.png):
+    setup_top_view         TOP view of the setup file: paddle names, readout ends with channel ids, the wall
     pulse_rates            used and rejected pulses per second, per channel
     baseline_noise         baseline noise per channel (median, 68 % and 95 % ranges)
     pulse_shape_<paddle>   average pulse of both ends, normalised to its height
@@ -1745,7 +1746,8 @@ def run(folder, setup_path=None):
     """Step 5 for one analysis folder; returns the list of plot files."""
     c = Context(folder, setup_path)
     s = c.setup
-    jobs = [("pulse rates", lambda: plot_pulse_rates(c)), ("baseline noise", lambda: plot_baseline_noise(c))]
+    jobs = [("TOP view", lambda: c.save(mc.draw_top_view(s), "setup_top_view")),
+            ("pulse rates", lambda: plot_pulse_rates(c)), ("baseline noise", lambda: plot_baseline_noise(c))]
     for p in s.paddles:
         jobs += [(f"{p.name} shape", lambda p=p: plot_pulse_shape(c, p)),
                  (f"{p.name} edge template", lambda p=p: plot_edge_template(c, p)),

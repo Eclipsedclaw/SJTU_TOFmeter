@@ -223,6 +223,7 @@ def draw_views(d, row, axes, heights, norm):
     T = d.Tr
     e = int(T["event"][row])
     pts = hit_points(d, row)
+    top = mc.TopView(s)          # the TOP view is drawn turned as [display] top_up says; side views as set up
     # a hit that tA - tB alone puts beyond its paddle's end is drawn there (the hit itself, or with
     # [tracks] points = "inside" an open marker); that end's label moves aside
     beyond = {(p.index, "A" if um > 0 else "B") for x, y, z, sx, sy, p, hit, u, um in pts
@@ -238,7 +239,7 @@ def draw_views(d, row, axes, heights, norm):
     lx = T["ax"][row] + T["bx"][row] * (zz - T["z0"][row])
     ly = T["ay"][row] + T["by"][row] * (zz - T["z0"][row])
     for ax, view in zip(axes, ("xy", "xz", "yz")):
-        for p in s.paddles:
+        for p in (top.paddles if view == "xy" else s.paddles):
             col = mc.layer_color(p.layer.index)
             x0, y0, w, h = paddle_box(p, view)
             fired = p.index in ab
@@ -257,11 +258,11 @@ def draw_views(d, row, axes, heights, norm):
                                        lw=0.7, zorder=3))
                 if view == "xy":
                     tx, ty, align = label
-                    ax.text(tx, ty, f"{end} {hgt:.0f}" if hgt is not None else end, fontsize=6,
+                    ax.text(tx, ty, f"{p.name}-{end}" + (f" {hgt:.0f}" if hgt is not None else ""), fontsize=6,
                             color=INK2 if hgt is not None else MUTED, zorder=3, **align)
         # the track: a line through the detector with an arrow the way the particle went (down)
         if view == "xy":
-            start, stop = (lx[0], ly[0]), (lx[1], ly[1])
+            start, stop = top.page(lx[0], ly[0]), top.page(lx[1], ly[1])
             box = (-ext + 0.3, ext - 0.3, -ext + 0.3, ext - 0.3)
         elif view == "xz":
             start, stop = (lx[0], zz[0]), (lx[1], zz[1])
@@ -283,14 +284,19 @@ def draw_views(d, row, axes, heights, norm):
         kw = dict(fmt="o", ms=6.5, color=col, mec=SURFACE, mew=1.4, elinewidth=1.6, capsize=0, zorder=7)
         c = p.x if p.axis == "x" else p.y
         hp = c + p.a_sign * u                                # the hit point along the paddle's axis
+        q = top.paddles[p.index]                             # the same paddle, the hit and its errors in the TOP view
+        X, Y = top.page(x, y)
+        SX, SY = top.errors(sx, sy)
+        qc = q.x if q.axis == "x" else q.y
+        qhp = qc + q.a_sign * u
         if abs(hp) > lim:          # measured beyond the view: a triangle at its edge in the views along the paddle
             shown["hit_edge"] = True
-            edge = math.copysign(lim, hp)
+            edge = math.copysign(lim, qhp)
             mk = dict(ms=7, color=col, mec=SURFACE, mew=1.2, ls="none", zorder=7)
-            ax_xy.plot(*((edge, y) if p.axis == "x" else (x, edge)),
-                       marker=(">" if hp > 0 else "<") if p.axis == "x" else ("^" if hp > 0 else "v"), **mk)
+            ax_xy.plot(*((edge, Y) if q.axis == "x" else (X, edge)),
+                       marker=(">" if qhp > 0 else "<") if q.axis == "x" else ("^" if qhp > 0 else "v"), **mk)
         else:
-            ax_xy.errorbar(x, y, xerr=sx, yerr=sy, **kw)
+            ax_xy.errorbar(X, Y, xerr=SX, yerr=SY, **kw)
         for side, h, err, along in ((ax_xz, x, sx, p.axis == "x"), (ax_yz, y, sy, p.axis == "y")):
             if along and abs(hp) > lim:
                 side.plot(math.copysign(lim, hp), z, marker=">" if hp > 0 else "<", ms=7, color=col, mec=SURFACE,
@@ -300,40 +306,40 @@ def draw_views(d, row, axes, heights, norm):
         # [tracks] points = "inside": the point lies inside; mark where tA - tB alone put it beyond the end
         if np.isfinite(um) and abs(um - u) > 1e-6 and abs(um) > 0.5 * p.length:
             pos = c + p.a_sign * um
+            qpos = qc + q.a_sign * um                        # the same point in the TOP view
             pulled = abs(pos) > lim                          # further out than the view: drawn at its edge
-            pos = min(max(pos, -lim), lim)
-            out = 1 if pos > c else -1
+            pos, qpos = min(max(pos, -lim), lim), min(max(qpos, -lim), lim)
+            out, qout = (1 if pos > c else -1), (1 if qpos > qc else -1)
             shown["edge" if pulled else "o"] = True
             mk = dict(ms=5.5, mfc="none", mec=col, mew=1.2, ls="none", zorder=6)
-            xm, ym = (pos, p.y) if p.axis == "x" else (p.x, pos)
-            ax_xy.plot([x, xm], [y, ym], color=col, lw=0.8, ls=":", zorder=6)
-            ax_xy.plot(xm, ym, marker=("o" if not pulled else (">" if out > 0 else "<") if p.axis == "x"
-                                       else ("^" if out > 0 else "v")), **mk)
+            xm, ym = (qpos, q.y) if q.axis == "x" else (q.x, qpos)
+            ax_xy.plot([X, xm], [Y, ym], color=col, lw=0.8, ls=":", zorder=6)
+            ax_xy.plot(xm, ym, marker=("o" if not pulled else (">" if qout > 0 else "<") if q.axis == "x"
+                                       else ("^" if qout > 0 else "v")), **mk)
             side, a = (ax_xz, x) if p.axis == "x" else (ax_yz, y)   # the side view along the paddle
             side.plot([a, pos], [z, z], color=col, lw=0.8, ls=":", zorder=6)
             side.plot(pos, z, marker=("o" if not pulled else ">" if out > 0 else "<"), **mk)
-    # the room side (the wall of the first setup)
+    # the room side (the wall): in the TOP view where top_up turns it, and in the side view across it
     side, label = s.display.get("side", ""), s.display.get("side_label", "")
     if side in ("+x", "-x", "+y", "-y") and label:
-        sgn = 1 if side[0] == "+" else -1
         band = 1.6
-        if side[1] == "y":
+        page = top.side(side)
+        sgn = 1 if page[0] == "+" else -1
+        if page[1] == "y":
             ax_xy.add_patch(Rectangle((-ext, sgn * ext - (band if sgn > 0 else 0)), 2 * ext, band, color=AXIS, lw=0, zorder=1))
             ax_xy.text(0, sgn * (ext - 0.5 * band), label, ha="center", va="center", fontsize=7.5, color=INK, zorder=2)
-            ax_yz.axvspan(sgn * ext - (band if sgn > 0 else 0), sgn * ext + (0 if sgn > 0 else band), color=AXIS, lw=0)
-            ax_yz.text(sgn * (ext - 0.5 * band), 0.5 * (z_lo + z_hi), label, rotation=90, ha="center", va="center",
-                       fontsize=7.5, color=INK)
         else:
             ax_xy.add_patch(Rectangle((sgn * ext - (band if sgn > 0 else 0), -ext), band, 2 * ext, color=AXIS, lw=0, zorder=1))
             ax_xy.text(sgn * (ext - 0.5 * band), 0, label, rotation=90, ha="center", va="center", fontsize=7.5, color=INK)
-            ax_xz.axvspan(sgn * ext - (band if sgn > 0 else 0), sgn * ext + (0 if sgn > 0 else band), color=AXIS, lw=0)
-            ax_xz.text(sgn * (ext - 0.5 * band), 0.5 * (z_lo + z_hi), label, rotation=90, ha="center", va="center",
-                       fontsize=7.5, color=INK)
+        sgn = 1 if side[0] == "+" else -1
+        across = ax_yz if side[1] == "y" else ax_xz
+        across.axvspan(sgn * ext - (band if sgn > 0 else 0), sgn * ext + (0 if sgn > 0 else band), color=AXIS, lw=0)
+        across.text(sgn * (ext - 0.5 * band), 0.5 * (z_lo + z_hi), label, rotation=90, ha="center", va="center",
+                    fontsize=7.5, color=INK)
     ax_xy.set_xlim(-ext, ext)
     ax_xy.set_ylim(-ext, ext)
     ax_xy.set_aspect("equal")
-    ax_xy.set_xlabel("x (cm)")
-    ax_xy.set_ylabel("y (cm)")
+    top.label_axes(ax_xy)
     ax_xy.grid(False)
     from matplotlib.lines import Line2D
     handles = [Line2D([], [], marker="o", ms=6.5, color=col, mec=SURFACE, mew=1.4, ls="none", label=f"{name} layer hit")
@@ -344,8 +350,8 @@ def draw_views(d, row, axes, heights, norm):
         if show:
             handles.append(Line2D([], [], marker=marker, ms=5.5, ls="none", mew=1.2, label=text,
                                   **(dict(color=INK2, mec=SURFACE) if filled else dict(mfc="none", mec=INK2))))
-    ax_xy.legend(handles=handles, loc="lower left", fontsize=7)
-    ax_xy.set_title("seen from above", loc="left", fontsize=8.5, color=INK2)
+    ax_xy.set_title("TOP view (seen from above" + (f", {top.up} up)" if top.turned else ")"), loc="left",
+                    fontsize=8.5, color=INK2)
     for ax, lab, name in ((ax_xz, "x (cm)", "seen from the side (from -y)"), (ax_yz, "y (cm)", "seen from the side (from +x)")):
         ax.set_xlim(-ext, ext)
         ax.set_ylim(z_lo, z_hi)
@@ -355,7 +361,7 @@ def draw_views(d, row, axes, heights, norm):
         ax.set_title(name, loc="left", fontsize=8.5, color=INK2)
         for layer in s.layers:
             ax.text(ext - 0.6, layer.z + 1.2, layer.name, ha="right", va="bottom", fontsize=7, color=INK2)
-    return pts
+    return pts, handles
 
 
 def info_table(d, row, ax, pts, norm):
@@ -508,8 +514,10 @@ def event_page(d, row, out_dir, waveforms=True):
     ax_info = fig.add_subplot(gs[0:2, 2])
     ax_w = fig.add_subplot(gs[2, 0])
     ax_z = fig.add_subplot(gs[2, 1:3])
-    pts = draw_views(d, row, (ax_xy, ax_xz, ax_yz), heights, norm)
+    pts, handles = draw_views(d, row, (ax_xy, ax_xz, ax_yz), heights, norm)
     info_table(d, row, ax_info, pts, norm)
+    # the hit markers' legend in the free part of the info panel, above the colour bar: it never hides a label
+    ax_info.legend(handles=handles, loc="lower left", bbox_to_anchor=(0.0, 0.14), fontsize=7, frameon=False)
     if waveforms and d.raw is not None:
         draw_waveforms(d, row, ax_w, ax_z)
     else:

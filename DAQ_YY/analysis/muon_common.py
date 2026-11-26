@@ -28,6 +28,7 @@ import json
 import math
 import re
 import sys
+import types
 
 import numpy as np
 
@@ -151,7 +152,9 @@ CALIBRATION_DEFAULTS = {
 DISPLAY_DEFAULTS = {
     "side": "",                  # a side of the room to mark in the event pictures: "+x", "-x", "+y", "-y"
     "side_label": "",            # its name, e.g. "wall"
-}
+    "top_up": "+y",              # the direction drawn upwards in the TOP views: "+y", "-x", "-y" or "+x"
+}                                # (the picture is turned, never mirrored: it stays the view from above)
+UNIT = {"+x": (1, 0), "-x": (-1, 0), "+y": (0, 1), "-y": (0, -1)}
 TRACK_DEFAULTS = {
     "points": "measured",        # a hit's position along its paddle for the track fit: "measured" = where tA - tB
                                  # puts it (error: the resolution; near an end it can lie beyond the paddle, as in
@@ -364,6 +367,8 @@ class Setup:
         self.calibration = _merge(CALIBRATION_DEFAULTS, raw.get("calibration"), f"{where} [calibration]")
         self.flux = _merge(FLUX_DEFAULTS, raw.get("flux"), f"{where} [flux]")
         self.display = _merge(DISPLAY_DEFAULTS, raw.get("display"), f"{where} [display]")
+        if self.display["top_up"] not in UNIT:
+            raise SetupError(f"{where} [display]: top_up must be \"+y\", \"-x\", \"-y\" or \"+x\"")
         self.tracks = _merge(TRACK_DEFAULTS, raw.get("tracks"), f"{where} [tracks]")
         if self.tracks["points"] not in ("measured", "inside"):
             raise SetupError(f"{where} [tracks]: points must be \"measured\" or \"inside\", "
@@ -1237,6 +1242,114 @@ def headroom(ax, factor=1.38, log=False):
 def title(ax, text, sub=None):
     """Left-aligned title, with an optional second line in secondary ink."""
     ax.set_title(text if sub is None else f"{text}\n{sub}", loc="left", fontsize=9)
+
+
+class TopView:
+    """How a TOP view is drawn. [display] top_up points up on the page and the page's right is top_up
+    turned 90 degrees clockwise: the picture is turned, never mirrored, so it stays the view from above.
+    page(x, y) gives page coordinates; .paddles (in setup order) and .layers hold the paddles as drawn:
+    x, y, axis, a_sign, size_x, size_y on the page, name, index, z, length, width, channels as set up."""
+
+    def __init__(self, setup):
+        self.up = setup.display.get("top_up") or "+y"
+        self.u = UNIT[self.up]
+        self.r = (self.u[1], -self.u[0])
+        self.paddles, self.layers = [None] * len(setup.paddles), []
+        for L in setup.layers:
+            layer = types.SimpleNamespace(name=L.name, index=L.index, z=L.z, paddles=[])
+            for p in L.paddles:
+                ex, ey = self.page(*((1, 0) if p.axis == "x" else (0, 1)))     # the long axis on the page
+                axis = "x" if ex else "y"
+                x, y = self.page(p.x, p.y)
+                q = types.SimpleNamespace(name=p.name, index=p.index, layer=layer, z=p.z, length=p.length,
+                                          width=p.width, thickness=p.thickness, channels=p.channels, axis=axis,
+                                          a_sign=p.a_sign * (ex or ey), x=x, y=y,
+                                          size_x=p.length if axis == "x" else p.width,
+                                          size_y=p.width if axis == "x" else p.length)
+                layer.paddles.append(q)
+                self.paddles[p.index] = q
+            self.layers.append(layer)
+        self.turned = self.up != "+y"
+
+    def page(self, x, y):
+        """(right, up) on the page for the setup's (x, y): numbers or numpy arrays."""
+        return self.r[0] * x + self.r[1] * y, self.u[0] * x + self.u[1] * y
+
+    def errors(self, sx, sy):
+        """Errors along x and y of the setup as errors along the page's right and up."""
+        return abs(self.r[0]) * sx + abs(self.r[1]) * sy, abs(self.u[0]) * sx + abs(self.u[1]) * sy
+
+    def side(self, side):
+        """The page side ("+x" right, "-x" left, "+y" up, "-y" down) where a room side of the setup lies."""
+        if side not in UNIT:
+            return side
+        h, v = self.page(*UNIT[side])
+        return ("+" if (h or v) > 0 else "-") + ("x" if h else "y")
+
+    def label_axes(self, ax):
+        """Axis titles and numbers in the setup's coordinates (a page axis along -x counts down)."""
+        from matplotlib.ticker import FuncFormatter
+        for axis, vec in ((ax.xaxis, self.r), (ax.yaxis, self.u)):
+            axis.set_label_text(f"{'x' if vec[0] else 'y'} (cm)")
+            if (vec[0] or vec[1]) < 0:
+                axis.set_major_formatter(FuncFormatter(lambda v, pos: f"{-v + 0:g}"))
+
+
+def draw_top_view(setup):
+    """TOP view of the setup from the setup file alone: every paddle, each end's readout box labelled
+    with paddle-end and channel id, the room side of [display] and the layers' heights, turned as
+    [display] top_up says. Layers are drawn from the lowest up, so the top layer lies over the others
+    as seen from above. Returns the figure; the caller saves it (make_plots: plots/setup_top_view.png,
+    setup_from_xlsx.py: next to the setup file)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch, Rectangle
+    box = 2.0                                            # cm: readout box beyond each end
+    view = TopView(setup)
+    ext = max(max(abs(p.x) + 0.5 * p.size_x, abs(p.y) + 0.5 * p.size_y) for p in view.paddles) + box + 9.0
+    fig, ax = plt.subplots(figsize=(8.2, 8.2))
+    handles = []
+    for rank, layer in enumerate(sorted(view.layers, key=lambda L: L.z)):
+        col, z0 = layer_color(layer.index), 2 + 4 * rank
+        for p in layer.paddles:
+            corner = (p.x - 0.5 * p.size_x, p.y - 0.5 * p.size_y)
+            ax.add_patch(Rectangle(corner, p.size_x, p.size_y, facecolor=col, alpha=0.16, lw=0, zorder=z0))
+            ax.add_patch(Rectangle(corner, p.size_x, p.size_y, fill=False, edgecolor=col, lw=1.0, zorder=z0 + 1))
+            for end, chid in p.channels.items():
+                sign = p.a_sign if end == "A" else -p.a_sign          # the end sits at + or - along the axis
+                tip = 0.5 * p.length
+                if p.axis == "x":
+                    rect = (p.x + sign * tip - (box if sign < 0 else 0), p.y - 0.5 * p.width, box, p.width)
+                    at, align = (p.x + sign * (tip + box + 0.4), p.y), dict(ha="left" if sign > 0 else "right",
+                                                                           va="center")
+                else:
+                    rect = (p.x - 0.5 * p.width, p.y + sign * tip - (box if sign < 0 else 0), p.width, box)
+                    at, align = (p.x, p.y + sign * (tip + box + 0.4)), dict(ha="center", rotation=90,
+                                                                           va="bottom" if sign > 0 else "top")
+                ax.add_patch(Rectangle(rect[:2], rect[2], rect[3], facecolor=SURFACE, edgecolor=col, lw=0.8,
+                                       zorder=z0 + 2))
+                ax.text(*at, f"{p.name}-{end}  {chid}", fontsize=6.5, color=INK, zorder=z0 + 2, **align)
+        handles.append(Patch(facecolor=col, alpha=0.5, edgecolor=col,
+                             label=f"{layer.name} layer, z = {layer.z:g} cm: {len(layer.paddles)} paddles"))
+    side, label = view.side(setup.display.get("side", "")), setup.display.get("side_label", "")
+    if side in UNIT and label:
+        sgn, band = (1 if side[0] == "+" else -1), 1.6
+        edge = sgn * ext - (band if sgn > 0 else 0)
+        if side[1] == "x":
+            ax.add_patch(Rectangle((edge, -ext), band, 2 * ext, color=AXIS, lw=0, zorder=1))
+            ax.text(edge + 0.5 * band, 0, label, rotation=90, ha="center", va="center", fontsize=8, color=INK)
+        else:
+            ax.add_patch(Rectangle((-ext, edge), 2 * ext, band, color=AXIS, lw=0, zorder=1))
+            ax.text(0, edge + 0.5 * band, label, ha="center", va="center", fontsize=8, color=INK)
+    ax.set_xlim(-ext, ext)
+    ax.set_ylim(-ext, ext)
+    ax.set_aspect("equal")
+    view.label_axes(ax)
+    ax.grid(False)
+    ax.legend(handles=handles[::-1], loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize=7.5, borderaxespad=0)
+    title(ax, f"TOP view: setup {setup.name}",
+          f"seen from above{f', turned: {view.up} points up' if view.turned else ''}; at each end its readout: "
+          "paddle-end and channel id (10000 + 10 x board + channel)")
+    return fig
 
 
 def poisson_band(counts):

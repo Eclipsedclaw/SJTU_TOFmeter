@@ -223,7 +223,8 @@ def muon_peaks(H, E, setup, cal, thresholds):
         fit = mc.moyal_fit(geo)
         if fit is not None:
             c.update({"mip_status": "fitted", "mip_adc": fit["mpv"], "mip_err_adc": fit["mpv_err"],
-                      "mip_width_adc": fit["width"], "mip_fit_range_adc": list(fit["range"]), "mip_n": fit["n"]})
+                      "mip_width_adc": fit["width"], "mip_width_err_adc": fit["width_err"],
+                      "mip_fit_range_adc": list(fit["range"]), "mip_n": fit["n"]})
         else:
             c.update({"mip_status": "median (too few hits for a fit)",
                       "mip_adc": float(np.median(geo)) if len(geo) else None})

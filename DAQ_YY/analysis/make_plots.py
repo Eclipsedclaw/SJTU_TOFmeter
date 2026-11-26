@@ -19,6 +19,8 @@ Plots (plots/<name>.png):
     layer_delay_<a>_<b>    time between two-end hits of two layers, +-1000 ns and a zoom of +-10 ns
     neighbour_times        time between the hits of two paddles side by side in one event: the paddles'
                            own delays, and across a board boundary a check of the board offsets
+    resolutions            every paddle's sigma(tA - tB) and relative width of the muon peak (FWHM / MPV)
+    event_tags             every event in one class by its layers, every track by its tags (track flags)
     event_types            events by the layers with a two-end hit
     event_quality          selection steps: all events, a paddle at both ends, a track, one
                            paddle per layer or several paddles of one layer
@@ -770,6 +772,140 @@ def plot_event_types(c):
     c.save(fig, "event_types")
 
 
+def paddle_axis(c, pads):
+    """x of every paddle (layers side by side, a gap between them) and (first x, last x, layer) per layer."""
+    xs, groups, x = {}, [], 0.0
+    for L in c.setup.layers:
+        mine = [p for p in pads if p.layer is L]
+        if not mine:
+            continue
+        if xs:
+            x += 0.8
+        first = x
+        for p in mine:
+            xs[p.index] = x
+            x += 1.0
+        groups.append((first, x - 1.0, L))
+    return xs, groups
+
+
+def plot_resolutions(c):
+    """Every paddle's resolutions from this run's fits: sigma(tA - tB) of the box fit (pulse times from the rising-edge
+    fit; hollow: the 20 % crossing on the same hits), and the relative width of the muon peak, FWHM / MPV of the
+    Moyal fit of sqrt(hA hB) of the tracks' hits, as measured. That width is energy-loss fluctuations + light
+    statistics + the spread of path lengths (no angle correction): the energy-loss fluctuations alone (simulation:
+    Landau, PDG formula, FWHM = 4.018 xi) are drawn for scale."""
+    cal = c.calib["paddles"]
+    pads = [p for p in c.setup.paddles if p.both_ends and cal.get(p.name, {}).get("tdiff_status", "").startswith("fitted")]
+    if not pads:
+        return
+    xs, groups = paddle_axis(c, pads)
+    fig, (at, ae) = plt.subplots(2, 1, figsize=(max(7.4, 0.42 * len(pads) + 2.8), 7.0), sharex=True)
+    fig.subplots_adjust(hspace=0.16, top=0.85, bottom=0.1)
+    X = np.array([xs[p.index] for p in pads])
+    get = lambda key: np.array([cal[p.name].get(key, np.nan) or np.nan for p in pads], dtype=float)  # noqa: E731
+    s, se = get("tdiff_sigma_ns"), get("tdiff_sigma_err_ns")
+    sc, sce = get("tdiff_sigma_cfd_ns"), get("tdiff_sigma_cfd_err_ns")
+    if np.isfinite(sc).any():
+        at.errorbar(X + 0.12, sc, yerr=sce, fmt="o", ms=4.5, mfc="none", mec=MUTED, color=MUTED, elinewidth=0.8,
+                    capsize=0, label="20 % crossing between two samples, the same hits", zorder=3)
+    at.errorbar(X, s, yerr=se, fmt="o", ms=5, color=DATA_COLOR, mec=SURFACE, mew=0.8, elinewidth=0.9, capsize=0,
+                label="rising-edge fit (the pulse times the analysis uses)", zorder=4)
+    pos = get("position_sigma_cm")
+    note(at, f"median σ {np.nanmedian(s):.3f} ns (range {np.nanmin(s):.2f}–{np.nanmax(s):.2f})\nmean time: σ / 2; "
+             f"position: (v / 2) σ = {np.nanmin(pos):.1f}–{np.nanmax(pos):.1f} cm", loc="upper left")
+    at.set_ylabel("σ(tA − tB) (ns)")
+    at.set_ylim(0, None)
+    mc.headroom(at, 1.5)
+    at.legend(loc="upper right", fontsize=7)
+    w, we, m, me = get("mip_width_adc"), get("mip_width_err_adc"), get("mip_adc"), get("mip_err_adc")
+    ok = np.array([cal[p.name].get("mip_status") == "fitted" for p in pads]) & np.isfinite(w) & np.isfinite(m)
+    r = 3.591 * w / m                                       # FWHM of a Moyal function = 3.591 x its width
+    re = r * np.sqrt(np.where(np.isfinite(we), we / w, 0.0) ** 2 + (me / m) ** 2)
+    ae.errorbar(X[ok], r[ok], yerr=np.where(np.isfinite(we[ok]), re[ok], 0.0), fmt="o", ms=5, color=DATA_COLOR,
+                mec=SURFACE, mew=0.8, elinewidth=0.9, capsize=0, label="muon peak of the tracks' hits, as measured",
+                zorder=4)
+    thick = float(np.median([p.thickness for p in pads]))
+    landau = 4.018 * mc.landau_xi_mev(thick) / mc.landau_mpv_mev(thick)
+    ae.axhline(landau, color=mc.EXPECTED_COLOR, lw=1.3, ls="--",
+               label=f"simulation: energy-loss fluctuations alone in {thick:g} cm of plastic (Landau, PDG): {landau:.2f}")
+    if ok.any():
+        note(ae, f"median FWHM / MPV {np.median(r[ok]):.2f}; MPV {np.min(m[ok]):.0f}–{np.max(m[ok]):.0f} ADC",
+             loc="upper left")
+    ae.set_ylabel("muon peak FWHM / MPV")
+    ae.set_ylim(0, None)
+    mc.headroom(ae, 1.5)
+    ae.legend(loc="upper right", fontsize=7)
+    ae.set_xticks(X, [p.name for p in pads], fontsize=7.5)
+    for first, last, L in groups:
+        at.text(0.5 * (first + last), 1.01, f"{L.name} layer", transform=at.get_xaxis_transform(), ha="center",
+                va="bottom", fontsize=8, color=INK2)
+    for (f1, l1, _), (f2, _, _) in zip(groups, groups[1:]):
+        for ax in (at, ae):
+            ax.axvline(0.5 * (l1 + f2), color=AXIS, lw=0.8, ls="--")
+    ae.set_xlim(X.min() - 0.7, X.max() + 0.7)
+    fig.text(0.125, 0.975, f"Resolutions of every paddle, from this run's fits: {c.short}", ha="left", va="top",
+             fontsize=9.5, color=INK)
+    fig.text(0.125, 0.945, "top: time difference of the two ends (box fit of tA − tB); bottom: relative width of the "
+             "muon peak (Moyal fit of √(hA·hB)):\nenergy-loss fluctuations + light statistics + path length (tracks "
+             "not corrected for their angle)", ha="left", va="top", fontsize=8, color=INK2)
+    c.save(fig, "resolutions")
+
+
+def plot_event_tags(c):
+    """Every event in one class, by the layers with a two-end hit, and every track (two-end hits in two layers or
+    more) by its tags (the track flags): none, or each combination that occurs; each tag shown, also at 0."""
+    groups = []
+    cats = c.einfo.get("categories") or {}
+    if cats:
+        groups.append((f"events, by the layers with a two-end hit (all {sum(cats.values())})", list(cats.items()),
+                       CATEGORICAL[0]))
+    if c.has_tracks and len(c.Tr["event"]):
+        flags = c.Tr["flags"].astype(np.int64)
+        known = {bit: name for bit, name, _ in mc.TRACK_FLAGS}
+        rows = {}
+        for f in sorted(np.unique(flags)):
+            names = [known[b] for b in sorted(known) if f & b] + ([f"other {f & ~sum(known):#x}"] if f & ~sum(known) else [])
+            rows[" + ".join(names) if names else "no tag"] = int((flags == f).sum())
+        for bit, name in known.items():
+            rows.setdefault(name, 0)
+        order = sorted(rows, key=lambda k: (k != "no tag", k.count("+"), k))
+        groups.append((f"tracks, by their tags (all {len(flags)})", [(k, rows[k]) for k in order], CATEGORICAL[2]))
+    if not groups:
+        return
+    n_rows = sum(len(g[1]) + 1 for g in groups)
+    fig, ax = figure(7.6, 0.34 * n_rows + 2.2)
+    y, labels, ticks = 0.0, [], []
+    top = max(n for _, rows, _ in groups for _, n in rows)
+    for title_text, rows, col in groups:
+        ax.text(0.85, y, title_text, ha="left", va="center", fontsize=8, color=INK, fontweight="bold")
+        y -= 1.0
+        total = sum(n for _, n in rows) or 1
+        for label, n in rows:
+            if n > 0:
+                ax.barh(y, n, height=0.62, color=col, left=0.0, zorder=3)
+            ax.text(max(n, 0.9) * 1.12, y, f"{n}  ({100 * n / total:.1f} %, {n / c.span_s:.3g} Hz)", va="center",
+                    fontsize=7, color=INK2)
+            ticks.append(y)
+            labels.append(label)
+            y -= 1.0
+        y -= 0.4
+    ax.set_xscale("log")
+    ax.set_xlim(0.8, top * 30)
+    ax.set_yticks(ticks, labels, fontsize=7.5)
+    ax.set_ylim(y + 0.6, 0.6)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("events (log scale)")
+    import textwrap
+    desc = "\n".join(textwrap.fill(f"{name}: {text}", 58, subsequent_indent="   ") for _, name, text in mc.TRACK_FLAGS)
+    ax.text(0.985, 0.03, "the tags of a track:\n" + desc, transform=ax.transAxes, ha="right", va="bottom", fontsize=6.8,
+            color=INK2, linespacing=1.35, bbox=dict(boxstyle="round,pad=0.45", fc=SURFACE, ec=GRID, lw=0.6))
+    mc.title(ax, f"Event tags: {c.short}",
+             "every event in one class; a track = two-end hits in two layers or more;\n\"no tag\": one paddle per "
+             "layer, every hit within 3σ of its paddle")
+    c.save(fig, "event_tags")
+
+
 def plot_coincidences(c, la, lb):
     exp = (c.tinfo.get("expected") or {}).get("pairs", {}) if c.has_tracks else {}
     rows, cols = la.paddles, lb.paddles
@@ -1499,6 +1635,7 @@ def run(folder, setup_path=None):
             jobs.append((f"{la.name}-{lb.name} delay", lambda la=la, lb=lb: plot_layer_delay(c, la, lb)))
             jobs.append((f"{la.name}-{lb.name} pairs", lambda la=la, lb=lb: plot_coincidences(c, la, lb)))
     jobs.append(("neighbours", lambda: plot_neighbour_times(c)))
+    jobs += [("resolutions", lambda: plot_resolutions(c)), ("event tags", lambda: plot_event_tags(c))]
     jobs += [("event types", lambda: plot_event_types(c)), ("event quality", lambda: plot_event_quality(c)),
              ("track tA-tB", lambda: plot_track_tdiff(c)), ("rates", lambda: plot_rates_vs_time(c))]
     if c.has_tracks and len(c.Tr["event"]):

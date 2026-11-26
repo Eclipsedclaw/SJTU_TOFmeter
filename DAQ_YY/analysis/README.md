@@ -297,6 +297,8 @@ The ROOT trees can be browsed directly, e.g. `root -l tracks.root` then `tracks-
 | `mip_<paddle>` | The signal peak of the tracks (blue) against all two-end hits (grey, mostly not muons) |
 | `layer_delay_<a>_<b>` | One peak above a flat chance level (left, ±1000 ns) and its shape (right, ±10 ns) |
 | `neighbour_times` | Pairs of paddles side by side: their time difference in one event; pairs on two boards like the others (board offsets right) |
+| `resolutions` | Every paddle's σ(tA − tB) (rising-edge fit; hollow: the 20 % crossing on the same hits) and the muon peak's FWHM/MPV (Moyal fit of √(hA·hB) of the tracks' hits), against the energy-loss fluctuations alone (simulation: Landau, 0.22 for 6 mm): the rest is light statistics and path length |
+| `event_tags` | Every event in one class by the layers with a two-end hit, and every track by its tags: no tag (one paddle per layer, every hit within 3σ), ADJACENT, AMBIGUOUS, OUTSIDE and the combinations that occur |
 | `event_quality` | The selection steps: all events → a paddle at both ends → a track → one paddle per layer, or several paddles of one layer |
 | `event_types`, `coincidences_<a>_<b>`, `rates_vs_time` | Counts and rates; tracks per paddle pair against the toy |
 | `hitmap_<layer>` | Where the tracks cross the layer, each hit as measured: along its paddle from tA − tB alone (scattered by the resolution, so hits near an end can lie beyond it), across it on the centre line (not measured); strips alongside the outer paddles: the hits per cm along each paddle, tails beyond the ends included. The track fit uses the same points (setup `[tracks] points = "measured"`) |
